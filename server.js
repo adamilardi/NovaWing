@@ -8,8 +8,11 @@ const PORT = Number(process.env.PORT) || 4000;
 const HOST = '0.0.0.0';
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
+const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
+const MIN_COMPLETION_TIME_MS = 18 * 1000;
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
+const activeRuns = new Map();
 let leaderboardWriteQueue = Promise.resolve();
 
 function isPublicRequest(requestPath) {
@@ -60,7 +63,7 @@ async function readLeaderboard() {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
 
-        return sortLeaderboard(parsed.map(normalizeEntry).filter(Boolean)).slice(0, LEADERBOARD_LIMIT);
+        return sortLeaderboard(parsed.map(normalizeEntry).filter(Boolean));
     } catch (err) {
         if (err.code === 'ENOENT') return [];
         throw err;
@@ -76,6 +79,7 @@ function normalizeEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
 
     const name = sanitizeName(entry.name);
+    const version = sanitizeGameVersion(entry.version);
     const timeMs = Math.round(Number(entry.timeMs));
     const score = Math.round(Number(entry.score));
     const kills = Math.round(Number(entry.kills));
@@ -88,6 +92,7 @@ function normalizeEntry(entry) {
 
     return {
         id: typeof entry.id === 'string' && entry.id ? entry.id.slice(0, 80) : crypto.randomUUID(),
+        version,
         name,
         timeMs,
         score,
@@ -95,6 +100,15 @@ function normalizeEntry(entry) {
         accuracy,
         createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
     };
+}
+
+function sanitizeGameVersion(value) {
+    const cleaned = String(value || '')
+        .replace(/[^\w.-]/g, '')
+        .trim()
+        .slice(0, 24);
+
+    return cleaned || '1.0.0';
 }
 
 function sanitizeName(value) {
@@ -117,7 +131,11 @@ function sortLeaderboard(entries) {
 
 async function handleLeaderboardRequest(req, res) {
     if (req.method === 'GET') {
-        sendJson(res, 200, { entries: await readLeaderboard() });
+        const version = getRequestVersion(req);
+        const entries = (await readLeaderboard())
+            .filter(entry => entry.version === version)
+            .slice(0, LEADERBOARD_LIMIT);
+        sendJson(res, 200, { version, entries });
         return;
     }
 
@@ -128,13 +146,20 @@ async function handleLeaderboardRequest(req, res) {
     }
 
     const payload = await readRequestJson(req);
+    const runValidation = consumeRunToken(payload);
+    if (!runValidation.ok) {
+        sendJson(res, 400, { error: runValidation.error });
+        return;
+    }
+
     const submittedEntry = normalizeEntry({
         ...payload,
+        version: runValidation.version,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
 
-    if (!submittedEntry) {
+    if (!submittedEntry || !isPlausibleCompletedRun(submittedEntry, runValidation.startedAt)) {
         sendJson(res, 400, { error: 'Invalid leaderboard entry' });
         return;
     }
@@ -142,17 +167,87 @@ async function handleLeaderboardRequest(req, res) {
     const result = await queueLeaderboardWrite(async () => {
         const entries = await readLeaderboard();
         const sorted = sortLeaderboard(entries.concat(submittedEntry));
-        const rank = sorted.findIndex(entry => entry.id === submittedEntry.id) + 1;
-        const savedEntries = sorted.slice(0, LEADERBOARD_LIMIT);
+        const versionEntries = sorted.filter(entry => entry.version === submittedEntry.version);
+        const rank = versionEntries.findIndex(entry => entry.id === submittedEntry.id) + 1;
+        const savedEntries = sorted.filter(entry => {
+            const sameVersionRank = sorted
+                .filter(candidate => candidate.version === entry.version)
+                .findIndex(candidate => candidate.id === entry.id);
+            return sameVersionRank >= 0 && sameVersionRank < LEADERBOARD_LIMIT;
+        });
         await writeLeaderboard(savedEntries);
-        return { rank, savedEntries };
+        return { rank, savedEntries: versionEntries.slice(0, LEADERBOARD_LIMIT) };
     });
 
     sendJson(res, 201, {
         entry: submittedEntry,
         rank: result.rank,
+        version: submittedEntry.version,
         entries: result.savedEntries
     });
+}
+
+async function handleRunRequest(req, res) {
+    if (req.method !== 'POST') {
+        res.writeHead(405, { Allow: 'POST' });
+        res.end('Method not allowed');
+        return;
+    }
+
+    const payload = await readRequestJson(req);
+    const version = sanitizeGameVersion(payload.version);
+    const runId = crypto.randomUUID();
+    const now = Date.now();
+    activeRuns.set(runId, {
+        version,
+        startedAt: now,
+        expiresAt: now + RUN_TOKEN_TTL_MS
+    });
+    pruneExpiredRuns();
+
+    sendJson(res, 201, {
+        runId,
+        version,
+        startedAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + RUN_TOKEN_TTL_MS).toISOString()
+    });
+}
+
+function consumeRunToken(payload) {
+    const runId = typeof payload.runId === 'string' ? payload.runId : '';
+    const requestedVersion = sanitizeGameVersion(payload.version);
+    const run = activeRuns.get(runId);
+    activeRuns.delete(runId);
+
+    if (!run) return { ok: false, error: 'Invalid or expired run token' };
+    if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (Date.now() > run.expiresAt) return { ok: false, error: 'Run token expired' };
+
+    return {
+        ok: true,
+        version: run.version,
+        startedAt: run.startedAt
+    };
+}
+
+function pruneExpiredRuns() {
+    const now = Date.now();
+    activeRuns.forEach((run, runId) => {
+        if (now > run.expiresAt) activeRuns.delete(runId);
+    });
+}
+
+function isPlausibleCompletedRun(entry, startedAt) {
+    if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
+    if (entry.timeMs > Date.now() - startedAt + 2000) return false;
+    if (entry.kills < 1) return false;
+
+    return true;
+}
+
+function getRequestVersion(req) {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    return sanitizeGameVersion(url.searchParams.get('version'));
 }
 
 function queueLeaderboardWrite(task) {
@@ -174,6 +269,15 @@ const server = http.createServer((req, res) => {
     }
 
     const requestPath = decodedPath === '/' ? '/index.html' : decodedPath;
+    if (requestPath === '/api/run') {
+        handleRunRequest(req, res).catch(err => {
+            if (!res.headersSent) {
+                sendJson(res, err.statusCode || 500, { error: err.message || 'Server error' });
+            }
+        });
+        return;
+    }
+
     if (requestPath === '/api/leaderboard') {
         handleLeaderboardRequest(req, res).catch(err => {
             if (!res.headersSent) {

@@ -1,5 +1,6 @@
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
+const MIN_COMPLETION_TIME_MS = 18 * 1000;
 
 export async function onRequest(context) {
     const { request, env } = context;
@@ -9,8 +10,9 @@ export async function onRequest(context) {
     }
 
     if (request.method === 'GET') {
-        const entries = await getLeaderboard(env.DB);
-        return jsonResponse({ entries });
+        const version = getRequestVersion(request);
+        const entries = await getLeaderboard(env.DB, version);
+        return jsonResponse({ version, entries });
     }
 
     if (request.method !== 'POST') {
@@ -27,21 +29,28 @@ export async function onRequest(context) {
         return jsonResponse({ error: err.message || 'Invalid request' }, err.statusCode || 400);
     }
 
+    const runValidation = await consumeRunToken(env.DB, payload);
+    if (!runValidation.ok) {
+        return jsonResponse({ error: runValidation.error }, 400);
+    }
+
     const entry = normalizeEntry({
         ...payload,
+        version: runValidation.version,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
 
-    if (!entry) {
+    if (!entry || !isPlausibleCompletedRun(entry, runValidation.startedAt)) {
         return jsonResponse({ error: 'Invalid leaderboard entry' }, 400);
     }
 
     await env.DB.prepare(`
-        INSERT INTO leaderboard_entries (id, name, time_ms, score, kills, accuracy, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO leaderboard_entries (id, game_version, name, time_ms, score, kills, accuracy, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
         entry.id,
+        entry.version,
         entry.name,
         entry.timeMs,
         entry.score,
@@ -50,13 +59,13 @@ export async function onRequest(context) {
         entry.createdAt
     ).run();
 
-    const rankedEntries = await getRankedEntries(env.DB);
+    const rankedEntries = await getRankedEntries(env.DB, entry.version);
     const rank = rankedEntries.findIndex(candidate => candidate.id === entry.id) + 1;
     const entries = rankedEntries.slice(0, LEADERBOARD_LIMIT);
 
     await pruneLeaderboard(env.DB);
 
-    return jsonResponse({ entry, rank, entries }, 201);
+    return jsonResponse({ entry, rank, version: entry.version, entries }, 201);
 }
 
 async function readJson(request) {
@@ -75,20 +84,22 @@ async function readJson(request) {
     }
 }
 
-async function getLeaderboard(db) {
-    return (await getRankedEntries(db)).slice(0, LEADERBOARD_LIMIT);
+async function getLeaderboard(db, version) {
+    return (await getRankedEntries(db, version)).slice(0, LEADERBOARD_LIMIT);
 }
 
-async function getRankedEntries(db) {
+async function getRankedEntries(db, version) {
     const result = await db.prepare(`
-        SELECT id, name, time_ms, score, kills, accuracy, created_at
+        SELECT id, game_version, name, time_ms, score, kills, accuracy, created_at
         FROM leaderboard_entries
+        WHERE game_version = ?
         ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
         LIMIT 100
-    `).all();
+    `).bind(version).all();
 
     return (result.results || []).map(row => ({
         id: row.id,
+        version: row.game_version,
         name: row.name,
         timeMs: row.time_ms,
         score: row.score,
@@ -103,17 +114,56 @@ async function pruneLeaderboard(db) {
         DELETE FROM leaderboard_entries
         WHERE id NOT IN (
             SELECT id
-            FROM leaderboard_entries
-            ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
-            LIMIT 100
+            FROM (
+                SELECT id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY game_version
+                        ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
+                    ) AS leaderboard_rank
+                FROM leaderboard_entries
+            )
+            WHERE leaderboard_rank <= 100
         )
     `).run();
+}
+
+async function consumeRunToken(db, payload) {
+    const runId = typeof payload.runId === 'string' ? payload.runId : '';
+    const requestedVersion = sanitizeGameVersion(payload.version);
+    const now = Date.now();
+
+    const result = await db.prepare(`
+        SELECT id, game_version, created_at, expires_at, used_at
+        FROM leaderboard_runs
+        WHERE id = ?
+    `).bind(runId).first();
+
+    if (!result || result.used_at) return { ok: false, error: 'Invalid or expired run token' };
+    if (result.game_version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (Date.parse(result.expires_at) <= now) return { ok: false, error: 'Run token expired' };
+
+    const update = await db.prepare(`
+        UPDATE leaderboard_runs
+        SET used_at = ?
+        WHERE id = ? AND used_at IS NULL
+    `).bind(new Date(now).toISOString(), runId).run();
+
+    if (!update.meta || update.meta.changes !== 1) {
+        return { ok: false, error: 'Invalid or expired run token' };
+    }
+
+    return {
+        ok: true,
+        version: result.game_version,
+        startedAt: Date.parse(result.created_at)
+    };
 }
 
 function normalizeEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
 
     const name = sanitizeName(entry.name);
+    const version = sanitizeGameVersion(entry.version);
     const timeMs = Math.round(Number(entry.timeMs));
     const score = Math.round(Number(entry.score));
     const kills = Math.round(Number(entry.kills));
@@ -126,6 +176,7 @@ function normalizeEntry(entry) {
 
     return {
         id: entry.id,
+        version,
         name,
         timeMs,
         score,
@@ -133,6 +184,28 @@ function normalizeEntry(entry) {
         accuracy,
         createdAt: entry.createdAt
     };
+}
+
+function sanitizeGameVersion(value) {
+    const cleaned = String(value || '')
+        .replace(/[^\w.-]/g, '')
+        .trim()
+        .slice(0, 24);
+
+    return cleaned || '1.0.0';
+}
+
+function isPlausibleCompletedRun(entry, startedAt) {
+    if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
+    if (entry.timeMs > Date.now() - startedAt + 2000) return false;
+    if (entry.kills < 1) return false;
+
+    return true;
+}
+
+function getRequestVersion(request) {
+    const url = new URL(request.url);
+    return sanitizeGameVersion(url.searchParams.get('version'));
 }
 
 function sanitizeName(value) {

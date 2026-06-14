@@ -20,6 +20,7 @@ const config = {
 
 const game = new Phaser.Game(config);
 
+const GAME_VERSION = '1.0.0';
 const LEVEL_DURATION_MS = 30000;
 const ENEMY_FIRE_CHANCE = 0.42;
 const MAX_WEAPON_LEVEL = 3;
@@ -38,6 +39,7 @@ const BOOST_WORLD_SPEED_MULTIPLIER = 1.7;
 const LOCAL_LEADERBOARD_KEY = 'novawing-fastest-runs';
 const PLAYER_NAME_KEY = 'novawing-player-name';
 const LEADERBOARD_API_URL = '/api/leaderboard';
+const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
@@ -99,6 +101,7 @@ let enemiesKilled = 0;
 let levelStartTime = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
+let victoryPending = false;
 let playerInvulnerableUntil = 0;
 let gamePhase = 'waves';
 let scoreText;
@@ -114,6 +117,8 @@ let sfx;
 let leaderboardEntries = [];
 let leaderboardStatus = 'Loading online leaderboard...';
 let leaderboardLoadPromise = null;
+let runTokenPromise = null;
+let currentRunId = null;
 
 function preload() {
     Object.values(SPRITES).forEach(sprite => {
@@ -286,9 +291,11 @@ function create() {
     bossNextVolleyAt = 0;
     levelStartTime = this.time.now;
     levelProgressMs = 0;
+    victoryPending = false;
     leaderboardEntries = getLocalLeaderboard();
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer();
+    startRunOnServer();
 
     // Scrolling starfield
     this.stars = this.add.graphics();
@@ -426,7 +433,7 @@ function create() {
 }
 
 function update(time, delta) {
-    if (levelEnded) return;
+    if (levelEnded || victoryPending) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     runTimeText.setText('Run: ' + formatRunTime(time - levelStartTime));
@@ -644,7 +651,7 @@ function hitBossCollision(player, bossSprite) {
 }
 
 function damagePlayer() {
-    if (levelEnded) return;
+    if (levelEnded || victoryPending) return;
 
     const now = this.time.now;
     if (now < playerInvulnerableUntil) return;
@@ -855,10 +862,15 @@ function updateBossHealthBar() {
 }
 
 function defeatBoss(bossSprite) {
+    if (victoryPending) return;
+    victoryPending = true;
+
     const bossX = bossSprite.x;
     const bossY = bossSprite.y;
     const completionTimeMs = this.time.now - levelStartTime;
 
+    deactivateGroup(enemyBullets);
+    this.physics.pause();
     bossSprite.destroy();
     boss = null;
     bossHealth = 0;
@@ -1073,7 +1085,7 @@ function formatRunTime(ms) {
 
 function getLocalLeaderboard() {
     try {
-        const raw = window.localStorage.getItem(LOCAL_LEADERBOARD_KEY);
+        const raw = window.localStorage.getItem(getVersionedLeaderboardKey());
         const entries = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(entries)) return [];
 
@@ -1089,10 +1101,14 @@ function getLocalLeaderboard() {
 
 function saveLocalLeaderboard(entries) {
     try {
-        window.localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(entries));
+        window.localStorage.setItem(getVersionedLeaderboardKey(), JSON.stringify(entries));
     } catch (err) {
         // Private browsing or storage quotas should not block the result screen.
     }
+}
+
+function getVersionedLeaderboardKey() {
+    return LOCAL_LEADERBOARD_KEY + ':' + GAME_VERSION;
 }
 
 function getSavedPlayerName() {
@@ -1128,6 +1144,15 @@ function sanitizePlayerName(value) {
     return cleaned || 'Pilot';
 }
 
+function sanitizeGameVersion(value) {
+    const cleaned = String(value || '')
+        .replace(/[^\w.-]/g, '')
+        .trim()
+        .slice(0, 24);
+
+    return cleaned || GAME_VERSION;
+}
+
 function normalizeLeaderboardEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
 
@@ -1143,6 +1168,7 @@ function normalizeLeaderboardEntry(entry) {
 
     return {
         id: typeof entry.id === 'string' && entry.id ? entry.id : Date.now() + '-' + Math.random().toString(16).slice(2),
+        version: sanitizeGameVersion(entry.version || GAME_VERSION),
         name: sanitizePlayerName(entry.name),
         timeMs,
         score: entryScore,
@@ -1163,6 +1189,7 @@ function recordLocalLeaderboard(entry) {
     const currentEntries = getLocalLeaderboard();
     const savedEntry = normalizeLeaderboardEntry({
         id: Date.now() + '-' + Math.random().toString(16).slice(2),
+        version: GAME_VERSION,
         name: entry.name,
         timeMs: entry.timeMs,
         score: entry.score,
@@ -1190,7 +1217,7 @@ function loadLeaderboardFromServer() {
         return Promise.resolve({ entries: leaderboardEntries, online: false });
     }
 
-    leaderboardLoadPromise = fetch(LEADERBOARD_API_URL, {
+    leaderboardLoadPromise = fetch(getLeaderboardUrl(), {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
     })
@@ -1216,6 +1243,42 @@ function loadLeaderboardFromServer() {
     return leaderboardLoadPromise;
 }
 
+function getLeaderboardUrl() {
+    return LEADERBOARD_API_URL + '?version=' + encodeURIComponent(GAME_VERSION);
+}
+
+function startRunOnServer() {
+    currentRunId = null;
+
+    if (!window.fetch) {
+        runTokenPromise = Promise.resolve(null);
+        return runTokenPromise;
+    }
+
+    runTokenPromise = fetch(RUN_API_URL, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ version: GAME_VERSION })
+    })
+        .then(response => {
+            if (!response.ok) throw new Error('Run token unavailable');
+            return response.json();
+        })
+        .then(payload => {
+            currentRunId = typeof payload.runId === 'string' ? payload.runId : null;
+            return currentRunId;
+        })
+        .catch(() => {
+            currentRunId = null;
+            return null;
+        });
+
+    return runTokenPromise;
+}
+
 function normalizeLeaderboardEntries(entries) {
     if (!Array.isArray(entries)) return [];
     return entries
@@ -1231,13 +1294,17 @@ function submitLeaderboard(entry) {
         return Promise.resolve({ ...result, online: false });
     }
 
-    return fetch(LEADERBOARD_API_URL, {
+    const submitOnline = () => fetch(LEADERBOARD_API_URL, {
         method: 'POST',
         headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(entry)
+        body: JSON.stringify({
+            ...entry,
+            version: GAME_VERSION,
+            runId: currentRunId
+        })
     })
         .then(response => {
             if (!response.ok) throw new Error('Score submission failed');
@@ -1260,6 +1327,8 @@ function submitLeaderboard(entry) {
             leaderboardStatus = 'Saved locally; online leaderboard unavailable';
             return { ...result, online: false };
         });
+
+    return (runTokenPromise || Promise.resolve(currentRunId)).then(() => submitOnline());
 }
 
 function formatLeaderboardLines(entries) {

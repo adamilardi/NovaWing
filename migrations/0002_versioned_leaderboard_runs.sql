@@ -1,13 +1,7 @@
-CREATE TABLE IF NOT EXISTS leaderboard_entries (
-    id TEXT PRIMARY KEY,
-    game_version TEXT NOT NULL,
-    name TEXT NOT NULL,
-    time_ms INTEGER NOT NULL,
-    score INTEGER NOT NULL,
-    kills INTEGER NOT NULL,
-    accuracy INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
+ALTER TABLE leaderboard_entries
+ADD COLUMN game_version TEXT NOT NULL DEFAULT '1.0.0';
+
+DROP INDEX IF EXISTS leaderboard_rank_idx;
 
 CREATE INDEX IF NOT EXISTS leaderboard_rank_idx
 ON leaderboard_entries (game_version, time_ms ASC, score DESC, kills DESC, created_at ASC);
