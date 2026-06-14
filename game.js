@@ -1,4 +1,4 @@
-// R-Type Prototype - Using Neo Geo style sprites from Grok Imagine
+// NovaWing - Using Neo Geo style sprites from Grok Imagine
 
 const config = {
     type: Phaser.AUTO,
@@ -35,8 +35,8 @@ const BOOST_RAMP_UP_PER_SECOND = 7;
 const BOOST_FADE_OUT_PER_SECOND = 3.2;
 const BOOST_LEVEL_PROGRESS_MULTIPLIER = 1.55;
 const BOOST_WORLD_SPEED_MULTIPLIER = 1.7;
-const LOCAL_LEADERBOARD_KEY = 'rtype-prototype-fastest-runs';
-const PLAYER_NAME_KEY = 'rtype-prototype-player-name';
+const LOCAL_LEADERBOARD_KEY = 'novawing-fastest-runs';
+const PLAYER_NAME_KEY = 'novawing-player-name';
 const LEADERBOARD_API_URL = '/api/leaderboard';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
@@ -1414,14 +1414,14 @@ function endLevel(title, color, options = {}) {
 function shareScoreResult(entry, rank, statusText) {
     const rankText = Number.isFinite(rank) && rank > 0 ? ' Rank #' + rank + '.' : '';
     const shareUrl = window.location.origin + window.location.pathname;
-    const shareText = entry.name + ' beat R-Type Prototype in ' +
+    const shareText = entry.name + ' beat NovaWing in ' +
         formatRunTime(entry.timeMs) + ' with ' +
         entry.score + ' points and ' +
         entry.kills + ' kills.' + rankText + ' ' + shareUrl;
 
     if (navigator.share) {
         navigator.share({
-            title: 'R-Type Prototype score',
+            title: 'NovaWing score',
             text: shareText,
             url: shareUrl
         })

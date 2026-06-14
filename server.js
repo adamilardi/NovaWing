@@ -1,4 +1,4 @@
-// Simple HTTP server for R-Type prototype
+// Simple HTTP server for NovaWing
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -239,6 +239,6 @@ server.on('error', (err) => {
 });
 
 server.listen(PORT, HOST, () => {
-    console.log(`🚀 R-Type prototype running at http://${HOST}:${PORT}`);
+    console.log(`NovaWing running at http://${HOST}:${PORT}`);
     console.log(`🎮 From Windows: http://localhost:${PORT}`);
 });

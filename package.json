@@ -1,0 +1,13 @@
+{
+  "name": "novawing",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp index.html game.js dist/ && cp -R assets dist/assets",
+    "check": "node --check server.js && node --check game.js && node --check functions/api/leaderboard.js",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name novawing"
+  },
+  "devDependencies": {
+    "wrangler": "^4.100.0"
+  }
+}

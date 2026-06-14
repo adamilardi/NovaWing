@@ -1,5 +1,8 @@
 .venv/
 node_modules/
+.wrangler/
 data/
+dist/
 .env
 .DS_Store
+cloudflare.env
