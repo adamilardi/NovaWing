@@ -23,6 +23,13 @@ const game = new Phaser.Game(config);
 const GAME_VERSION = '1.0.0';
 const LEVEL_DURATION_MS = 30000;
 const ENEMY_FIRE_CHANCE = 0.42;
+const REGULAR_ENEMY_SPEED = -155;
+const INTERCEPTOR_ENEMY_SPEED = -245;
+const INTERCEPTOR_TRACK_SPEED = 175;
+const INTERCEPTOR_TRACK_RESPONSE = 2.35;
+const ENEMY_SHOT_SPEED = -430;
+const INTERCEPTOR_SHOT_SPEED = -545;
+const BOSS_MISSILE_SPEED = -380;
 const MAX_WEAPON_LEVEL = 3;
 const BOSS_MAX_HEALTH = 240;
 const PLAYER_DAMAGE_COOLDOWN_MS = 900;
@@ -518,7 +525,7 @@ function update(time, delta) {
 
     enemies.getChildren().forEach(e => {
         if (!e.active) return;
-        updateScrollVelocity(e);
+        updateEnemyMovement(e);
         maybeFireEnemyShot.call(this, e, time);
         if (e.x < -70) releaseSprite(e);
     });
@@ -725,15 +732,28 @@ function spawnEnemy() {
     enemy.setTexture(key);
     activateSprite(enemy, 820, y);
     applyShipSize(enemy, SPRITES[key].displayWidth);
-    enemy.baseVelocityX = -155;
+    enemy.baseVelocityX = REGULAR_ENEMY_SPEED;
+    enemy.tracksPlayer = false;
+    enemy.shotSpeed = ENEMY_SHOT_SPEED;
+    enemy.shotAimScale = 1.1;
+    enemy.shotMaxDy = 150;
+    enemy.shotCooldownMin = 1400;
+    enemy.shotCooldownMax = 2800;
     updateScrollVelocity(enemy);
     enemy.canShoot = Math.random() < ENEMY_FIRE_CHANCE;
     enemy.nextShotAt = this.time.now + Phaser.Math.Between(700, 2200);
 
     if (useEnemy2) {
-        enemy.baseVelocityX = -185;
+        enemy.baseVelocityX = INTERCEPTOR_ENEMY_SPEED;
+        enemy.tracksPlayer = true;
+        enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
+        enemy.shotAimScale = 1.45;
+        enemy.shotMaxDy = 230;
+        enemy.shotCooldownMin = 850;
+        enemy.shotCooldownMax = 1650;
         updateScrollVelocity(enemy);
-        enemy.canShoot = Math.random() < 0.62;
+        enemy.canShoot = Math.random() < 0.78;
+        enemy.nextShotAt = this.time.now + Phaser.Math.Between(500, 1450);
     }
 }
 
@@ -833,7 +853,7 @@ function updateBossFight(time) {
 function fireBossVolley(time) {
     if (!boss || !boss.active) return;
 
-    bossNextVolleyAt = time + Phaser.Math.Between(1450, 2100);
+    bossNextVolleyAt = time + Phaser.Math.Between(1150, 1750);
     const launchers = [
         { x: boss.x - 122, y: boss.y - 42 },
         { x: boss.x - 136, y: boss.y },
@@ -844,10 +864,15 @@ function fireBossVolley(time) {
         const missile = enemyBullets.get(launcher.x, launcher.y, 'missile');
         if (!missile) return;
 
-        const dy = Phaser.Math.Clamp((player.y - launcher.y) * 0.85, -180, 180) + (index - 1) * 40;
+        const playerVelocityY = player.body ? player.body.velocity.y : 0;
+        const dy = Phaser.Math.Clamp(
+            (player.y - launcher.y) * 1.05 + playerVelocityY * 0.16,
+            -240,
+            240
+        ) + (index - 1) * 34;
         missile.setTexture('missile');
         activateSprite(missile, launcher.x, launcher.y);
-        missile.setVelocity(-310, dy);
+        missile.setVelocity(BOSS_MISSILE_SPEED, dy);
         missile.setAngle(dy * 0.08);
         missile.setDepth(4);
         missile.body.setSize(missile.width, missile.height, true);
@@ -897,14 +922,21 @@ function maybeFireEnemyShot(enemy, time) {
     if (!enemy.active || !enemy.canShoot || time < enemy.nextShotAt) return;
     if (enemy.x > 780 || enemy.x < 180) return;
 
-    enemy.nextShotAt = time + Phaser.Math.Between(1400, 2800);
+    enemy.nextShotAt = time + Phaser.Math.Between(
+        enemy.shotCooldownMin || 1400,
+        enemy.shotCooldownMax || 2800
+    );
     const shot = enemyBullets.get(enemy.x - enemy.displayWidth * 0.46, enemy.y);
     if (!shot) return;
 
-    const dy = Phaser.Math.Clamp((player.y - enemy.y) * 1.1, -150, 150);
+    const dy = Phaser.Math.Clamp(
+        (player.y - enemy.y) * (enemy.shotAimScale || 1.1),
+        -(enemy.shotMaxDy || 150),
+        enemy.shotMaxDy || 150
+    );
     shot.setTexture('enemyBullet');
     activateSprite(shot, enemy.x - enemy.displayWidth * 0.46, enemy.y);
-    shot.setVelocity(-430, dy);
+    shot.setVelocity(enemy.shotSpeed || ENEMY_SHOT_SPEED, dy);
     shot.setAngle(0);
     shot.setDepth(2);
     shot.body.setSize(shot.width, shot.height, true);
@@ -932,6 +964,22 @@ function updateScrollVelocity(sprite) {
 
     const multiplier = Phaser.Math.Linear(1, BOOST_WORLD_SPEED_MULTIPLIER, boostIntensity);
     sprite.setVelocityX(sprite.baseVelocityX * multiplier);
+}
+
+function updateEnemyMovement(enemy) {
+    updateScrollVelocity(enemy);
+
+    if (!enemy.tracksPlayer || !player || !player.active || !enemy.body) {
+        if (enemy.body) enemy.setVelocityY(0);
+        return;
+    }
+
+    const targetVelocityY = Phaser.Math.Clamp(
+        (player.y - enemy.y) * INTERCEPTOR_TRACK_RESPONSE,
+        -INTERCEPTOR_TRACK_SPEED,
+        INTERCEPTOR_TRACK_SPEED
+    );
+    enemy.setVelocityY(targetVelocityY);
 }
 
 function approachValue(current, target, maxStep) {
@@ -1008,6 +1056,12 @@ function releaseSprite(sprite) {
     sprite.clearTint();
     sprite.setAlpha(1);
     sprite.baseVelocityX = null;
+    sprite.tracksPlayer = false;
+    sprite.shotSpeed = null;
+    sprite.shotAimScale = null;
+    sprite.shotMaxDy = null;
+    sprite.shotCooldownMin = null;
+    sprite.shotCooldownMax = null;
     if (sprite.body) {
         sprite.setVelocity(0, 0);
         sprite.setAngularVelocity(0);
