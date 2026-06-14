@@ -1,0 +1,244 @@
+// Simple HTTP server for R-Type prototype
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const PORT = Number(process.env.PORT) || 4000;
+const HOST = '0.0.0.0';
+const LEADERBOARD_LIMIT = 10;
+const MAX_REQUEST_BODY_BYTES = 16 * 1024;
+const DATA_DIR = path.join(__dirname, 'data');
+const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
+let leaderboardWriteQueue = Promise.resolve();
+
+function isPublicRequest(requestPath) {
+    if (requestPath === '/index.html' || requestPath === '/game.js') return true;
+    return /^\/assets\/[\w.-]+\.(png|jpe?g)$/i.test(requestPath);
+}
+
+function sendJson(res, statusCode, payload) {
+    res.writeHead(statusCode, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+    });
+    res.end(JSON.stringify(payload));
+}
+
+function readRequestJson(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk;
+            if (Buffer.byteLength(body) > MAX_REQUEST_BODY_BYTES) {
+                reject(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
+                req.destroy();
+            }
+        });
+
+        req.on('end', () => {
+            if (!body) {
+                resolve({});
+                return;
+            }
+
+            try {
+                resolve(JSON.parse(body));
+            } catch (err) {
+                reject(Object.assign(new Error('Invalid JSON'), { statusCode: 400 }));
+            }
+        });
+
+        req.on('error', reject);
+    });
+}
+
+async function readLeaderboard() {
+    try {
+        const raw = await fs.promises.readFile(LEADERBOARD_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+
+        return sortLeaderboard(parsed.map(normalizeEntry).filter(Boolean)).slice(0, LEADERBOARD_LIMIT);
+    } catch (err) {
+        if (err.code === 'ENOENT') return [];
+        throw err;
+    }
+}
+
+async function writeLeaderboard(entries) {
+    await fs.promises.mkdir(DATA_DIR, { recursive: true });
+    await fs.promises.writeFile(LEADERBOARD_FILE, JSON.stringify(entries, null, 2) + '\n');
+}
+
+function normalizeEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+
+    const name = sanitizeName(entry.name);
+    const timeMs = Math.round(Number(entry.timeMs));
+    const score = Math.round(Number(entry.score));
+    const kills = Math.round(Number(entry.kills));
+    const accuracy = Math.round(Number(entry.accuracy));
+
+    if (!Number.isFinite(timeMs) || timeMs <= 0 || timeMs > 10 * 60 * 1000) return null;
+    if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
+    if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
+    if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
+
+    return {
+        id: typeof entry.id === 'string' && entry.id ? entry.id.slice(0, 80) : crypto.randomUUID(),
+        name,
+        timeMs,
+        score,
+        kills,
+        accuracy,
+        createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
+    };
+}
+
+function sanitizeName(value) {
+    const cleaned = String(value || '')
+        .replace(/[^\w .-]/g, '')
+        .trim()
+        .slice(0, 14);
+
+    return cleaned || 'Pilot';
+}
+
+function sortLeaderboard(entries) {
+    return entries.sort((a, b) => {
+        if (a.timeMs !== b.timeMs) return a.timeMs - b.timeMs;
+        if (a.score !== b.score) return b.score - a.score;
+        if (a.kills !== b.kills) return b.kills - a.kills;
+        return String(a.createdAt).localeCompare(String(b.createdAt));
+    });
+}
+
+async function handleLeaderboardRequest(req, res) {
+    if (req.method === 'GET') {
+        sendJson(res, 200, { entries: await readLeaderboard() });
+        return;
+    }
+
+    if (req.method !== 'POST') {
+        res.writeHead(405, { Allow: 'GET, POST' });
+        res.end('Method not allowed');
+        return;
+    }
+
+    const payload = await readRequestJson(req);
+    const submittedEntry = normalizeEntry({
+        ...payload,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
+    });
+
+    if (!submittedEntry) {
+        sendJson(res, 400, { error: 'Invalid leaderboard entry' });
+        return;
+    }
+
+    const result = await queueLeaderboardWrite(async () => {
+        const entries = await readLeaderboard();
+        const sorted = sortLeaderboard(entries.concat(submittedEntry));
+        const rank = sorted.findIndex(entry => entry.id === submittedEntry.id) + 1;
+        const savedEntries = sorted.slice(0, LEADERBOARD_LIMIT);
+        await writeLeaderboard(savedEntries);
+        return { rank, savedEntries };
+    });
+
+    sendJson(res, 201, {
+        entry: submittedEntry,
+        rank: result.rank,
+        entries: result.savedEntries
+    });
+}
+
+function queueLeaderboardWrite(task) {
+    const nextWrite = leaderboardWriteQueue.then(task, task);
+    leaderboardWriteQueue = nextWrite.catch(() => {});
+    return nextWrite;
+}
+
+const server = http.createServer((req, res) => {
+    const rawUrl = typeof req.url === 'string' ? req.url : '/';
+    const pathOnly = rawUrl.split('?')[0];
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(pathOnly);
+    } catch (err) {
+        res.writeHead(400);
+        res.end('Bad request');
+        return;
+    }
+
+    const requestPath = decodedPath === '/' ? '/index.html' : decodedPath;
+    if (requestPath === '/api/leaderboard') {
+        handleLeaderboardRequest(req, res).catch(err => {
+            if (!res.headersSent) {
+                sendJson(res, err.statusCode || 500, { error: err.message || 'Server error' });
+            }
+        });
+        return;
+    }
+
+    if (!isPublicRequest(requestPath)) {
+        res.writeHead(404);
+        res.end('File not found');
+        return;
+    }
+
+    const filePath = path.resolve(__dirname, `.${requestPath}`);
+    const relativePath = path.relative(__dirname, filePath);
+
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        res.writeHead(403);
+        res.end('Access forbidden');
+        return;
+    }
+
+    fs.access(filePath, fs.constants.F_OK, (err) => {
+        if (err) {
+            res.writeHead(404);
+            res.end('File not found');
+            return;
+        }
+
+        let contentType = 'text/plain';
+        const ext = path.extname(filePath);
+        switch (ext) {
+            case '.html': contentType = 'text/html'; break;
+            case '.css': contentType = 'text/css'; break;
+            case '.js': contentType = 'application/javascript'; break;
+            case '.png': contentType = 'image/png'; break;
+            case '.jpg':
+            case '.jpeg': contentType = 'image/jpeg'; break;
+            default: contentType = 'text/plain';
+        }
+
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                res.writeHead(500);
+                res.end('Server error');
+                return;
+            }
+            res.writeHead(200, { 'Content-Type': contentType });
+            res.end(data);
+        });
+    });
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Start with a different port, for example: PORT=4001 node server.js`);
+        process.exit(1);
+    }
+
+    throw err;
+});
+
+server.listen(PORT, HOST, () => {
+    console.log(`🚀 R-Type prototype running at http://${HOST}:${PORT}`);
+    console.log(`🎮 From Windows: http://localhost:${PORT}`);
+});

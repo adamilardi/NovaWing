@@ -1,0 +1,65 @@
+=== NEO GEO STYLE SPRITE PROMPTS FOR GROK IMAGINE ===
+
+Copy and paste these prompts one by one into Grok Imagine.
+
+--------------------------------------------------
+1. PLAYER SHIP - Base Frame (Slight Thrust)
+--------------------------------------------------
+Neo Geo arcade style pixel art, R-Type inspired player spaceship, side view facing right, metallic blue-gray fuselage with detailed panel lines and shading, cyan engine glow, small cockpit, clean high-detail 16-bit sprite, vibrant colors, sharp pixels, transparent background, high quality arcade art
+
+--------------------------------------------------
+2. PLAYER SHIP - Medium Thrust
+--------------------------------------------------
+Neo Geo arcade style pixel art, R-Type inspired player spaceship with medium engine thrust, side view facing right, metallic blue-gray body, bright cyan glowing engine flames coming out the back, detailed shading and highlights, clean high-detail 16-bit arcade sprite, vibrant colors, transparent background
+
+--------------------------------------------------
+3. PLAYER SHIP - Full Thrust
+--------------------------------------------------
+Neo Geo arcade style pixel art, R-Type inspired player spaceship with powerful full engine thrust, side view facing right, metallic blue body, intense bright cyan and white engine flames, strong glow effect, detailed mechanical shading, high quality 16-bit Neo Geo style sprite, transparent background
+
+--------------------------------------------------
+4. ENEMY - Basic Red Enemy
+--------------------------------------------------
+Neo Geo arcade style pixel art, aggressive red biomechanical enemy spaceship, side view facing left, organic and mechanical details, glowing orange core, spikes on the sides, dark red and black armor plates, high detail 16-bit arcade sprite, vibrant colors, clean pixels, transparent background
+
+--------------------------------------------------
+5. BULLET / LASER
+--------------------------------------------------
+Neo Geo arcade style pixel art, bright yellow energy bullet / laser bolt, horizontal, glowing core with white highlight, slight motion blur effect, high detail 16-bit sprite, clean pixels, transparent background
+
+--------------------------------------------------
+6. POWER-UP ORB
+--------------------------------------------------
+Neo Geo arcade style pixel art, glowing green power-up orb, circular, metallic shine, bright green with white highlight, subtle aura around it, high detail 16-bit arcade sprite, clean pixels, transparent background
+
+--------------------------------------------------
+7. EXPLOSION - Frame 1 (Small)
+--------------------------------------------------
+Neo Geo arcade style pixel art, small bright orange explosion, circular burst with yellow and white center, high detail 16-bit arcade sprite, vibrant colors, clean pixels, transparent background
+
+--------------------------------------------------
+8. EXPLOSION - Frame 2 (Medium)
+--------------------------------------------------
+Neo Geo arcade style pixel art, medium sized orange and yellow explosion, expanding fire with white hot core, high detail 16-bit arcade sprite, vibrant colors, clean pixels, transparent background
+
+--------------------------------------------------
+9. EXPLOSION - Frame 3 (Large)
+--------------------------------------------------
+Neo Geo arcade style pixel art, large bright explosion with orange, yellow and white layers, big burst effect, high detail 16-bit arcade sprite, vibrant colors, clean pixels, transparent background
+
+--------------------------------------------------
+10. ENEMY 2 - Blue Mechanical Enemy
+--------------------------------------------------
+Neo Geo arcade style pixel art, blue and gray mechanical enemy ship, side view facing left, angular design, glowing blue core, metallic panels, high detail 16-bit arcade sprite, clean pixels, transparent background
+
+--------------------------------------------------
+11. ASTEROID / SPACE DEBRIS
+--------------------------------------------------
+Neo Geo arcade style pixel art, small gray asteroid with craters, rocky texture, high detail 16-bit arcade sprite, clean pixels, transparent background
+
+--------------------------------------------------
+NOTES:
+- Use "transparent background" in the prompt for best results.
+- Generate at 512x512 or 768x512 for good sprite quality.
+- Add "pixel art, 16-bit, arcade sprite" at the end of any prompt if you want to reinforce the style.
+- For animation, generate multiple similar frames with slight variations.
