@@ -27,6 +27,8 @@ const REGULAR_ENEMY_SPEED = -155;
 const INTERCEPTOR_ENEMY_SPEED = -245;
 const INTERCEPTOR_TRACK_SPEED = 175;
 const INTERCEPTOR_TRACK_RESPONSE = 2.35;
+const REGULAR_ENEMY_HEALTH = 2;
+const INTERCEPTOR_ENEMY_HEALTH = 3;
 const ENEMY_SHOT_SPEED = -430;
 const INTERCEPTOR_SHOT_SPEED = -545;
 const BOSS_MISSILE_SPEED = -380;
@@ -50,6 +52,8 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
+const BOOST_BAR_WIDTH = 114;
+const BOOST_BAR_HEIGHT = 6;
 const CONTROLS_HELP_LINES = [
     'Move: Arrow keys or WASD',
     'Fire: Space',
@@ -122,7 +126,6 @@ let scoreText;
 let livesText;
 let statsText;
 let weaponText;
-let timerText;
 let runTimeText;
 let boostText;
 let boostBar;
@@ -389,28 +392,22 @@ function create() {
         fontFamily: 'monospace'
     });
 
-    timerText = this.add.text(784, 16, 'Time: 30', {
-        fontSize: '20px',
-        fill: '#ffffff',
-        fontFamily: 'monospace'
-    }).setOrigin(1, 0);
-
-    runTimeText = this.add.text(784, 42, 'Run: 00:00.00', {
+    runTimeText = this.add.text(784, 16, 'Run: 00:00.00', {
         fontSize: '18px',
         fill: '#c7ddff',
         fontFamily: 'monospace'
     }).setOrigin(1, 0);
 
-    boostText = this.add.text(784, 68, 'Boost: 100%', {
-        fontSize: '16px',
+    boostText = this.add.text(784, 40, 'Boost: 100%', {
+        fontSize: '14px',
         fill: '#66f6ff',
         fontFamily: 'monospace'
     }).setOrigin(1, 0);
 
-    boostBar = this.add.rectangle(612, 102, 172, 14, 0x0b1624, 0.9);
+    boostBar = this.add.rectangle(668, 62, BOOST_BAR_WIDTH + 4, BOOST_BAR_HEIGHT + 4, 0x0b1624, 0.82);
     boostBar.setOrigin(0, 0.5);
     boostBar.setStrokeStyle(2, 0x66f6ff, 0.8);
-    boostFill = this.add.rectangle(614, 102, 168, 10, 0x66f6ff, 1);
+    boostFill = this.add.rectangle(670, 62, BOOST_BAR_WIDTH, BOOST_BAR_HEIGHT, 0x66f6ff, 1);
     boostFill.setOrigin(0, 0.5);
     createControlsHelpUi(this);
     updateBoostUi();
@@ -505,12 +502,10 @@ function update(time, delta) {
             levelProgressMs + frameDelta * progressMultiplier
         );
         const remainingMs = Math.max(0, LEVEL_DURATION_MS - levelProgressMs);
-        timerText.setText('Boss in: ' + Math.ceil(remainingMs / 1000));
         if (remainingMs <= 0) {
             startBossFight.call(this);
         }
     } else if (gamePhase === 'boss') {
-        timerText.setText('BOSS');
         updateBossFight.call(this, time);
     }
 
@@ -562,14 +557,31 @@ function update(time, delta) {
 
 
 function hitEnemy(bullet, enemy) {
+    const damage = bullet.damage || 1;
+    const hitX = bullet.x;
+    const hitY = bullet.y;
     const enemyX = enemy.x;
     const enemyY = enemy.y;
     releaseSprite(bullet);
+
+    enemy.health = Math.max(0, (enemy.health || 1) - damage);
+    shotsHit++;
+
+    if (enemy.health > 0) {
+        createExplosion(this, hitX, hitY, 8);
+        enemy.setTint(0xffffff);
+        this.time.delayedCall(45, () => {
+            if (enemy.active) enemy.clearTint();
+        });
+        sfx.spark();
+        updateStatsText();
+        return;
+    }
+
     releaseSprite(enemy);
     createExplosion(this, enemyX, enemyY, 30);
     sfx.explosion();
 
-    shotsHit++;
     enemiesKilled++;
     score += 150;
     refillBoost(this, BOOST_REFILL_ON_KILL, enemyX, enemyY);
@@ -751,6 +763,7 @@ function spawnEnemy() {
     enemy.shotMaxDy = 150;
     enemy.shotCooldownMin = 1400;
     enemy.shotCooldownMax = 2800;
+    enemy.health = REGULAR_ENEMY_HEALTH;
     updateScrollVelocity(enemy);
     enemy.canShoot = Math.random() < ENEMY_FIRE_CHANCE;
     enemy.nextShotAt = this.time.now + Phaser.Math.Between(700, 2200);
@@ -763,6 +776,7 @@ function spawnEnemy() {
         enemy.shotMaxDy = 230;
         enemy.shotCooldownMin = 850;
         enemy.shotCooldownMax = 1650;
+        enemy.health = INTERCEPTOR_ENEMY_HEALTH;
         updateScrollVelocity(enemy);
         enemy.canShoot = Math.random() < 0.78;
         enemy.nextShotAt = this.time.now + Phaser.Math.Between(500, 1450);
@@ -1074,6 +1088,7 @@ function releaseSprite(sprite) {
     sprite.shotMaxDy = null;
     sprite.shotCooldownMin = null;
     sprite.shotCooldownMax = null;
+    sprite.health = null;
     if (sprite.body) {
         sprite.setVelocity(0, 0);
         sprite.setAngularVelocity(0);
@@ -1111,7 +1126,7 @@ function updateBoostUi() {
     const percent = Phaser.Math.Clamp(boostEnergy / BOOST_MAX, 0, 1);
     const isLocked = boostLocked && boostEnergy < BOOST_REENGAGE_THRESHOLD;
     const color = boostIntensity > 0.12 ? 0xffffff : (isLocked || percent <= 0.2 ? 0xff6677 : 0x66f6ff);
-    boostFill.setDisplaySize(168 * percent, 10);
+    boostFill.setDisplaySize(BOOST_BAR_WIDTH * percent, BOOST_BAR_HEIGHT);
     boostFill.setFillStyle(color, 1);
     boostText.setText(isLocked
         ? 'Boost: ' + Math.round(boostEnergy) + '%  Need ' + BOOST_REENGAGE_THRESHOLD + '%'
@@ -1122,13 +1137,13 @@ function createControlsHelpUi(scene) {
     controlsHelpVisible = false;
     controlsHelpPanel = [];
 
-    const buttonBg = scene.add.circle(760, 130, 16, 0x0b1624, 0.92);
+    const buttonBg = scene.add.circle(646, 62, 11, 0x0b1624, 0.82);
     buttonBg.setStrokeStyle(2, 0x66f6ff, 0.85);
     buttonBg.setDepth(12);
     buttonBg.setInteractive({ useHandCursor: true });
 
-    const buttonText = scene.add.text(760, 130, '?', {
-        fontSize: '20px',
+    const buttonText = scene.add.text(646, 61, '?', {
+        fontSize: '14px',
         fill: '#66f6ff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(13);
@@ -1142,14 +1157,14 @@ function createControlsHelpUi(scene) {
     buttonBg.on('pointerdown', togglePanel);
     buttonText.on('pointerdown', togglePanel);
 
-    const panelBg = scene.add.rectangle(574, 164, 220, 114, 0x050a14, 0.92);
+    const panelBg = scene.add.rectangle(560, 80, 224, 112, 0x050a14, 0.88);
     panelBg.setOrigin(0, 0);
     panelBg.setStrokeStyle(2, 0x66f6ff, 0.7);
     panelBg.setDepth(12);
     controlsHelpPanel.push(panelBg);
 
     CONTROLS_HELP_LINES.forEach((line, index) => {
-        controlsHelpPanel.push(scene.add.text(588, 178 + index * 24, line, {
+        controlsHelpPanel.push(scene.add.text(574, 94 + index * 23, line, {
             fontSize: '14px',
             fill: index === 0 ? '#ffffff' : '#c7ddff',
             fontFamily: 'monospace'
