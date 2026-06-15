@@ -50,6 +50,12 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
+const CONTROLS_HELP_LINES = [
+    'Move: Arrow keys or WASD',
+    'Fire: Space',
+    'Boost: Shift, X, or Z',
+    'Goal: survive waves, then beat the boss'
+];
 
 const SPRITES = {
     player: {
@@ -71,6 +77,7 @@ const SPRITES = {
         displayWidth: 112
     }
 };
+const SPRITE_KEYS = ['player', 'enemy', 'enemy2'];
 
 let player;
 let cursors;
@@ -120,6 +127,9 @@ let runTimeText;
 let boostText;
 let boostBar;
 let boostFill;
+let controlsHelpButton;
+let controlsHelpPanel = [];
+let controlsHelpVisible = false;
 let sfx;
 let leaderboardEntries = [];
 let leaderboardStatus = 'Loading online leaderboard...';
@@ -128,7 +138,8 @@ let runTokenPromise = null;
 let currentRunId = null;
 
 function preload() {
-    Object.values(SPRITES).forEach(sprite => {
+    SPRITE_KEYS.forEach(key => {
+        const sprite = SPRITES[key];
         this.load.image(sprite.sourceKey, sprite.path);
     });
 
@@ -390,7 +401,7 @@ function create() {
         fontFamily: 'monospace'
     }).setOrigin(1, 0);
 
-    boostText = this.add.text(784, 68, 'Boost: 100%  Hold Shift/X/Z', {
+    boostText = this.add.text(784, 68, 'Boost: 100%', {
         fontSize: '16px',
         fill: '#66f6ff',
         fontFamily: 'monospace'
@@ -401,6 +412,7 @@ function create() {
     boostBar.setStrokeStyle(2, 0x66f6ff, 0.8);
     boostFill = this.add.rectangle(614, 102, 168, 10, 0x66f6ff, 1);
     boostFill.setOrigin(0, 0.5);
+    createControlsHelpUi(this);
     updateBoostUi();
 
     // Spawn enemies
@@ -1103,7 +1115,57 @@ function updateBoostUi() {
     boostFill.setFillStyle(color, 1);
     boostText.setText(isLocked
         ? 'Boost: ' + Math.round(boostEnergy) + '%  Need ' + BOOST_REENGAGE_THRESHOLD + '%'
-        : 'Boost: ' + Math.round(boostEnergy) + '%  Hold Shift/X/Z');
+        : 'Boost: ' + Math.round(boostEnergy) + '%');
+}
+
+function createControlsHelpUi(scene) {
+    controlsHelpVisible = false;
+    controlsHelpPanel = [];
+
+    const buttonBg = scene.add.circle(760, 130, 16, 0x0b1624, 0.92);
+    buttonBg.setStrokeStyle(2, 0x66f6ff, 0.85);
+    buttonBg.setDepth(12);
+    buttonBg.setInteractive({ useHandCursor: true });
+
+    const buttonText = scene.add.text(760, 130, '?', {
+        fontSize: '20px',
+        fill: '#66f6ff',
+        fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(13);
+    buttonText.setInteractive({ useHandCursor: true });
+
+    controlsHelpButton = [buttonBg, buttonText];
+
+    const togglePanel = () => {
+        setControlsHelpVisible(!controlsHelpVisible);
+    };
+    buttonBg.on('pointerdown', togglePanel);
+    buttonText.on('pointerdown', togglePanel);
+
+    const panelBg = scene.add.rectangle(574, 164, 220, 114, 0x050a14, 0.92);
+    panelBg.setOrigin(0, 0);
+    panelBg.setStrokeStyle(2, 0x66f6ff, 0.7);
+    panelBg.setDepth(12);
+    controlsHelpPanel.push(panelBg);
+
+    CONTROLS_HELP_LINES.forEach((line, index) => {
+        controlsHelpPanel.push(scene.add.text(588, 178 + index * 24, line, {
+            fontSize: '14px',
+            fill: index === 0 ? '#ffffff' : '#c7ddff',
+            fontFamily: 'monospace'
+        }).setDepth(13));
+    });
+
+    setControlsHelpVisible(false);
+}
+
+function setControlsHelpVisible(isVisible) {
+    controlsHelpVisible = isVisible;
+    controlsHelpPanel.forEach(item => item.setVisible(isVisible));
+
+    if (controlsHelpButton && controlsHelpButton[1]) {
+        controlsHelpButton[1].setText(isVisible ? 'x' : '?');
+    }
 }
 
 function createBoostTrail(scene) {
@@ -1132,9 +1194,25 @@ function formatRunTime(ms) {
     const minutes = Math.floor(clampedMs / 60000);
     const seconds = Math.floor((clampedMs % 60000) / 1000);
     const centiseconds = Math.floor((clampedMs % 1000) / 10);
-    return String(minutes).padStart(2, '0') + ':' +
-        String(seconds).padStart(2, '0') + '.' +
-        String(centiseconds).padStart(2, '0');
+    return padLeft(minutes, 2, '0') + ':' +
+        padLeft(seconds, 2, '0') + '.' +
+        padLeft(centiseconds, 2, '0');
+}
+
+function padLeft(value, minLength, fillChar) {
+    let text = String(value);
+    while (text.length < minLength) {
+        text = fillChar + text;
+    }
+    return text;
+}
+
+function padRight(value, minLength, fillChar) {
+    let text = String(value);
+    while (text.length < minLength) {
+        text += fillChar;
+    }
+    return text;
 }
 
 function getLocalLeaderboard() {
@@ -1289,10 +1367,13 @@ function loadLeaderboardFromServer() {
             leaderboardEntries = getLocalLeaderboard();
             leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Leaderboard unavailable';
             return { entries: leaderboardEntries, online: false };
-        })
-        .finally(() => {
-            leaderboardLoadPromise = null;
         });
+
+    leaderboardLoadPromise.then(() => {
+        leaderboardLoadPromise = null;
+    }, () => {
+        leaderboardLoadPromise = null;
+    });
 
     return leaderboardLoadPromise;
 }
@@ -1345,7 +1426,8 @@ function normalizeLeaderboardEntries(entries) {
 function submitLeaderboard(entry) {
     if (!window.fetch) {
         const result = recordLocalLeaderboard(entry);
-        return Promise.resolve({ ...result, online: false });
+        result.online = false;
+        return Promise.resolve(result);
     }
 
     const submitOnline = () => fetch(LEADERBOARD_API_URL, {
@@ -1354,11 +1436,7 @@ function submitLeaderboard(entry) {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-            ...entry,
-            version: GAME_VERSION,
-            runId: currentRunId
-        })
+        body: JSON.stringify(createLeaderboardPayload(entry))
     })
         .then(response => {
             if (!response.ok) throw new Error('Score submission failed');
@@ -1379,21 +1457,34 @@ function submitLeaderboard(entry) {
         .catch(() => {
             const result = recordLocalLeaderboard(entry);
             leaderboardStatus = 'Saved locally; online leaderboard unavailable';
-            return { ...result, online: false };
+            result.online = false;
+            return result;
         });
 
     return (runTokenPromise || Promise.resolve(currentRunId)).then(() => submitOnline());
+}
+
+function createLeaderboardPayload(entry) {
+    return {
+        name: entry.name,
+        timeMs: entry.timeMs,
+        score: entry.score,
+        kills: entry.kills,
+        accuracy: entry.accuracy,
+        version: GAME_VERSION,
+        runId: currentRunId
+    };
 }
 
 function formatLeaderboardLines(entries) {
     if (!entries.length) return [leaderboardStatus || 'No completed runs yet'];
 
     return entries.map((entry, index) => {
-        return String(index + 1).padStart(2, ' ') + '. ' +
-            entry.name.padEnd(14, ' ') + '  ' +
+        return padLeft(index + 1, 2, ' ') + '. ' +
+            padRight(entry.name, 14, ' ') + '  ' +
             formatRunTime(entry.timeMs) + '  ' +
-            String(entry.score).padStart(5, ' ') + ' pts  ' +
-            String(entry.kills).padStart(2, ' ') + ' kills';
+            padLeft(entry.score, 5, ' ') + ' pts  ' +
+            padLeft(entry.kills, 2, ' ') + ' kills';
     });
 }
 
@@ -1585,7 +1676,8 @@ function createExplosion(scene, x, y, quantity) {
 }
 
 function createShipTextures(scene) {
-    Object.entries(SPRITES).forEach(([key, sprite]) => {
+    SPRITE_KEYS.forEach(key => {
+        const sprite = SPRITES[key];
         createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
     });
 }
