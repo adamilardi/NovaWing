@@ -9,10 +9,18 @@ const HOST = '0.0.0.0';
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
-const MIN_COMPLETION_TIME_MS = 18 * 1000;
+const RUN_REQUEST_LIMIT = 30;
+const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
+const MIN_COMPLETION_TIME_MS = 24 * 1000;
+const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
+const MAX_PLAUSIBLE_KILLS = 80;
+const BOSS_SCORE = 2500;
+const REGULAR_KILL_SCORE = 150;
+const MAX_POWERUP_BONUS_SCORE = 2500;
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const activeRuns = new Map();
+const runRequestLog = new Map();
 let leaderboardWriteQueue = Promise.resolve();
 
 function isPublicRequest(requestPath) {
@@ -155,11 +163,12 @@ async function handleLeaderboardRequest(req, res) {
     const submittedEntry = normalizeEntry({
         ...payload,
         version: runValidation.version,
+        timeMs: runValidation.timeMs,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
 
-    if (!submittedEntry || !isPlausibleCompletedRun(submittedEntry, runValidation.startedAt)) {
+    if (!submittedEntry || !isPlausibleCompletedRun(submittedEntry)) {
         sendJson(res, 400, { error: 'Invalid leaderboard entry' });
         return;
     }
@@ -188,20 +197,45 @@ async function handleLeaderboardRequest(req, res) {
 }
 
 async function handleRunRequest(req, res) {
-    if (req.method !== 'POST') {
-        res.writeHead(405, { Allow: 'POST' });
+    if (req.method !== 'POST' && req.method !== 'PATCH') {
+        res.writeHead(405, { Allow: 'POST, PATCH' });
         res.end('Method not allowed');
         return;
     }
 
     const payload = await readRequestJson(req);
+
+    if (req.method === 'PATCH') {
+        const completion = completeRunToken(payload);
+        if (!completion.ok) {
+            sendJson(res, 400, { error: completion.error });
+            return;
+        }
+
+        sendJson(res, 200, {
+            runId: completion.runId,
+            version: completion.version,
+            timeMs: completion.timeMs,
+            completedAt: new Date(completion.completedAt).toISOString()
+        });
+        return;
+    }
+
+    const clientKey = getClientKey(req);
+    if (!allowRunRequest(clientKey)) {
+        sendJson(res, 429, { error: 'Too many run requests' });
+        return;
+    }
+
     const version = sanitizeGameVersion(payload.version);
     const runId = crypto.randomUUID();
     const now = Date.now();
     activeRuns.set(runId, {
         version,
+        clientKey,
         startedAt: now,
-        expiresAt: now + RUN_TOKEN_TTL_MS
+        expiresAt: now + RUN_TOKEN_TTL_MS,
+        completedAt: null
     });
     pruneExpiredRuns();
 
@@ -217,16 +251,52 @@ function consumeRunToken(payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
     const run = activeRuns.get(runId);
-    activeRuns.delete(runId);
 
     if (!run) return { ok: false, error: 'Invalid or expired run token' };
     if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
-    if (Date.now() > run.expiresAt) return { ok: false, error: 'Run token expired' };
+    if (Date.now() > run.expiresAt) {
+        activeRuns.delete(runId);
+        return { ok: false, error: 'Run token expired' };
+    }
+    if (!run.completedAt) return { ok: false, error: 'Run is not complete' };
 
+    activeRuns.delete(runId);
     return {
         ok: true,
         version: run.version,
-        startedAt: run.startedAt
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        timeMs: run.completedAt - run.startedAt
+    };
+}
+
+function completeRunToken(payload) {
+    const runId = typeof payload.runId === 'string' ? payload.runId : '';
+    const requestedVersion = sanitizeGameVersion(payload.version);
+    const run = activeRuns.get(runId);
+    const now = Date.now();
+
+    if (!run) return { ok: false, error: 'Invalid or expired run token' };
+    if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (now > run.expiresAt) {
+        activeRuns.delete(runId);
+        return { ok: false, error: 'Run token expired' };
+    }
+
+    const completedAt = run.completedAt || now;
+    const timeMs = completedAt - run.startedAt;
+    if (timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
+        return { ok: false, error: 'Implausible run completion time' };
+    }
+
+    run.completedAt = completedAt;
+
+    return {
+        ok: true,
+        runId,
+        version: run.version,
+        completedAt,
+        timeMs
     };
 }
 
@@ -235,13 +305,52 @@ function pruneExpiredRuns() {
     activeRuns.forEach((run, runId) => {
         if (now > run.expiresAt) activeRuns.delete(runId);
     });
+
+    const windowStart = now - RUN_REQUEST_WINDOW_MS;
+    runRequestLog.forEach((timestamps, clientKey) => {
+        const recent = timestamps.filter(timestamp => timestamp > windowStart);
+        if (recent.length) {
+            runRequestLog.set(clientKey, recent);
+        } else {
+            runRequestLog.delete(clientKey);
+        }
+    });
 }
 
-function isPlausibleCompletedRun(entry, startedAt) {
+function isPlausibleCompletedRun(entry) {
     if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
-    if (entry.timeMs > Date.now() - startedAt + 2000) return false;
+    if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
     if (entry.kills < 1) return false;
+    if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
+    if (entry.score < BOSS_SCORE) return false;
 
+    const regularKills = Math.max(0, entry.kills - 1);
+    const maxScore = BOSS_SCORE + regularKills * REGULAR_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    if (entry.score > maxScore) return false;
+
+    return true;
+}
+
+function getClientKey(req) {
+    const forwardedFor = String(req.headers['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim();
+    return forwardedFor || req.socket.remoteAddress || 'unknown';
+}
+
+function allowRunRequest(clientKey) {
+    const now = Date.now();
+    const windowStart = now - RUN_REQUEST_WINDOW_MS;
+    const recent = (runRequestLog.get(clientKey) || [])
+        .filter(timestamp => timestamp > windowStart);
+
+    if (recent.length >= RUN_REQUEST_LIMIT) {
+        runRequestLog.set(clientKey, recent);
+        return false;
+    }
+
+    recent.push(now);
+    runRequestLog.set(clientKey, recent);
     return true;
 }
 

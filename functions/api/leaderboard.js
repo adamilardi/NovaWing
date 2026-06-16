@@ -1,6 +1,11 @@
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
-const MIN_COMPLETION_TIME_MS = 18 * 1000;
+const MIN_COMPLETION_TIME_MS = 24 * 1000;
+const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
+const MAX_PLAUSIBLE_KILLS = 80;
+const BOSS_SCORE = 2500;
+const REGULAR_KILL_SCORE = 150;
+const MAX_POWERUP_BONUS_SCORE = 2500;
 
 export async function onRequest(context) {
     const { request, env } = context;
@@ -37,11 +42,12 @@ export async function onRequest(context) {
     const entry = normalizeEntry({
         ...payload,
         version: runValidation.version,
+        timeMs: runValidation.timeMs,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
 
-    if (!entry || !isPlausibleCompletedRun(entry, runValidation.startedAt)) {
+    if (!entry || !isPlausibleCompletedRun(entry)) {
         return jsonResponse({ error: 'Invalid leaderboard entry' }, 400);
     }
 
@@ -133,7 +139,7 @@ async function consumeRunToken(db, payload) {
     const now = Date.now();
 
     const result = await db.prepare(`
-        SELECT id, game_version, created_at, expires_at, used_at
+        SELECT id, game_version, created_at, expires_at, used_at, completed_at
         FROM leaderboard_runs
         WHERE id = ?
     `).bind(runId).first();
@@ -141,6 +147,14 @@ async function consumeRunToken(db, payload) {
     if (!result || result.used_at) return { ok: false, error: 'Invalid or expired run token' };
     if (result.game_version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
     if (Date.parse(result.expires_at) <= now) return { ok: false, error: 'Run token expired' };
+    if (!result.completed_at) return { ok: false, error: 'Run is not complete' };
+
+    const startedAt = Date.parse(result.created_at);
+    const completedAt = Date.parse(result.completed_at);
+    const timeMs = completedAt - startedAt;
+    if (!Number.isFinite(timeMs) || timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
+        return { ok: false, error: 'Implausible run completion time' };
+    }
 
     const update = await db.prepare(`
         UPDATE leaderboard_runs
@@ -155,7 +169,9 @@ async function consumeRunToken(db, payload) {
     return {
         ok: true,
         version: result.game_version,
-        startedAt: Date.parse(result.created_at)
+        startedAt,
+        completedAt,
+        timeMs
     };
 }
 
@@ -195,10 +211,16 @@ function sanitizeGameVersion(value) {
     return cleaned || '1.0.0';
 }
 
-function isPlausibleCompletedRun(entry, startedAt) {
+function isPlausibleCompletedRun(entry) {
     if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
-    if (entry.timeMs > Date.now() - startedAt + 2000) return false;
+    if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
     if (entry.kills < 1) return false;
+    if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
+    if (entry.score < BOSS_SCORE) return false;
+
+    const regularKills = Math.max(0, entry.kills - 1);
+    const maxScore = BOSS_SCORE + regularKills * REGULAR_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    if (entry.score > maxScore) return false;
 
     return true;
 }

@@ -52,6 +52,38 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
+const GAMEPLAY_KEY_CODES = [
+    Phaser.Input.Keyboard.KeyCodes.UP,
+    Phaser.Input.Keyboard.KeyCodes.DOWN,
+    Phaser.Input.Keyboard.KeyCodes.LEFT,
+    Phaser.Input.Keyboard.KeyCodes.RIGHT,
+    Phaser.Input.Keyboard.KeyCodes.W,
+    Phaser.Input.Keyboard.KeyCodes.A,
+    Phaser.Input.Keyboard.KeyCodes.S,
+    Phaser.Input.Keyboard.KeyCodes.D,
+    Phaser.Input.Keyboard.KeyCodes.SPACE,
+    Phaser.Input.Keyboard.KeyCodes.SHIFT,
+    Phaser.Input.Keyboard.KeyCodes.X,
+    Phaser.Input.Keyboard.KeyCodes.Z
+];
+const MOVEMENT_INPUTS = {
+    up: {
+        codes: new Set(['ArrowUp', 'KeyW']),
+        keys: new Set(['arrowup', 'up', 'w'])
+    },
+    down: {
+        codes: new Set(['ArrowDown', 'KeyS']),
+        keys: new Set(['arrowdown', 'down', 's'])
+    },
+    left: {
+        codes: new Set(['ArrowLeft', 'KeyA']),
+        keys: new Set(['arrowleft', 'left', 'a'])
+    },
+    right: {
+        codes: new Set(['ArrowRight', 'KeyD']),
+        keys: new Set(['arrowright', 'right', 'd'])
+    }
+};
 const BOOST_BAR_WIDTH = 114;
 const BOOST_BAR_HEIGHT = 6;
 const CONTROLS_HELP_LINES = [
@@ -92,6 +124,7 @@ let boostAltKey;
 let boostZKey;
 let boostHeld = false;
 let heldBoostInputs = new Set();
+let heldMoveInputs = new Set();
 let bullets;
 let enemyBullets;
 let enemies;
@@ -138,7 +171,10 @@ let leaderboardEntries = [];
 let leaderboardStatus = 'Loading online leaderboard...';
 let leaderboardLoadPromise = null;
 let runTokenPromise = null;
+let runCompletePromise = null;
 let currentRunId = null;
+let currentRunOfficialTimeMs = null;
+let runRequestSequence = 0;
 
 function preload() {
     SPRITE_KEYS.forEach(key => {
@@ -298,6 +334,7 @@ function create() {
     boostLocked = false;
     boostHeld = false;
     heldBoostInputs.clear();
+    heldMoveInputs.clear();
     nextBoostTrailAt = 0;
     starfieldOffset = 0;
     shotsFired = 0;
@@ -356,6 +393,7 @@ function create() {
     boostKey = cursors.shift;
     boostAltKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     boostZKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.input.keyboard.addCapture(GAMEPLAY_KEY_CODES);
     this.input.keyboard.on('keydown', handleKeyboardDown);
     this.input.keyboard.on('keyup', handleKeyboardUp);
     window.addEventListener('blur', clearBoostInput);
@@ -455,10 +493,8 @@ function update(time, delta) {
     runTimeText.setText('Run: ' + formatRunTime(time - levelStartTime));
 
     // Player movement
-    const inputX = (cursors.right.isDown || wasdKeys.right.isDown ? 1 : 0) -
-        (cursors.left.isDown || wasdKeys.left.isDown ? 1 : 0);
-    const inputY = (cursors.down.isDown || wasdKeys.down.isDown ? 1 : 0) -
-        (cursors.up.isDown || wasdKeys.up.isDown ? 1 : 0);
+    const inputX = (isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0);
+    const inputY = (isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0);
     const isMoving = inputX !== 0 || inputY !== 0;
     const wantsBoost = isBoostHeld();
     const wasBoosting = isBoosting;
@@ -557,6 +593,8 @@ function update(time, delta) {
 
 
 function hitEnemy(bullet, enemy) {
+    if (!bullet.active || !enemy.active || enemy.dying) return;
+
     const damage = bullet.damage || 1;
     const hitX = bullet.x;
     const hitY = bullet.y;
@@ -578,6 +616,7 @@ function hitEnemy(bullet, enemy) {
         return;
     }
 
+    enemy.dying = true;
     releaseSprite(enemy);
     createExplosion(this, enemyX, enemyY, 30);
     sfx.explosion();
@@ -590,6 +629,8 @@ function hitEnemy(bullet, enemy) {
 }
 
 function hitBoss(bullet, bossSprite) {
+    if (!bullet.active || !bossSprite.active || victoryPending) return;
+
     const damage = bullet.damage || 1;
     const hitX = bullet.x;
     const hitY = bullet.y;
@@ -919,6 +960,7 @@ function defeatBoss(bossSprite) {
     const bossX = bossSprite.x;
     const bossY = bossSprite.y;
     const completionTimeMs = this.time.now - levelStartTime;
+    completeRunOnServer(completionTimeMs);
 
     deactivateGroup(enemyBullets);
     this.physics.pause();
@@ -1016,20 +1058,26 @@ function approachValue(current, target, maxStep) {
 
 function handleKeyboardDown(event) {
     sfx.unlock();
-    trackBoostInput(event, true);
+    const handledMovement = trackMovementInput(event, true);
+    const handledBoost = trackBoostInput(event, true);
 
-    if (event.code === 'Space') {
+    if (handledMovement || handledBoost || event.code === 'Space') {
         event.preventDefault();
     }
 }
 
 function handleKeyboardUp(event) {
-    trackBoostInput(event, false);
+    const handledMovement = trackMovementInput(event, false);
+    const handledBoost = trackBoostInput(event, false);
+
+    if (handledMovement || handledBoost || event.code === 'Space') {
+        event.preventDefault();
+    }
 }
 
 function trackBoostInput(event, isDown) {
     const inputId = getBoostInputId(event);
-    if (!inputId) return;
+    if (!inputId) return false;
 
     if (isDown) {
         heldBoostInputs.add(inputId);
@@ -1038,7 +1086,7 @@ function trackBoostInput(event, isDown) {
     }
 
     boostHeld = heldBoostInputs.size > 0;
-    event.preventDefault();
+    return true;
 }
 
 function getBoostInputId(event) {
@@ -1053,6 +1101,7 @@ function getBoostInputId(event) {
 function clearBoostInput() {
     heldBoostInputs.clear();
     boostHeld = false;
+    heldMoveInputs.clear();
 }
 
 function isBoostHeld() {
@@ -1060,6 +1109,41 @@ function isBoostHeld() {
         (boostKey && boostKey.isDown) ||
         (boostAltKey && boostAltKey.isDown) ||
         (boostZKey && boostZKey.isDown);
+}
+
+function trackMovementInput(event, isDown) {
+    const inputId = getMovementInputId(event);
+    if (!inputId) return false;
+
+    if (isDown) {
+        heldMoveInputs.add(inputId);
+    } else {
+        heldMoveInputs.delete(inputId);
+    }
+
+    return true;
+}
+
+function getMovementInputId(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+
+    for (const [direction, input] of Object.entries(MOVEMENT_INPUTS)) {
+        if (input.codes.has(code) || input.keys.has(key)) return direction;
+    }
+
+    return null;
+}
+
+function isMoveHeld(direction) {
+    if (heldMoveInputs.has(direction)) return true;
+
+    if (direction === 'left') return (cursors.left && cursors.left.isDown) || (wasdKeys.left && wasdKeys.left.isDown);
+    if (direction === 'right') return (cursors.right && cursors.right.isDown) || (wasdKeys.right && wasdKeys.right.isDown);
+    if (direction === 'up') return (cursors.up && cursors.up.isDown) || (wasdKeys.up && wasdKeys.up.isDown);
+    if (direction === 'down') return (cursors.down && cursors.down.isDown) || (wasdKeys.down && wasdKeys.down.isDown);
+
+    return false;
 }
 
 function activateSprite(sprite, x, y) {
@@ -1089,6 +1173,10 @@ function releaseSprite(sprite) {
     sprite.shotCooldownMin = null;
     sprite.shotCooldownMax = null;
     sprite.health = null;
+    sprite.dying = false;
+    sprite.canShoot = false;
+    sprite.nextShotAt = null;
+    sprite.damage = null;
     if (sprite.body) {
         sprite.setVelocity(0, 0);
         sprite.setAngularVelocity(0);
@@ -1398,7 +1486,10 @@ function getLeaderboardUrl() {
 }
 
 function startRunOnServer() {
+    const requestId = ++runRequestSequence;
     currentRunId = null;
+    currentRunOfficialTimeMs = null;
+    runCompletePromise = null;
 
     if (!window.fetch) {
         runTokenPromise = Promise.resolve(null);
@@ -1418,15 +1509,64 @@ function startRunOnServer() {
             return response.json();
         })
         .then(payload => {
+            if (requestId !== runRequestSequence) return null;
             currentRunId = typeof payload.runId === 'string' ? payload.runId : null;
             return currentRunId;
         })
         .catch(() => {
-            currentRunId = null;
+            if (requestId === runRequestSequence) currentRunId = null;
             return null;
         });
 
     return runTokenPromise;
+}
+
+function completeRunOnServer(completionTimeMs) {
+    currentRunOfficialTimeMs = null;
+
+    if (!window.fetch) {
+        runCompletePromise = Promise.resolve(null);
+        return runCompletePromise;
+    }
+
+    const requestId = runRequestSequence;
+    const tokenPromise = runTokenPromise || Promise.resolve(currentRunId);
+
+    runCompletePromise = tokenPromise
+        .then(runId => {
+            if (requestId !== runRequestSequence || !runId || runId !== currentRunId) return null;
+
+            return fetch(RUN_API_URL, {
+                method: 'PATCH',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    version: GAME_VERSION,
+                    runId,
+                    timeMs: completionTimeMs
+                })
+            });
+        })
+        .then(response => {
+            if (!response) return null;
+            if (!response.ok) throw new Error('Run completion unavailable');
+            return response.json();
+        })
+        .then(payload => {
+            if (!payload || requestId !== runRequestSequence) return null;
+
+            const officialTimeMs = Math.round(Number(payload.timeMs));
+            if (Number.isFinite(officialTimeMs) && officialTimeMs > 0) {
+                currentRunOfficialTimeMs = officialTimeMs;
+            }
+
+            return payload;
+        })
+        .catch(() => null);
+
+    return runCompletePromise;
 }
 
 function normalizeLeaderboardEntries(entries) {
@@ -1476,7 +1616,18 @@ function submitLeaderboard(entry) {
             return result;
         });
 
-    return (runTokenPromise || Promise.resolve(currentRunId)).then(() => submitOnline());
+    const completionPromise = runCompletePromise || completeRunOnServer(entry.timeMs);
+
+    return completionPromise.then(completion => {
+        if (!completion) {
+            const result = recordLocalLeaderboard(entry);
+            leaderboardStatus = 'Saved locally; online run verification unavailable';
+            result.online = false;
+            return result;
+        }
+
+        return submitOnline();
+    });
 }
 
 function createLeaderboardPayload(entry) {
@@ -1612,7 +1763,7 @@ function endLevel(title, color, options = {}) {
     if (completed) {
         const scoreEntry = {
             name: playerName,
-            timeMs: completionTimeMs,
+            timeMs: currentRunOfficialTimeMs || completionTimeMs,
             score,
             kills: enemiesKilled,
             accuracy
