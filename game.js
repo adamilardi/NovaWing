@@ -34,7 +34,31 @@ const INTERCEPTOR_SHOT_SPEED = -545;
 const BOSS_MISSILE_SPEED = -380;
 const MAX_WEAPON_LEVEL = 3;
 const BOSS_MAX_HEALTH = 240;
+const BOSS_PHASE_2_HEALTH_RATIO = 0.67;
+const BOSS_PHASE_3_HEALTH_RATIO = 0.34;
+const BOSS_VOLLEY_DELAYS = {
+    1: { min: 1150, max: 1750 },
+    2: { min: 950, max: 1450 },
+    3: { min: 680, max: 1050 }
+};
+const BOSS_PHASE_MISSILE_SPEED = {
+    1: -380,
+    2: -410,
+    3: -450
+};
+const BOSS_DRONE_DELAYS = {
+    2: { min: 3800, max: 5200 },
+    3: { min: 2600, max: 3600 }
+};
+const BOSS_LASER_WARNING_MS = 760;
+const BOSS_LASER_ACTIVE_MS = 540;
+const BOSS_LASER_DELAY_MIN_MS = 4200;
+const BOSS_LASER_DELAY_MAX_MS = 5600;
 const PLAYER_DAMAGE_COOLDOWN_MS = 900;
+const FIRST_WAVE_DELAY_MS = 650;
+const WAVE_INTERVAL_MIN_MS = 1650;
+const WAVE_INTERVAL_MAX_MS = 2300;
+const WAVE_LANES = [105, 185, 265, 345, 425, 505];
 const BASE_PLAYER_SPEED = 280;
 const BOOST_PLAYER_SPEED = 470;
 const BOOST_MAX = 100;
@@ -92,13 +116,64 @@ const CONTROLS_HELP_LINES = [
     'Boost: Shift, X, or Z',
     'Goal: survive waves, then beat the boss'
 ];
+const PLAYER_DISPLAY_WIDTH = 154;
+const PLAYER_SHEET_WIDTH = 832;
+const PLAYER_SHEET_FRAME_HEIGHT = 312;
+const PLAYER_HIT_POSE_MS = 560;
+const PLAYER_POWERUP_POSE_MS = 720;
+const PLAYER_DEFAULT_TEXTURE = 'player-flight-0';
+const PLAYER_ANIMATION_KEYS = {
+    flight: 'player-flight',
+    boost: 'player-boost',
+    hit: 'player-hit',
+    powerup: 'player-powerup',
+    victory: 'player-victory',
+    gameOver: 'player-game-over'
+};
+const PLAYER_SHEETS = {
+    flight: {
+        sourceKey: 'playerFlightSource',
+        path: 'assets/player-flight-sheet.jpg'
+    },
+    action: {
+        sourceKey: 'playerActionSource',
+        path: 'assets/player-action-sheet.jpg'
+    },
+    celebration: {
+        sourceKey: 'playerCelebrationSource',
+        path: 'assets/player-celebration-sheet.jpg'
+    }
+};
+const PLAYER_FRAMES = [
+    { key: 'player-flight-0', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(0) },
+    { key: 'player-flight-1', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(1) },
+    { key: 'player-flight-2', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(2) },
+    { key: 'player-flight-3', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(3) },
+    { key: 'player-action-ready', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(0) },
+    { key: 'player-action-inverted', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(1) },
+    { key: 'player-action-spin', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(2) },
+    { key: 'player-action-boost', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(3) },
+    { key: 'player-celebration-victory', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(0) },
+    { key: 'player-celebration-spin', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(1) },
+    { key: 'player-celebration-powerup', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(2) },
+    { key: 'player-celebration-ko', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(3) }
+];
+const OBSTACLE_VARIANTS = [
+    { key: 'obstacle', speed: [-150, -105], scale: [0.72, 1.15], body: [48, 44], spin: [-95, 95] },
+    { key: 'mine', speed: [-130, -90], scale: [0.78, 1.05], body: [38, 38], spin: [-170, 170] },
+    { key: 'crystal', speed: [-175, -125], scale: [0.72, 1.0], body: [38, 58], spin: [-45, 45] },
+    { key: 'debris', speed: [-145, -95], scale: [0.72, 1.08], body: [48, 60], spin: [-120, 120] }
+];
+const ENEMY_WAVE_PATTERNS = [
+    { key: 'diagonal', spawn: spawnDiagonalEnemyWave },
+    { key: 'oppositeInterceptors', spawn: spawnOppositeInterceptorWave },
+    { key: 'asteroidWall', spawn: spawnAsteroidWallWave },
+    { key: 'chaser', spawn: spawnChaserWave }
+];
 
 const SPRITES = {
     player: {
-        sourceKey: 'playerSource',
-        path: 'assets/player.png',
-        crop: { x: 95, y: 34, width: 620, height: 220 },
-        displayWidth: 118
+        displayWidth: PLAYER_DISPLAY_WIDTH
     },
     enemy: {
         sourceKey: 'enemySource',
@@ -136,6 +211,9 @@ let bossHealth = 0;
 let bossHealthBar;
 let bossHealthFill;
 let bossNextVolleyAt = 0;
+let bossNextDroneAt = 0;
+let bossNextLaserAt = 0;
+let bossPhase = 1;
 let lastFired = 0;
 let score = 0;
 let lives = 3;
@@ -145,10 +223,14 @@ let isBoosting = false;
 let boostIntensity = 0;
 let boostLocked = false;
 let nextBoostTrailAt = 0;
+let currentPlayerAnimation = null;
+let playerAnimationOverride = null;
+let playerAnimationOverrideUntil = 0;
 let starfieldOffset = 0;
 let shotsFired = 0;
 let shotsHit = 0;
 let enemiesKilled = 0;
+let lastWavePatternKey = null;
 let levelStartTime = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
@@ -179,7 +261,13 @@ let runRequestSequence = 0;
 function preload() {
     SPRITE_KEYS.forEach(key => {
         const sprite = SPRITES[key];
-        this.load.image(sprite.sourceKey, sprite.path);
+        if (sprite.sourceKey && sprite.path) {
+            this.load.image(sprite.sourceKey, sprite.path);
+        }
+    });
+
+    Object.values(PLAYER_SHEETS).forEach(sheet => {
+        this.load.image(sheet.sourceKey, sheet.path);
     });
 
     // Bullet
@@ -218,6 +306,17 @@ function preload() {
     missileGfx.fillRect(46, 5, 8, 4);
     missileGfx.generateTexture('missile', 58, 14);
     missileGfx.destroy();
+
+    const bossLaserGfx = this.add.graphics();
+    bossLaserGfx.fillStyle(0xfff0aa, 0.95);
+    bossLaserGfx.fillRect(0, 12, 800, 10);
+    bossLaserGfx.fillStyle(0xff3355, 0.72);
+    bossLaserGfx.fillRect(0, 4, 800, 8);
+    bossLaserGfx.fillRect(0, 22, 800, 8);
+    bossLaserGfx.lineStyle(2, 0xffffff, 0.85);
+    bossLaserGfx.lineBetween(0, 17, 800, 17);
+    bossLaserGfx.generateTexture('bossLaser', 800, 34);
+    bossLaserGfx.destroy();
 
     const sparkGfx = this.add.graphics();
     sparkGfx.fillStyle(0xffdd66);
@@ -324,6 +423,7 @@ function preload() {
 
 function create() {
     createShipTextures(this);
+    createPlayerAnimations(this);
     sfx = createSfx();
     score = 0;
     lives = 3;
@@ -336,10 +436,14 @@ function create() {
     heldBoostInputs.clear();
     heldMoveInputs.clear();
     nextBoostTrailAt = 0;
+    currentPlayerAnimation = null;
+    playerAnimationOverride = null;
+    playerAnimationOverrideUntil = 0;
     starfieldOffset = 0;
     shotsFired = 0;
     shotsHit = 0;
     enemiesKilled = 0;
+    lastWavePatternKey = null;
     lastFired = 0;
     levelEnded = false;
     playerInvulnerableUntil = 0;
@@ -347,6 +451,9 @@ function create() {
     boss = null;
     bossHealth = 0;
     bossNextVolleyAt = 0;
+    bossNextDroneAt = 0;
+    bossNextLaserAt = 0;
+    bossPhase = 1;
     levelStartTime = this.time.now;
     levelProgressMs = 0;
     victoryPending = false;
@@ -360,10 +467,12 @@ function create() {
     this.stars.setDepth(-1);
 
     // Player
-    player = this.physics.add.sprite(120, 300, 'player');
-    applyShipSize(player, SPRITES.player.displayWidth);
+    player = this.physics.add.sprite(120, 300, PLAYER_DEFAULT_TEXTURE);
+    applyPlayerShipSize(player);
     player.setFlipX(true);
     player.setCollideWorldBounds(true);
+    player.setDepth(3);
+    playPlayerAnimation(player, PLAYER_ANIMATION_KEYS.flight);
 
     // Groups
     bullets = this.physics.add.group({
@@ -450,20 +559,9 @@ function create() {
     createControlsHelpUi(this);
     updateBoostUi();
 
-    // Spawn enemies
-    this.enemySpawnEvent = this.time.addEvent({
-        delay: 900,
-        loop: true,
-        callback: spawnEnemy,
-        callbackScope: this
-    });
-
-    this.obstacleSpawnEvent = this.time.addEvent({
-        delay: 1450,
-        loop: true,
-        callback: spawnObstacle,
-        callbackScope: this
-    });
+    // Spawn authored enemy and obstacle waves.
+    this.obstacleSpawnEvent = null;
+    scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
 
     this.powerupSpawnEvent = this.time.addEvent({
         delay: 9500,
@@ -520,6 +618,7 @@ function update(time, delta) {
     const boostTarget = isBoosting ? 1 : 0;
     const boostRate = isBoosting ? BOOST_RAMP_UP_PER_SECOND : BOOST_FADE_OUT_PER_SECOND;
     boostIntensity = approachValue(boostIntensity, boostTarget, boostRate * (frameDelta / 1000));
+    updatePlayerAnimation(this, time);
 
     const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity);
     const inputLength = isMoving ? Math.sqrt(inputX * inputX + inputY * inputY) : 1;
@@ -638,6 +737,9 @@ function hitBoss(bullet, bossSprite) {
     shotsHit++;
     bossHealth = Math.max(0, bossHealth - damage);
     updateStatsText();
+    if (bossHealth > 0) {
+        updateBossPhase.call(this);
+    }
     updateBossHealthBar();
     createExplosion(this, hitX, hitY, damage > 1 ? 10 : 6);
     sfx.spark();
@@ -690,6 +792,7 @@ function collectPowerup(player, powerup) {
     const y = powerup.y;
     releasePowerup(this, powerup);
     createExplosion(this, x, y, 22);
+    holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.powerup, PLAYER_POWERUP_POSE_MS);
 
     if (weaponLevel < MAX_WEAPON_LEVEL) {
         weaponLevel++;
@@ -711,6 +814,15 @@ function hitEnemyBulletWithObstacle(enemyBullet) {
 }
 
 function hitPlayerShot(player, enemyBullet) {
+    if (enemyBullet.isBossLaser) {
+        const now = this.time.now;
+        if (now < (enemyBullet.nextHitEffectAt || 0)) return;
+        enemyBullet.nextHitEffectAt = now + 220;
+        createExplosion(this, player.x + 24, player.y, 12);
+        damagePlayer.call(this);
+        return;
+    }
+
     releaseSprite(enemyBullet);
     createExplosion(this, player.x + 24, player.y, 12);
     damagePlayer.call(this);
@@ -740,7 +852,10 @@ function damagePlayer() {
     });
 
     if (lives <= 0) {
+        holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
         endLevel.call(this, 'GAME OVER', '#ff5555');
+    } else {
+        holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
     }
 }
 
@@ -785,65 +900,198 @@ function launchBullet(x, y, velocityX, velocityY, textureKey) {
     return bullet;
 }
 
-function spawnEnemy() {
-    const y = Phaser.Math.Between(100, 500);
+function scheduleNextEnemyWave(scene, delayMs) {
+    if (levelEnded || gamePhase !== 'waves') return;
 
-    const useEnemy2 = Math.random() < 0.3;
-    const key = useEnemy2 ? 'enemy2' : 'enemy';
+    scene.enemySpawnEvent = scene.time.delayedCall(delayMs, () => {
+        if (levelEnded || gamePhase !== 'waves') return;
 
-    const enemy = enemies.get(820, y, key);
-    if (!enemy) return;
+        spawnEnemyWave.call(scene);
+        scheduleNextEnemyWave(scene, Phaser.Math.Between(WAVE_INTERVAL_MIN_MS, WAVE_INTERVAL_MAX_MS));
+    });
+}
+
+function spawnEnemyWave() {
+    const availablePatterns = ENEMY_WAVE_PATTERNS.filter(pattern => pattern.key !== lastWavePatternKey);
+    const pattern = Phaser.Utils.Array.GetRandom(availablePatterns.length ? availablePatterns : ENEMY_WAVE_PATTERNS);
+    lastWavePatternKey = pattern.key;
+    pattern.spawn(this);
+}
+
+function scheduleWavePart(scene, delayMs, callback) {
+    if (delayMs <= 0) {
+        if (!levelEnded && gamePhase === 'waves') callback();
+        return;
+    }
+
+    scene.time.delayedCall(delayMs, () => {
+        if (levelEnded || gamePhase !== 'waves') return;
+        callback();
+    });
+}
+
+function spawnDiagonalEnemyWave(scene) {
+    const topStart = Phaser.Math.Between(0, WAVE_LANES.length - 3);
+    const direction = Math.random() < 0.5 ? 1 : -1;
+    const firstLane = direction > 0 ? topStart : topStart + 2;
+
+    for (let step = 0; step < 3; step++) {
+        const laneIndex = firstLane + step * direction;
+        scheduleWavePart(scene, step * 160, () => {
+            spawnEnemy.call(scene, {
+                x: 850 + step * 70,
+                y: WAVE_LANES[laneIndex],
+                type: 'regular',
+                canShoot: step === 1,
+                nextShotDelay: 1050 + step * 180
+            });
+        });
+    }
+}
+
+function spawnOppositeInterceptorWave(scene) {
+    const topLane = Phaser.Math.Between(0, 1);
+    const bottomLane = Phaser.Math.Between(WAVE_LANES.length - 2, WAVE_LANES.length - 1);
+
+    spawnEnemy.call(scene, {
+        x: 860,
+        y: WAVE_LANES[topLane],
+        type: 'interceptor',
+        canShoot: true,
+        nextShotDelay: 700
+    });
+    scheduleWavePart(scene, 240, () => {
+        spawnEnemy.call(scene, {
+            x: 900,
+            y: WAVE_LANES[bottomLane],
+            type: 'interceptor',
+            canShoot: true,
+            nextShotDelay: 850
+        });
+    });
+}
+
+function spawnAsteroidWallWave(scene) {
+    const safeLane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    const wallX = 885;
+
+    WAVE_LANES.forEach((laneY, laneIndex) => {
+        if (laneIndex === safeLane) return;
+
+        scheduleWavePart(scene, Phaser.Math.Between(0, 120), () => {
+            spawnObstacle.call(scene, {
+                x: wallX + Phaser.Math.Between(-16, 24),
+                y: laneY,
+                variantKey: Phaser.Utils.Array.GetRandom(['obstacle', 'mine', 'debris']),
+                speed: Phaser.Math.Between(-142, -118),
+                scale: Phaser.Math.FloatBetween(0.78, 0.95)
+            });
+        });
+    });
+}
+
+function spawnChaserWave(scene) {
+    const lane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    const chaserLane = Phaser.Math.Clamp(lane + Phaser.Math.Between(-1, 1), 0, WAVE_LANES.length - 1);
+
+    spawnEnemy.call(scene, {
+        x: 835,
+        y: WAVE_LANES[lane],
+        type: 'regular',
+        speed: -112,
+        canShoot: true,
+        nextShotDelay: 950
+    });
+    scheduleWavePart(scene, 560, () => {
+        spawnEnemy.call(scene, {
+            x: 900,
+            y: WAVE_LANES[chaserLane],
+            type: 'interceptor',
+            speed: -292,
+            canShoot: true,
+            nextShotDelay: 650
+        });
+    });
+}
+
+function spawnEnemy(options = {}) {
+    if (levelEnded || (gamePhase !== 'waves' && !options.allowDuringBoss)) return null;
+
+    const y = Number.isFinite(options.y) ? options.y : Phaser.Math.Between(100, 500);
+    const x = Number.isFinite(options.x) ? options.x : 820;
+    const type = options.type || (Math.random() < 0.3 ? 'interceptor' : 'regular');
+    const isInterceptor = type === 'interceptor';
+    const key = options.key || (isInterceptor ? 'enemy2' : 'enemy');
+
+    const enemy = enemies.get(x, y, key);
+    if (!enemy) return null;
 
     enemy.setTexture(key);
-    activateSprite(enemy, 820, y);
+    activateSprite(enemy, x, y);
     applyShipSize(enemy, SPRITES[key].displayWidth);
-    enemy.baseVelocityX = REGULAR_ENEMY_SPEED;
-    enemy.tracksPlayer = false;
+    enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : REGULAR_ENEMY_SPEED;
+    enemy.tracksPlayer = options.tracksPlayer === undefined ? false : Boolean(options.tracksPlayer);
     enemy.shotSpeed = ENEMY_SHOT_SPEED;
     enemy.shotAimScale = 1.1;
     enemy.shotMaxDy = 150;
     enemy.shotCooldownMin = 1400;
     enemy.shotCooldownMax = 2800;
-    enemy.health = REGULAR_ENEMY_HEALTH;
-    updateScrollVelocity(enemy);
-    enemy.canShoot = Math.random() < ENEMY_FIRE_CHANCE;
-    enemy.nextShotAt = this.time.now + Phaser.Math.Between(700, 2200);
+    enemy.health = Number.isFinite(options.health) ? options.health : REGULAR_ENEMY_HEALTH;
+    enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < ENEMY_FIRE_CHANCE;
+    enemy.nextShotAt = this.time.now + (
+        Number.isFinite(options.nextShotDelay)
+            ? options.nextShotDelay
+            : Phaser.Math.Between(700, 2200)
+    );
 
-    if (useEnemy2) {
-        enemy.baseVelocityX = INTERCEPTOR_ENEMY_SPEED;
-        enemy.tracksPlayer = true;
+    if (isInterceptor) {
+        enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : INTERCEPTOR_ENEMY_SPEED;
+        enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
         enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
         enemy.shotAimScale = 1.45;
         enemy.shotMaxDy = 230;
         enemy.shotCooldownMin = 850;
         enemy.shotCooldownMax = 1650;
-        enemy.health = INTERCEPTOR_ENEMY_HEALTH;
-        updateScrollVelocity(enemy);
-        enemy.canShoot = Math.random() < 0.78;
-        enemy.nextShotAt = this.time.now + Phaser.Math.Between(500, 1450);
+        enemy.health = Number.isFinite(options.health) ? options.health : INTERCEPTOR_ENEMY_HEALTH;
+        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.78;
+        enemy.nextShotAt = this.time.now + (
+            Number.isFinite(options.nextShotDelay)
+                ? options.nextShotDelay
+                : Phaser.Math.Between(500, 1450)
+        );
     }
+
+    updateScrollVelocity(enemy);
+    return enemy;
 }
 
-function spawnObstacle() {
-    const y = Phaser.Math.Between(95, 505);
-    const variants = [
-        { key: 'obstacle', speed: [-150, -105], scale: [0.72, 1.15], body: [48, 44], spin: [-95, 95] },
-        { key: 'mine', speed: [-130, -90], scale: [0.78, 1.05], body: [38, 38], spin: [-170, 170] },
-        { key: 'crystal', speed: [-175, -125], scale: [0.72, 1.0], body: [38, 58], spin: [-45, 45] },
-        { key: 'debris', speed: [-145, -95], scale: [0.72, 1.08], body: [48, 60], spin: [-120, 120] }
-    ];
-    const variant = Phaser.Utils.Array.GetRandom(variants);
-    const obstacle = obstacles.get(860, y, variant.key);
-    if (!obstacle) return;
+function spawnObstacle(options = {}) {
+    if (levelEnded || gamePhase !== 'waves') return null;
+
+    const y = Number.isFinite(options.y) ? options.y : Phaser.Math.Between(95, 505);
+    const x = Number.isFinite(options.x) ? options.x : 860;
+    const variant = getObstacleVariant(options.variantKey) || Phaser.Utils.Array.GetRandom(OBSTACLE_VARIANTS);
+    const obstacle = obstacles.get(x, y, variant.key);
+    if (!obstacle) return null;
 
     obstacle.setTexture(variant.key);
-    activateSprite(obstacle, 860, y);
-    const scale = Phaser.Math.FloatBetween(variant.scale[0], variant.scale[1]);
+    activateSprite(obstacle, x, y);
+    const scale = Number.isFinite(options.scale)
+        ? options.scale
+        : Phaser.Math.FloatBetween(variant.scale[0], variant.scale[1]);
     obstacle.setScale(scale);
-    obstacle.baseVelocityX = Phaser.Math.Between(variant.speed[0], variant.speed[1]);
+    obstacle.baseVelocityX = Number.isFinite(options.speed)
+        ? options.speed
+        : Phaser.Math.Between(variant.speed[0], variant.speed[1]);
     updateScrollVelocity(obstacle);
     obstacle.setAngularVelocity(Phaser.Math.Between(variant.spin[0], variant.spin[1]));
     obstacle.body.setSize(variant.body[0], variant.body[1], true);
+    return obstacle;
+}
+
+function getObstacleVariant(variantKey) {
+    if (!variantKey) return null;
+    return OBSTACLE_VARIANTS.find(variant => variant.key === variantKey) || null;
 }
 
 function spawnPowerup() {
@@ -887,7 +1135,10 @@ function startBossFight() {
 
     showFloatingText(this, 400, 130, 'WARNING: BOSS APPROACHING', '#ff6677');
     bossHealth = BOSS_MAX_HEALTH;
+    bossPhase = 1;
     bossNextVolleyAt = this.time.now + 1400;
+    bossNextDroneAt = Infinity;
+    bossNextLaserAt = Infinity;
     boss = bosses.create(920, 300, 'bossShip');
     boss.setDepth(3);
     boss.setVelocityX(-80);
@@ -905,6 +1156,8 @@ function startBossFight() {
 function updateBossFight(time) {
     if (!boss || !boss.active) return;
 
+    updateBossPhase.call(this);
+
     if (boss.x > 655) {
         boss.setVelocityX(-80);
     } else {
@@ -915,17 +1168,33 @@ function updateBossFight(time) {
     if (time >= bossNextVolleyAt && boss.x <= 700) {
         fireBossVolley.call(this, time);
     }
+
+    if (bossPhase >= 2 && time >= bossNextDroneAt && boss.x <= 700) {
+        spawnBossDroneAdd.call(this, time);
+    }
+
+    if (bossPhase >= 3 && time >= bossNextLaserAt && boss.x <= 700) {
+        fireBossLaserLane.call(this, time);
+    }
 }
 
 function fireBossVolley(time) {
     if (!boss || !boss.active) return;
 
-    bossNextVolleyAt = time + Phaser.Math.Between(1150, 1750);
+    const volleyDelay = BOSS_VOLLEY_DELAYS[bossPhase] || BOSS_VOLLEY_DELAYS[1];
+    const missileSpeed = BOSS_PHASE_MISSILE_SPEED[bossPhase] || BOSS_MISSILE_SPEED;
+    bossNextVolleyAt = time + Phaser.Math.Between(volleyDelay.min, volleyDelay.max);
     const launchers = [
         { x: boss.x - 122, y: boss.y - 42 },
         { x: boss.x - 136, y: boss.y },
         { x: boss.x - 122, y: boss.y + 42 }
     ];
+    if (bossPhase >= 3) {
+        launchers.push(
+            { x: boss.x - 132, y: boss.y - 72 },
+            { x: boss.x - 132, y: boss.y + 72 }
+        );
+    }
 
     launchers.forEach((launcher, index) => {
         const missile = enemyBullets.get(launcher.x, launcher.y, 'missile');
@@ -939,7 +1208,9 @@ function fireBossVolley(time) {
         ) + (index - 1) * 34;
         missile.setTexture('missile');
         activateSprite(missile, launcher.x, launcher.y);
-        missile.setVelocity(BOSS_MISSILE_SPEED, dy);
+        missile.isBossLaser = false;
+        missile.nextHitEffectAt = null;
+        missile.setVelocity(missileSpeed, dy);
         missile.setAngle(dy * 0.08);
         missile.setDepth(4);
         missile.body.setSize(missile.width, missile.height, true);
@@ -948,8 +1219,136 @@ function fireBossVolley(time) {
     sfx.missile();
 }
 
+function updateBossPhase() {
+    const nextPhase = getBossPhase();
+    if (nextPhase <= bossPhase) return;
+
+    bossPhase = nextPhase;
+    const now = this.time.now;
+    const message = bossPhase === 2 ? 'PHASE 2: DRONES DEPLOYED' : 'PHASE 3: LASER LANES';
+    const color = bossPhase === 2 ? '#ffcc55' : '#ff6677';
+    showFloatingText(this, 400, 110, message, color);
+
+    if (boss && boss.active) {
+        boss.setTint(bossPhase === 2 ? 0xffcc55 : 0xff6677);
+        this.time.delayedCall(210, () => {
+            if (boss && boss.active) boss.clearTint();
+        });
+    }
+
+    bossNextVolleyAt = Math.min(bossNextVolleyAt, now + 520);
+    if (bossPhase === 2) {
+        bossNextDroneAt = now + 850;
+    } else if (bossPhase === 3) {
+        bossNextDroneAt = Math.min(bossNextDroneAt, now + 550);
+        bossNextLaserAt = now + 1150;
+    }
+    updateBossHealthBar();
+}
+
+function getBossPhase() {
+    const healthRatio = bossHealth / BOSS_MAX_HEALTH;
+    if (healthRatio <= BOSS_PHASE_3_HEALTH_RATIO) return 3;
+    if (healthRatio <= BOSS_PHASE_2_HEALTH_RATIO) return 2;
+    return 1;
+}
+
+function spawnBossDroneAdd(time) {
+    if (!boss || !boss.active) return;
+
+    const droneDelay = BOSS_DRONE_DELAYS[bossPhase] || BOSS_DRONE_DELAYS[2];
+    bossNextDroneAt = time + Phaser.Math.Between(droneDelay.min, droneDelay.max);
+    const useInterceptor = bossPhase >= 3 && Math.random() < 0.55;
+    const droneY = Phaser.Math.Clamp(
+        boss.y + Phaser.Math.Between(-150, 150),
+        90,
+        510
+    );
+    const drone = spawnEnemy.call(this, {
+        allowDuringBoss: true,
+        x: 850,
+        y: droneY,
+        type: useInterceptor ? 'interceptor' : 'regular',
+        speed: useInterceptor ? -235 : -190,
+        tracksPlayer: useInterceptor,
+        health: useInterceptor ? 2 : 1,
+        canShoot: true,
+        nextShotDelay: Phaser.Math.Between(650, 1100)
+    });
+
+    if (!drone) return;
+
+    drone.setTint(0xffcc55);
+    this.time.delayedCall(120, () => {
+        if (drone.active) drone.clearTint();
+    });
+
+    if (bossPhase >= 3 && Math.random() < 0.35) {
+        const wingman = spawnEnemy.call(this, {
+            allowDuringBoss: true,
+            x: 890,
+            y: Phaser.Math.Clamp(600 - droneY, 95, 505),
+            type: 'regular',
+            speed: -205,
+            tracksPlayer: false,
+            health: 1,
+            canShoot: true,
+            nextShotDelay: Phaser.Math.Between(800, 1250)
+        });
+
+        if (wingman) {
+            wingman.setTint(0xffcc55);
+            this.time.delayedCall(120, () => {
+                if (wingman.active) wingman.clearTint();
+            });
+        }
+    }
+}
+
+function fireBossLaserLane(time) {
+    if (!boss || !boss.active) return;
+
+    bossNextLaserAt = time + Phaser.Math.Between(BOSS_LASER_DELAY_MIN_MS, BOSS_LASER_DELAY_MAX_MS);
+    const laneY = Phaser.Math.Clamp(player ? player.y : boss.y, 72, 528);
+    const warning = this.add.rectangle(400, laneY, 820, 30, 0xff3355, 0.16);
+    warning.setStrokeStyle(2, 0xfff0aa, 0.95);
+    warning.setDepth(6);
+
+    this.tweens.add({
+        targets: warning,
+        alpha: 0.72,
+        duration: 120,
+        yoyo: true,
+        repeat: Math.max(1, Math.floor(BOSS_LASER_WARNING_MS / 240)),
+        ease: 'Sine.easeInOut'
+    });
+
+    this.time.delayedCall(BOSS_LASER_WARNING_MS, () => {
+        if (warning.active) warning.destroy();
+        if (!boss || !boss.active || victoryPending || levelEnded) return;
+
+        const laser = enemyBullets.get(400, laneY, 'bossLaser');
+        if (!laser) return;
+
+        laser.setTexture('bossLaser');
+        activateSprite(laser, 400, laneY);
+        laser.isBossLaser = true;
+        laser.nextHitEffectAt = 0;
+        laser.setVelocity(0, 0);
+        laser.setAngle(0);
+        laser.setDepth(5);
+        laser.body.setSize(800, 24, true);
+
+        this.time.delayedCall(BOSS_LASER_ACTIVE_MS, () => {
+            if (laser.active && laser.isBossLaser) releaseSprite(laser);
+        });
+    });
+}
+
 function updateBossHealthBar() {
     if (!bossHealthFill) return;
+    const color = bossPhase >= 3 ? 0xff6677 : (bossPhase >= 2 ? 0xffcc55 : 0xff3355);
+    bossHealthFill.setFillStyle(color, 1);
     bossHealthFill.setDisplaySize(326 * Phaser.Math.Clamp(bossHealth / BOSS_MAX_HEALTH, 0, 1), 10);
 }
 
@@ -961,6 +1360,7 @@ function defeatBoss(bossSprite) {
     const bossY = bossSprite.y;
     const completionTimeMs = this.time.now - levelStartTime;
     completeRunOnServer(completionTimeMs);
+    holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
 
     deactivateGroup(enemyBullets);
     this.physics.pause();
@@ -1177,6 +1577,8 @@ function releaseSprite(sprite) {
     sprite.canShoot = false;
     sprite.nextShotAt = null;
     sprite.damage = null;
+    sprite.isBossLaser = false;
+    sprite.nextHitEffectAt = null;
     if (sprite.body) {
         sprite.setVelocity(0, 0);
         sprite.setAngularVelocity(0);
@@ -1841,14 +2243,108 @@ function createExplosion(scene, x, y, quantity) {
     scene.time.delayedCall(620, () => particles.destroy());
 }
 
+function getPlayerSheetRowCrop(row) {
+    return {
+        x: 0,
+        y: row * PLAYER_SHEET_FRAME_HEIGHT,
+        width: PLAYER_SHEET_WIDTH,
+        height: PLAYER_SHEET_FRAME_HEIGHT
+    };
+}
+
 function createShipTextures(scene) {
     SPRITE_KEYS.forEach(key => {
         const sprite = SPRITES[key];
+        if (!sprite.sourceKey || !sprite.crop) return;
         createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
+    });
+    createPlayerFrameTextures(scene);
+}
+
+function createPlayerFrameTextures(scene) {
+    PLAYER_FRAMES.forEach(frame => {
+        createTransparentTexture(scene, frame.key, frame.sourceKey, frame.crop, { trim: false });
     });
 }
 
-function createTransparentTexture(scene, key, sourceKey, crop) {
+function createPlayerAnimations(scene) {
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.flight, [
+        'player-flight-0',
+        'player-flight-2'
+    ], 4, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.boost, [
+        'player-action-boost',
+        'player-flight-3'
+    ], 7, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.hit, [
+        'player-action-spin',
+        'player-action-inverted'
+    ], 8, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.powerup, [
+        'player-celebration-powerup',
+        'player-flight-1'
+    ], 6, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.victory, [
+        'player-celebration-victory',
+        'player-celebration-spin',
+        'player-celebration-ko'
+    ], 3, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.gameOver, [
+        'player-action-inverted',
+        'player-action-spin'
+    ], 4, -1);
+}
+
+function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
+    if (scene.anims.exists(key)) return;
+
+    scene.anims.create({
+        key,
+        frames: textureKeys.map(textureKey => ({ key: textureKey })),
+        frameRate,
+        repeat
+    });
+}
+
+function updatePlayerAnimation(scene, time) {
+    if (!player || !player.active) return;
+
+    if (playerAnimationOverride) {
+        if (time < playerAnimationOverrideUntil) return;
+        playerAnimationOverride = null;
+        playerAnimationOverrideUntil = 0;
+    }
+
+    const nextAnimation = boostIntensity > 0.28
+        ? PLAYER_ANIMATION_KEYS.boost
+        : PLAYER_ANIMATION_KEYS.flight;
+    playPlayerAnimation(player, nextAnimation);
+}
+
+function holdPlayerAnimation(scene, animationKey, durationMs) {
+    if (!player || !player.active) return;
+
+    playerAnimationOverride = animationKey;
+    playerAnimationOverrideUntil = durationMs === Infinity
+        ? Infinity
+        : scene.time.now + durationMs;
+    playPlayerAnimation(player, animationKey, true);
+}
+
+function playPlayerAnimation(sprite, animationKey, restart = false) {
+    if (!sprite || !sprite.active) return;
+    if (!restart && currentPlayerAnimation === animationKey) return;
+
+    currentPlayerAnimation = animationKey;
+    sprite.play(animationKey);
+
+    if (restart && sprite.anims && typeof sprite.anims.restart === 'function' &&
+        sprite.anims.currentAnim && sprite.anims.currentAnim.key === animationKey) {
+        sprite.anims.restart();
+    }
+}
+
+function createTransparentTexture(scene, key, sourceKey, crop, options = {}) {
     if (scene.textures.exists(key)) return;
 
     const source = scene.textures.get(sourceKey).getSourceImage();
@@ -1874,8 +2370,8 @@ function createTransparentTexture(scene, key, sourceKey, crop) {
     removeGrayBackground(imageData.data);
     ctx.putImageData(imageData, 0, 0);
 
-    const trimmed = trimTransparentCanvas(canvas);
-    const texture = scene.textures.addCanvas(key, trimmed);
+    const outputCanvas = options.trim === false ? canvas : trimTransparentCanvas(canvas);
+    const texture = scene.textures.addCanvas(key, outputCanvas);
     if (texture.refresh) texture.refresh();
 }
 
@@ -1942,6 +2438,14 @@ function applyShipSize(sprite, displayWidth) {
 
     if (sprite.body) {
         sprite.body.setSize(sprite.width * 0.74, sprite.height * 0.56, true);
+    }
+}
+
+function applyPlayerShipSize(sprite) {
+    applyShipSize(sprite, SPRITES.player.displayWidth);
+
+    if (sprite.body) {
+        sprite.body.setSize(sprite.width * 0.46, sprite.height * 0.48, true);
     }
 }
 
