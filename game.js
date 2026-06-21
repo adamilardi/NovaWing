@@ -76,6 +76,8 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
+const FIRE_INPUT_CODES = new Set(['Space']);
+const FIRE_INPUT_KEYS = new Set([' ', 'space', 'spacebar']);
 const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.UP,
     Phaser.Input.Keyboard.KeyCodes.DOWN,
@@ -107,6 +109,16 @@ const MOVEMENT_INPUTS = {
         codes: new Set(['ArrowRight', 'KeyD']),
         keys: new Set(['arrowright', 'right', 'd'])
     }
+};
+const LEGACY_MOVEMENT_KEY_CODES = {
+    37: 'left',
+    38: 'up',
+    39: 'right',
+    40: 'down',
+    65: 'left',
+    68: 'right',
+    83: 'down',
+    87: 'up'
 };
 const BOOST_BAR_WIDTH = 114;
 const BOOST_BAR_HEIGHT = 6;
@@ -198,6 +210,7 @@ let boostKey;
 let boostAltKey;
 let boostZKey;
 let boostHeld = false;
+let fireHeld = false;
 let heldBoostInputs = new Set();
 let heldMoveInputs = new Set();
 let bullets;
@@ -433,6 +446,7 @@ function create() {
     boostIntensity = 0;
     boostLocked = false;
     boostHeld = false;
+    fireHeld = false;
     heldBoostInputs.clear();
     heldMoveInputs.clear();
     nextBoostTrailAt = 0;
@@ -503,13 +517,15 @@ function create() {
     boostAltKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     boostZKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.input.keyboard.addCapture(GAMEPLAY_KEY_CODES);
-    this.input.keyboard.on('keydown', handleKeyboardDown);
-    this.input.keyboard.on('keyup', handleKeyboardUp);
+    window.addEventListener('keydown', handleKeyboardDown, true);
+    window.addEventListener('keyup', handleKeyboardUp, true);
     window.addEventListener('blur', clearBoostInput);
+    document.addEventListener('visibilitychange', clearInputWhenHidden);
     this.events.once('shutdown', () => {
-        this.input.keyboard.off('keydown', handleKeyboardDown);
-        this.input.keyboard.off('keyup', handleKeyboardUp);
+        window.removeEventListener('keydown', handleKeyboardDown, true);
+        window.removeEventListener('keyup', handleKeyboardUp, true);
         window.removeEventListener('blur', clearBoostInput);
+        document.removeEventListener('visibilitychange', clearInputWhenHidden);
         clearBoostInput();
     });
     this.input.once('pointerdown', () => sfx.unlock());
@@ -645,7 +661,7 @@ function update(time, delta) {
     }
 
     // Shooting
-    if (spaceKey.isDown && time > lastFired) {
+    if (isFireHeld() && time > lastFired) {
         fireBullet.call(this, time);
     }
 
@@ -1460,8 +1476,9 @@ function handleKeyboardDown(event) {
     sfx.unlock();
     const handledMovement = trackMovementInput(event, true);
     const handledBoost = trackBoostInput(event, true);
+    const handledFire = trackFireInput(event, true);
 
-    if (handledMovement || handledBoost || event.code === 'Space') {
+    if (handledMovement || handledBoost || handledFire) {
         event.preventDefault();
     }
 }
@@ -1469,10 +1486,25 @@ function handleKeyboardDown(event) {
 function handleKeyboardUp(event) {
     const handledMovement = trackMovementInput(event, false);
     const handledBoost = trackBoostInput(event, false);
+    const handledFire = trackFireInput(event, false);
 
-    if (handledMovement || handledBoost || event.code === 'Space') {
+    if (handledMovement || handledBoost || handledFire) {
         event.preventDefault();
     }
+}
+
+function trackFireInput(event, isDown) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    const legacyKeyCode = Number(event.keyCode || event.which);
+    const isFireInput = FIRE_INPUT_CODES.has(code) ||
+        FIRE_INPUT_KEYS.has(key) ||
+        legacyKeyCode === 32;
+
+    if (!isFireInput) return false;
+
+    fireHeld = isDown;
+    return true;
 }
 
 function trackBoostInput(event, isDown) {
@@ -1501,7 +1533,12 @@ function getBoostInputId(event) {
 function clearBoostInput() {
     heldBoostInputs.clear();
     boostHeld = false;
+    fireHeld = false;
     heldMoveInputs.clear();
+}
+
+function clearInputWhenHidden() {
+    if (document.hidden) clearBoostInput();
 }
 
 function isBoostHeld() {
@@ -1509,6 +1546,10 @@ function isBoostHeld() {
         (boostKey && boostKey.isDown) ||
         (boostAltKey && boostAltKey.isDown) ||
         (boostZKey && boostZKey.isDown);
+}
+
+function isFireHeld() {
+    return fireHeld || (spaceKey && spaceKey.isDown);
 }
 
 function trackMovementInput(event, isDown) {
@@ -1530,6 +1571,11 @@ function getMovementInputId(event) {
 
     for (const [direction, input] of Object.entries(MOVEMENT_INPUTS)) {
         if (input.codes.has(code) || input.keys.has(key)) return direction;
+    }
+
+    const legacyKeyCode = Number(event.keyCode || event.which);
+    if (LEGACY_MOVEMENT_KEY_CODES[legacyKeyCode]) {
+        return LEGACY_MOVEMENT_KEY_CODES[legacyKeyCode];
     }
 
     return null;
