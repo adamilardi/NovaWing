@@ -120,14 +120,10 @@ const LEGACY_MOVEMENT_KEY_CODES = {
     83: 'down',
     87: 'up'
 };
-const BOOST_BAR_WIDTH = 114;
-const BOOST_BAR_HEIGHT = 6;
-const CONTROLS_HELP_LINES = [
-    'Move: Arrow keys or WASD',
-    'Fire: Space',
-    'Boost: Shift, X, or Z',
-    'Goal: survive waves, then beat the boss'
-];
+const BOOST_SEGMENT_COUNT = 10;
+const BOOST_SEGMENT_WIDTH = 9;
+const BOOST_SEGMENT_HEIGHT = 5;
+const BOOST_SEGMENT_GAP = 3;
 const PLAYER_DISPLAY_WIDTH = 154;
 const PLAYER_SHEET_WIDTH = 832;
 const PLAYER_SHEET_FRAME_HEIGHT = 312;
@@ -252,15 +248,10 @@ let playerInvulnerableUntil = 0;
 let gamePhase = 'waves';
 let scoreText;
 let livesText;
-let statsText;
+let livesIcon;
 let weaponText;
-let runTimeText;
 let boostText;
-let boostBar;
-let boostFill;
-let controlsHelpButton;
-let controlsHelpPanel = [];
-let controlsHelpVisible = false;
+let boostSegments = [];
 let sfx;
 let leaderboardEntries = [];
 let leaderboardStatus = 'Loading online leaderboard...';
@@ -531,48 +522,60 @@ function create() {
     this.input.once('pointerdown', () => sfx.unlock());
 
     // UI
-    scoreText = this.add.text(16, 16, 'Score: 0', {
-        fontSize: '22px',
-        fill: '#00ffaa',
-        fontFamily: 'monospace'
-    });
+    const hudTextStyle = {
+        fontFamily: 'monospace',
+        stroke: '#050816',
+        strokeThickness: 3
+    };
 
-    livesText = this.add.text(16, 44, 'Lives: ' + lives, {
-        fontSize: '22px',
-        fill: '#ffaa00',
-        fontFamily: 'monospace'
-    });
-
-    statsText = this.add.text(16, 72, 'Kills: 0  Accuracy: 0%', {
+    scoreText = this.add.text(16, 14, '', {
+        ...hudTextStyle,
         fontSize: '18px',
-        fill: '#c7ddff',
-        fontFamily: 'monospace'
-    });
+        fill: '#d8e2f5'
+    }).setDepth(10);
 
-    weaponText = this.add.text(16, 94, 'Weapon: Single', {
-        fontSize: '18px',
-        fill: '#66f6ff',
-        fontFamily: 'monospace'
-    });
+    weaponText = this.add.text(16, 38, '', {
+        ...hudTextStyle,
+        fontSize: '20px',
+        fill: '#66f6ff'
+    }).setDepth(10);
 
-    runTimeText = this.add.text(784, 16, 'Run: 00:00.00', {
-        fontSize: '18px',
-        fill: '#c7ddff',
-        fontFamily: 'monospace'
-    }).setOrigin(1, 0);
+    livesText = this.add.text(784, 14, '', {
+        ...hudTextStyle,
+        fontSize: '20px',
+        fill: '#ffcc55'
+    }).setOrigin(1, 0).setDepth(10);
 
-    boostText = this.add.text(784, 40, 'Boost: 100%', {
-        fontSize: '14px',
-        fill: '#66f6ff',
-        fontFamily: 'monospace'
-    }).setOrigin(1, 0);
+    livesIcon = this.add.image(740, 25, PLAYER_DEFAULT_TEXTURE)
+        .setDisplaySize(28, 16)
+        .setFlipX(true)
+        .setDepth(10);
 
-    boostBar = this.add.rectangle(668, 62, BOOST_BAR_WIDTH + 4, BOOST_BAR_HEIGHT + 4, 0x0b1624, 0.82);
-    boostBar.setOrigin(0, 0.5);
-    boostBar.setStrokeStyle(2, 0x66f6ff, 0.8);
-    boostFill = this.add.rectangle(670, 62, BOOST_BAR_WIDTH, BOOST_BAR_HEIGHT, 0x66f6ff, 1);
-    boostFill.setOrigin(0, 0.5);
-    createControlsHelpUi(this);
+    boostText = this.add.text(784, 40, '', {
+        ...hudTextStyle,
+        fontSize: '16px',
+        fill: '#66f6ff'
+    }).setOrigin(1, 0).setDepth(10);
+
+    boostSegments = [];
+    const boostMeterWidth = BOOST_SEGMENT_COUNT * BOOST_SEGMENT_WIDTH +
+        (BOOST_SEGMENT_COUNT - 1) * BOOST_SEGMENT_GAP;
+    const boostMeterX = 784 - boostMeterWidth;
+    for (let index = 0; index < BOOST_SEGMENT_COUNT; index++) {
+        const segmentX = boostMeterX + index * (BOOST_SEGMENT_WIDTH + BOOST_SEGMENT_GAP);
+        boostSegments.push(this.add.rectangle(
+            segmentX,
+            65,
+            BOOST_SEGMENT_WIDTH,
+            BOOST_SEGMENT_HEIGHT,
+            0x10273a,
+            0.82
+        ).setOrigin(0, 0.5).setDepth(10));
+    }
+
+    updateScoreText();
+    updateLivesText();
+    updateWeaponText();
     updateBoostUi();
 
     // Spawn authored enemy and obstacle waves.
@@ -604,8 +607,6 @@ function update(time, delta) {
     if (levelEnded || victoryPending) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
-    runTimeText.setText('Run: ' + formatRunTime(time - levelStartTime));
-
     // Player movement
     const inputX = (isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0);
     const inputY = (isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0);
@@ -727,7 +728,6 @@ function hitEnemy(bullet, enemy) {
             if (enemy.active) enemy.clearTint();
         });
         sfx.spark();
-        updateStatsText();
         return;
     }
 
@@ -739,8 +739,7 @@ function hitEnemy(bullet, enemy) {
     enemiesKilled++;
     score += 150;
     refillBoost(this, BOOST_REFILL_ON_KILL, enemyX, enemyY);
-    scoreText.setText('Score: ' + score);
-    updateStatsText();
+    updateScoreText();
 }
 
 function hitBoss(bullet, bossSprite) {
@@ -752,7 +751,6 @@ function hitBoss(bullet, bossSprite) {
     releaseSprite(bullet);
     shotsHit++;
     bossHealth = Math.max(0, bossHealth - damage);
-    updateStatsText();
     if (bossHealth > 0) {
         updateBossPhase.call(this);
     }
@@ -817,7 +815,7 @@ function collectPowerup(player, powerup) {
         showFloatingText(this, x, y - 24, 'WEAPON UP', '#66f6ff');
     } else {
         score += 250;
-        scoreText.setText('Score: ' + score);
+        updateScoreText();
         sfx.powerup();
         showFloatingText(this, x, y - 24, '+250', '#ffe66d');
     }
@@ -860,7 +858,7 @@ function damagePlayer() {
     sfx.damage();
 
     lives--;
-    livesText.setText('Lives: ' + lives);
+    updateLivesText();
 
     player.setTint(0xff0000);
     this.time.delayedCall(130, () => {
@@ -896,7 +894,6 @@ function fireBullet(time) {
     const firedCount = fired.filter(Boolean).length;
     if (firedCount > 0) {
         shotsFired += firedCount;
-        updateStatsText();
         sfx.shoot(weaponLevel);
         lastFired = time + (weaponLevel >= 3 ? 150 : 125);
     }
@@ -1392,8 +1389,7 @@ function defeatBoss(bossSprite) {
     enemiesKilled++;
     score += 2500;
     refillBoost(this, BOOST_MAX, bossX, bossY);
-    scoreText.setText('Score: ' + score);
-    updateStatsText();
+    updateScoreText();
     this.time.delayedCall(650, () => {
         endLevel.call(this, 'BOSS DESTROYED', '#55ffaa', {
             completed: true,
@@ -1427,15 +1423,20 @@ function maybeFireEnemyShot(enemy, time) {
     sfx.enemyShoot();
 }
 
-function updateStatsText() {
-    if (!statsText) return;
-    const accuracy = shotsFired > 0 ? Math.round((shotsHit / shotsFired) * 100) : 0;
-    statsText.setText('Kills: ' + enemiesKilled + '  Accuracy: ' + accuracy + '%');
+function updateScoreText() {
+    if (!scoreText) return;
+    scoreText.setText('SCORE ' + padLeft(score, 6, '0'));
+}
+
+function updateLivesText() {
+    if (!livesText) return;
+    livesText.setText('×' + lives);
+    if (livesIcon) livesIcon.setVisible(lives > 0);
 }
 
 function updateWeaponText() {
     if (!weaponText) return;
-    weaponText.setText('Weapon: ' + getWeaponName());
+    weaponText.setText(getWeaponName().toUpperCase());
 }
 
 function getWeaponName() {
@@ -1657,66 +1658,24 @@ function refillBoost(scene, amount, x, y) {
 }
 
 function updateBoostUi() {
-    if (!boostFill || !boostText) return;
+    if (!boostSegments.length || !boostText) return;
 
     const percent = Phaser.Math.Clamp(boostEnergy / BOOST_MAX, 0, 1);
     const isLocked = boostLocked && boostEnergy < BOOST_REENGAGE_THRESHOLD;
-    const color = boostIntensity > 0.12 ? 0xffffff : (isLocked || percent <= 0.2 ? 0xff6677 : 0x66f6ff);
-    boostFill.setDisplaySize(BOOST_BAR_WIDTH * percent, BOOST_BAR_HEIGHT);
-    boostFill.setFillStyle(color, 1);
-    boostText.setText(isLocked
-        ? 'Boost: ' + Math.round(boostEnergy) + '%  Need ' + BOOST_REENGAGE_THRESHOLD + '%'
-        : 'Boost: ' + Math.round(boostEnergy) + '%');
-}
+    const activeColor = boostIntensity > 0.12
+        ? 0xffffff
+        : (isLocked || percent <= 0.2 ? 0xff6677 : (percent <= 0.35 ? 0xffcc55 : 0x66f6ff));
+    const activeTextColor = isLocked || percent <= 0.2
+        ? '#ff6677'
+        : (percent <= 0.35 ? '#ffcc55' : '#66f6ff');
+    const filledSegments = percent <= 0 ? 0 : Math.ceil(percent * BOOST_SEGMENT_COUNT);
 
-function createControlsHelpUi(scene) {
-    controlsHelpVisible = false;
-    controlsHelpPanel = [];
-
-    const buttonBg = scene.add.circle(646, 62, 11, 0x0b1624, 0.82);
-    buttonBg.setStrokeStyle(2, 0x66f6ff, 0.85);
-    buttonBg.setDepth(12);
-    buttonBg.setInteractive({ useHandCursor: true });
-
-    const buttonText = scene.add.text(646, 61, '?', {
-        fontSize: '14px',
-        fill: '#66f6ff',
-        fontFamily: 'monospace'
-    }).setOrigin(0.5).setDepth(13);
-    buttonText.setInteractive({ useHandCursor: true });
-
-    controlsHelpButton = [buttonBg, buttonText];
-
-    const togglePanel = () => {
-        setControlsHelpVisible(!controlsHelpVisible);
-    };
-    buttonBg.on('pointerdown', togglePanel);
-    buttonText.on('pointerdown', togglePanel);
-
-    const panelBg = scene.add.rectangle(560, 80, 224, 112, 0x050a14, 0.88);
-    panelBg.setOrigin(0, 0);
-    panelBg.setStrokeStyle(2, 0x66f6ff, 0.7);
-    panelBg.setDepth(12);
-    controlsHelpPanel.push(panelBg);
-
-    CONTROLS_HELP_LINES.forEach((line, index) => {
-        controlsHelpPanel.push(scene.add.text(574, 94 + index * 23, line, {
-            fontSize: '14px',
-            fill: index === 0 ? '#ffffff' : '#c7ddff',
-            fontFamily: 'monospace'
-        }).setDepth(13));
+    boostText.setText('BOOST ' + Math.round(boostEnergy) + '%');
+    boostText.setFill(activeTextColor);
+    boostSegments.forEach((segment, index) => {
+        const isFilled = index < filledSegments;
+        segment.setFillStyle(isFilled ? activeColor : 0x10273a, isFilled ? 1 : 0.82);
     });
-
-    setControlsHelpVisible(false);
-}
-
-function setControlsHelpVisible(isVisible) {
-    controlsHelpVisible = isVisible;
-    controlsHelpPanel.forEach(item => item.setVisible(isVisible));
-
-    if (controlsHelpButton && controlsHelpButton[1]) {
-        controlsHelpButton[1].setText(isVisible ? 'x' : '?');
-    }
 }
 
 function createBoostTrail(scene) {
