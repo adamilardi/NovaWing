@@ -261,33 +261,45 @@ const POWERUP_TYPES = {
     }
 };
 
+// body: fractions of source texture size (width/height) + top-left offset fractions.
+// Tuned so thrusters, spikes, and empty padding are not part of the solid hitbox.
 const SPRITES = {
     player: {
-        displayWidth: PLAYER_DISPLAY_WIDTH
+        displayWidth: PLAYER_DISPLAY_WIDTH,
+        body: { w: 0.42, h: 0.40, ox: 0.30, oy: 0.30 }
     },
     enemy: {
         sourceKey: 'enemySource',
         path: 'assets/enemy.png',
         crop: { x: 88, y: 52, width: 690, height: 218 },
-        displayWidth: 112
+        displayWidth: 112,
+        body: { w: 0.62, h: 0.42, ox: 0.18, oy: 0.30 }
     },
     enemy2: {
         sourceKey: 'enemy2Source',
         path: 'assets/enemy2.png',
         crop: { x: 78, y: 44, width: 690, height: 226 },
-        displayWidth: 112
+        displayWidth: 112,
+        body: { w: 0.60, h: 0.40, ox: 0.20, oy: 0.30 }
     },
     splitter: {
         sourceKey: 'splitterSource',
         path: 'assets/splitter.png',
         hasAlpha: true,
-        displayWidth: 124
+        displayWidth: 124,
+        // Core hull only — ignore top/bottom spikes and edge glow.
+        body: { w: 0.68, h: 0.40, ox: 0.14, oy: 0.30 }
     },
     splitterDrone: {
         sourceKey: 'splitterDroneSource',
         path: 'assets/splitter-drone.png',
         hasAlpha: true,
-        displayWidth: 54
+        displayWidth: 54,
+        body: { w: 0.58, h: 0.48, ox: 0.22, oy: 0.26 }
+    },
+    bossShip: {
+        // Thrusters are on the right; solid body is left/center.
+        body: { w: 0.52, h: 0.44, ox: 0.08, oy: 0.28 }
     }
 };
 const SPRITE_KEYS = ['player', 'enemy', 'enemy2', 'splitter', 'splitterDrone'];
@@ -1443,7 +1455,8 @@ function launchBullet(x, y, velocityX, velocityY, textureKey) {
     bullet.setVelocity(velocityX, velocityY);
     bullet.setDepth(2);
     bullet.setAngle(velocityY * 0.08);
-    bullet.body.setSize(bullet.width, bullet.height, true);
+    // Slightly smaller than the glow so hits line up with the bright core.
+    bullet.body.setSize(bullet.width * 0.72, bullet.height * 0.7, true);
     bullet.damage = textureKey === 'heavyBullet' ? 2 : 1;
     return bullet;
 }
@@ -1823,7 +1836,12 @@ function spawnEnemy(options = {}) {
 
     enemy.setTexture(key);
     activateSprite(enemy, x, y);
-    applyShipSize(enemy, (SPRITES[key] && SPRITES[key].displayWidth) || 112);
+    const spriteDef = SPRITES[key] || {};
+    applyShipSize(
+        enemy,
+        spriteDef.displayWidth || 112,
+        spriteDef.body
+    );
     enemy.enemyType = type;
     enemy.splitsOnDeath = false;
     enemy.usesMissile = false;
@@ -1963,9 +1981,9 @@ function spawnPowerup(plan = {}) {
     powerup.setDepth(3);
     powerup.setBlendMode(Phaser.BlendModes.NORMAL);
     powerup.setDisplaySize(52, 52);
-    // Body is in source-texture pixels; scale the hit circle to the baked 96px art.
-    const bodyRadius = Math.max(16, Math.round(powerup.width * 0.34));
-    const bodyOffset = Math.max(4, Math.round(powerup.width * 0.16));
+    // Centered circle on the orb core (source-texture pixels).
+    const bodyRadius = Math.max(14, Math.round(powerup.width * 0.30));
+    const bodyOffset = Math.round((powerup.width - bodyRadius * 2) / 2);
     powerup.body.setCircle(bodyRadius, bodyOffset, bodyOffset);
 
     // Gentle bob around the fixed lane so routes stay readable.
@@ -2040,8 +2058,7 @@ function startBossFight() {
     const targetWidth = 340;
     const aspect = boss.height > 0 ? boss.width / boss.height : 1.9;
     boss.setDisplaySize(targetWidth, Math.round(targetWidth / aspect));
-    // Body size uses source texture pixels (Phaser arcade), not display size.
-    boss.body.setSize(boss.width * 0.58, boss.height * 0.48, true);
+    applySpriteBody(boss, SPRITES.bossShip.body);
 
     bossHealthBar = this.add.rectangle(400, 54, 330, 16, 0x202438, 0.95);
     bossHealthBar.setStrokeStyle(2, 0xff6677, 1);
@@ -2112,7 +2129,8 @@ function fireBossVolley(time) {
         missile.setVelocity(missileSpeed, dy);
         missile.setAngle(dy * 0.08);
         missile.setDepth(4);
-        missile.body.setSize(missile.width, missile.height, true);
+        missile.body.setSize(missile.width * 0.55, missile.height * 0.55);
+        missile.body.setOffset(missile.width * 0.08, missile.height * 0.22);
     });
 
     sfx.missile(boss ? boss.x : 700);
@@ -2319,7 +2337,7 @@ function maybeFireEnemyShot(enemy, time) {
     shot.setVelocity(enemy.shotSpeed || ENEMY_SHOT_SPEED, dy);
     shot.setAngle(0);
     shot.setDepth(2);
-    shot.body.setSize(shot.width, shot.height, true);
+    shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
     sfx.enemyShoot(enemy.x);
 }
 
@@ -2345,7 +2363,9 @@ function fireEnemyMissile(enemy) {
     missile.setVelocity(enemy.shotSpeed || SPLITTER_MISSILE_SPEED, dy);
     missile.setAngle(dy * 0.08);
     missile.setDepth(4);
-    missile.body.setSize(missile.width * 0.9, missile.height * 0.75, true);
+    // Tight body on the warhead, not the full exhaust trail.
+    missile.body.setSize(missile.width * 0.55, missile.height * 0.55);
+    missile.body.setOffset(missile.width * 0.08, missile.height * 0.22);
     sfx.missile(enemy.x);
 }
 
@@ -3677,21 +3697,27 @@ function trimTransparentCanvas(canvas) {
     return trimmed;
 }
 
-function applyShipSize(sprite, displayWidth) {
+function applyShipSize(sprite, displayWidth, bodyConfig) {
     const displayHeight = displayWidth * (sprite.height / sprite.width);
     sprite.setDisplaySize(displayWidth, displayHeight);
+    applySpriteBody(sprite, bodyConfig);
+}
 
-    if (sprite.body) {
-        sprite.body.setSize(sprite.width * 0.74, sprite.height * 0.56, true);
-    }
+function applySpriteBody(sprite, bodyConfig) {
+    if (!sprite || !sprite.body) return;
+
+    const cfg = bodyConfig || { w: 0.62, h: 0.42, ox: 0.19, oy: 0.29 };
+    const width = Math.max(4, sprite.width * cfg.w);
+    const height = Math.max(4, sprite.height * cfg.h);
+    const offsetX = sprite.width * (cfg.ox != null ? cfg.ox : (1 - cfg.w) / 2);
+    const offsetY = sprite.height * (cfg.oy != null ? cfg.oy : (1 - cfg.h) / 2);
+
+    sprite.body.setSize(width, height);
+    sprite.body.setOffset(offsetX, offsetY);
 }
 
 function applyPlayerShipSize(sprite) {
-    applyShipSize(sprite, SPRITES.player.displayWidth);
-
-    if (sprite.body) {
-        sprite.body.setSize(sprite.width * 0.46, sprite.height * 0.48, true);
-    }
+    applyShipSize(sprite, SPRITES.player.displayWidth, SPRITES.player.body);
 }
 
 function createSfx() {
