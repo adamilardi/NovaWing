@@ -217,7 +217,19 @@ async function main() {
         await writePng(filename, svg, 96, 96);
     }
 
-    await writePng('boss-ship.png', bossSvg, 360, 196);
+    // Keep hand-authored boss art (concept B). Only fall back to the SVG boss
+    // if no biomechanical/source boss asset is present.
+    const authoredBoss = path.join(ASSETS, 'boss-biomechanical.png');
+    const bossOut = path.join(ASSETS, 'boss-ship.png');
+    if (fs.existsSync(authoredBoss)) {
+        fs.copyFileSync(authoredBoss, bossOut);
+        console.log('kept authored boss-ship.png from boss-biomechanical.png');
+    } else if (!fs.existsSync(bossOut)) {
+        await writePng('boss-ship.png', bossSvg, 360, 196);
+    } else {
+        console.log('kept existing boss-ship.png');
+    }
+
     console.log('Sprite assets ready in assets/');
 }
 
