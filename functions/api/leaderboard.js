@@ -2,9 +2,11 @@ const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
-const MAX_PLAUSIBLE_KILLS = 80;
+// Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
+const MAX_PLAUSIBLE_KILLS = 300;
 const BOSS_SCORE = 2500;
-const REGULAR_KILL_SCORE = 150;
+// Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
+const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
 
 export async function onRequest(context) {
@@ -34,7 +36,8 @@ export async function onRequest(context) {
         return jsonResponse({ error: err.message || 'Invalid request' }, err.statusCode || 400);
     }
 
-    const runValidation = await consumeRunToken(env.DB, payload);
+    // Validate the completed run first; only burn the token after the entry checks out.
+    const runValidation = await inspectRunToken(env.DB, payload);
     if (!runValidation.ok) {
         return jsonResponse({ error: runValidation.error }, 400);
     }
@@ -49,6 +52,11 @@ export async function onRequest(context) {
 
     if (!entry || !isPlausibleCompletedRun(entry)) {
         return jsonResponse({ error: 'Invalid leaderboard entry' }, 400);
+    }
+
+    const consumed = await markRunTokenUsed(env.DB, runValidation.runId);
+    if (!consumed.ok) {
+        return jsonResponse({ error: consumed.error }, 400);
     }
 
     await env.DB.prepare(`
@@ -76,8 +84,8 @@ export async function onRequest(context) {
 
 async function readJson(request) {
     const body = await request.text();
-
-    if (body.length > MAX_REQUEST_BODY_BYTES) {
+    // Compare UTF-8 byte length, not JS string length (multi-byte names can under-count).
+    if (new TextEncoder().encode(body).length > MAX_REQUEST_BODY_BYTES) {
         throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
     }
 
@@ -133,7 +141,7 @@ async function pruneLeaderboard(db) {
     `).run();
 }
 
-async function consumeRunToken(db, payload) {
+async function inspectRunToken(db, payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
     const now = Date.now();
@@ -156,23 +164,28 @@ async function consumeRunToken(db, payload) {
         return { ok: false, error: 'Implausible run completion time' };
     }
 
-    const update = await db.prepare(`
-        UPDATE leaderboard_runs
-        SET used_at = ?
-        WHERE id = ? AND used_at IS NULL
-    `).bind(new Date(now).toISOString(), runId).run();
-
-    if (!update.meta || update.meta.changes !== 1) {
-        return { ok: false, error: 'Invalid or expired run token' };
-    }
-
     return {
         ok: true,
+        runId,
         version: result.game_version,
         startedAt,
         completedAt,
         timeMs
     };
+}
+
+async function markRunTokenUsed(db, runId) {
+    const update = await db.prepare(`
+        UPDATE leaderboard_runs
+        SET used_at = ?
+        WHERE id = ? AND used_at IS NULL AND completed_at IS NOT NULL
+    `).bind(new Date().toISOString(), runId).run();
+
+    if (!update.meta || update.meta.changes !== 1) {
+        return { ok: false, error: 'Invalid or expired run token' };
+    }
+
+    return { ok: true };
 }
 
 function normalizeEntry(entry) {
@@ -219,7 +232,7 @@ function isPlausibleCompletedRun(entry) {
     if (entry.score < BOSS_SCORE) return false;
 
     const regularKills = Math.max(0, entry.kills - 1);
-    const maxScore = BOSS_SCORE + regularKills * REGULAR_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
 
     return true;

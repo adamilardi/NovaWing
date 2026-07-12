@@ -13,9 +13,11 @@ const RUN_REQUEST_LIMIT = 30;
 const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
 const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
-const MAX_PLAUSIBLE_KILLS = 80;
+// Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
+const MAX_PLAUSIBLE_KILLS = 300;
 const BOSS_SCORE = 2500;
-const REGULAR_KILL_SCORE = 150;
+// Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
+const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
@@ -39,29 +41,41 @@ function sendJson(res, statusCode, payload) {
 function readRequestJson(req) {
     return new Promise((resolve, reject) => {
         let body = '';
+        let settled = false;
+        let byteLength = 0;
+
+        const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            fn(value);
+        };
 
         req.on('data', chunk => {
-            body += chunk;
-            if (Buffer.byteLength(body) > MAX_REQUEST_BODY_BYTES) {
-                reject(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
+            if (settled) return;
+            byteLength += chunk.length;
+            if (byteLength > MAX_REQUEST_BODY_BYTES) {
+                settle(reject, Object.assign(new Error('Request body too large'), { statusCode: 413 }));
                 req.destroy();
+                return;
             }
+            body += chunk;
         });
 
         req.on('end', () => {
+            if (settled) return;
             if (!body) {
-                resolve({});
+                settle(resolve, {});
                 return;
             }
 
             try {
-                resolve(JSON.parse(body));
+                settle(resolve, JSON.parse(body));
             } catch (err) {
-                reject(Object.assign(new Error('Invalid JSON'), { statusCode: 400 }));
+                settle(reject, Object.assign(new Error('Invalid JSON'), { statusCode: 400 }));
             }
         });
 
-        req.on('error', reject);
+        req.on('error', err => settle(reject, err));
     });
 }
 
@@ -154,7 +168,8 @@ async function handleLeaderboardRequest(req, res) {
     }
 
     const payload = await readRequestJson(req);
-    const runValidation = consumeRunToken(payload);
+    // Validate the completed run first; only burn the token after the entry checks out.
+    const runValidation = inspectRunToken(payload);
     if (!runValidation.ok) {
         sendJson(res, 400, { error: runValidation.error });
         return;
@@ -170,6 +185,12 @@ async function handleLeaderboardRequest(req, res) {
 
     if (!submittedEntry || !isPlausibleCompletedRun(submittedEntry)) {
         sendJson(res, 400, { error: 'Invalid leaderboard entry' });
+        return;
+    }
+
+    const consumed = markRunTokenUsed(runValidation.runId);
+    if (!consumed.ok) {
+        sendJson(res, 400, { error: consumed.error });
         return;
     }
 
@@ -247,7 +268,7 @@ async function handleRunRequest(req, res) {
     });
 }
 
-function consumeRunToken(payload) {
+function inspectRunToken(payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
     const run = activeRuns.get(runId);
@@ -260,14 +281,28 @@ function consumeRunToken(payload) {
     }
     if (!run.completedAt) return { ok: false, error: 'Run is not complete' };
 
-    activeRuns.delete(runId);
     return {
         ok: true,
+        runId,
         version: run.version,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
         timeMs: run.completedAt - run.startedAt
     };
+}
+
+function markRunTokenUsed(runId) {
+    const run = activeRuns.get(runId);
+    if (!run || !run.completedAt) {
+        return { ok: false, error: 'Invalid or expired run token' };
+    }
+    if (Date.now() > run.expiresAt) {
+        activeRuns.delete(runId);
+        return { ok: false, error: 'Run token expired' };
+    }
+
+    activeRuns.delete(runId);
+    return { ok: true };
 }
 
 function completeRunToken(payload) {
@@ -325,7 +360,7 @@ function isPlausibleCompletedRun(entry) {
     if (entry.score < BOSS_SCORE) return false;
 
     const regularKills = Math.max(0, entry.kills - 1);
-    const maxScore = BOSS_SCORE + regularKills * REGULAR_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
 
     return true;

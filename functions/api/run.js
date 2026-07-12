@@ -74,8 +74,8 @@ export async function onRequest(context) {
 
 async function readJson(request) {
     const body = await request.text();
-
-    if (body.length > MAX_REQUEST_BODY_BYTES) {
+    // Compare UTF-8 byte length, not JS string length (multi-byte names can under-count).
+    if (new TextEncoder().encode(body).length > MAX_REQUEST_BODY_BYTES) {
         throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
     }
 

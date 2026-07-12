@@ -4,7 +4,23 @@ const config = {
     type: Phaser.AUTO,
     width: 800,
     height: 600,
+    parent: 'game-container',
     backgroundColor: '#04060f',
+    scale: {
+        mode: Phaser.Scale.FIT,
+        // CSS flex on #game-container handles centering. Phaser autoCenter
+        // adds margins that fight flex and shove the canvas off-center.
+        autoCenter: Phaser.Scale.NO_CENTER,
+        // Never upscale past native 800x600 (desktop stays original size;
+        // phones still shrink to fit via FIT).
+        max: {
+            width: 800,
+            height: 600
+        }
+    },
+    input: {
+        activePointers: 3
+    },
     physics: {
         default: 'arcade',
         arcade: {
@@ -86,6 +102,16 @@ const LEADERBOARD_API_URL = '/api/leaderboard';
 const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+const TOUCH_JOYSTICK = {
+    x: 118,
+    y: 498,
+    radius: 64,
+    knobRadius: 28,
+    deadzone: 14
+};
+const TOUCH_FIRE_BTN = { x: 708, y: 508, radius: 52 };
+const TOUCH_BOOST_BTN = { x: 598, y: 508, radius: 42 };
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
 const FIRE_INPUT_CODES = new Set(['Space']);
@@ -315,6 +341,12 @@ let boostHeld = false;
 let fireHeld = false;
 let heldBoostInputs = new Set();
 let heldMoveInputs = new Set();
+let touchMoveX = 0;
+let touchMoveY = 0;
+let touchMoveActive = false;
+let touchFireHeld = false;
+let touchBoostHeld = false;
+let touchControls = null;
 let bullets;
 let enemyBullets;
 let enemies;
@@ -851,18 +883,26 @@ function create() {
     bosses = this.physics.add.group();
 
     // Input
-    cursors = this.input.keyboard.createCursorKeys();
-    wasdKeys = this.input.keyboard.addKeys({
-        up: Phaser.Input.Keyboard.KeyCodes.W,
-        down: Phaser.Input.Keyboard.KeyCodes.S,
-        left: Phaser.Input.Keyboard.KeyCodes.A,
-        right: Phaser.Input.Keyboard.KeyCodes.D
-    });
-    spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    boostKey = cursors.shift;
-    boostAltKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
-    boostZKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
-    this.input.keyboard.addCapture(GAMEPLAY_KEY_CODES);
+    cursors = null;
+    wasdKeys = null;
+    spaceKey = null;
+    boostKey = null;
+    boostAltKey = null;
+    boostZKey = null;
+    if (this.input.keyboard) {
+        cursors = this.input.keyboard.createCursorKeys();
+        wasdKeys = this.input.keyboard.addKeys({
+            up: Phaser.Input.Keyboard.KeyCodes.W,
+            down: Phaser.Input.Keyboard.KeyCodes.S,
+            left: Phaser.Input.Keyboard.KeyCodes.A,
+            right: Phaser.Input.Keyboard.KeyCodes.D
+        });
+        spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        boostKey = cursors.shift;
+        boostAltKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+        boostZKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+        this.input.keyboard.addCapture(GAMEPLAY_KEY_CODES);
+    }
     window.addEventListener('keydown', handleKeyboardDown, true);
     window.addEventListener('keyup', handleKeyboardUp, true);
     window.addEventListener('blur', clearBoostInput);
@@ -872,14 +912,21 @@ function create() {
         window.removeEventListener('keyup', handleKeyboardUp, true);
         window.removeEventListener('blur', clearBoostInput);
         document.removeEventListener('visibilitychange', clearInputWhenHidden);
+        destroyTouchControls();
         clearBoostInput();
         if (sfx && sfx.stopMusic) sfx.stopMusic();
         if (sfx && sfx.setEngine) sfx.setEngine(0);
     });
-    this.input.once('pointerdown', () => {
+    const unlockAudioOnPointer = () => {
+        if (!sfx) return;
         sfx.unlock();
-        sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
+        if (!levelEnded) sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
+    };
+    this.input.on('pointerdown', unlockAudioOnPointer);
+    this.events.once('shutdown', () => {
+        this.input.off('pointerdown', unlockAudioOnPointer);
     });
+    createTouchControls(this);
 
     // UI
     const hudTextStyle = {
@@ -937,6 +984,10 @@ function create() {
         fontSize: '13px',
         fill: '#8aa0c8'
     }).setOrigin(0.5, 0).setDepth(10);
+    muteText.setInteractive({ useHandCursor: true });
+    muteText.on('pointerdown', () => {
+        toggleMute();
+    });
 
     boostSegments = [];
     const boostMeterWidth = BOOST_SEGMENT_COUNT * BOOST_SEGMENT_WIDTH +
@@ -990,9 +1041,8 @@ function update(time, delta) {
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
-    const inputX = (isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0);
-    const inputY = (isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0);
-    const isMoving = inputX !== 0 || inputY !== 0;
+    const axes = getMovementAxes();
+    const isMoving = axes.x !== 0 || axes.y !== 0;
     const wantsBoost = isBoostHeld();
     const wasBoosting = isBoosting;
 
@@ -1020,8 +1070,7 @@ function update(time, delta) {
     updatePlayerAnimation(this, time);
 
     const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity);
-    const inputLength = isMoving ? Math.sqrt(inputX * inputX + inputY * inputY) : 1;
-    player.setVelocity((inputX / inputLength) * speed, (inputY / inputLength) * speed);
+    player.setVelocity(axes.x * speed, axes.y * speed);
     updateBoostUi();
     updateShieldVisual(time);
     if (sfx && sfx.setEngine) sfx.setEngine(boostIntensity, player.x);
@@ -1350,9 +1399,14 @@ function detonateScreenBomb(scene, originX, originY) {
 }
 
 function hitEnemyBulletWithObstacle(enemyBullet) {
-    createExplosion(this, enemyBullet.x, enemyBullet.y, 6);
+    if (!enemyBullet || !enemyBullet.active) return;
+    // Boss laser spans the playfield; do not let a single asteroid cancel it.
+    if (enemyBullet.isBossLaser) return;
+
+    const hitX = enemyBullet.x;
+    createExplosion(this, hitX, enemyBullet.y, 6);
     releaseSprite(enemyBullet);
-    sfx.spark(enemyBullet.x);
+    sfx.spark(hitX);
 }
 
 function hitPlayerShot(player, enemyBullet) {
@@ -2463,9 +2517,11 @@ function approachValue(current, target, maxStep) {
 }
 
 function handleKeyboardDown(event) {
-    sfx.unlock();
-    if (sfx.startMusic && !levelEnded) {
-        sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
+    if (sfx) {
+        sfx.unlock();
+        if (sfx.startMusic && !levelEnded) {
+            sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
+        }
     }
 
     if (isMuteInput(event)) {
@@ -2525,7 +2581,8 @@ function saveAudioMuted(muted) {
 
 function updateMuteText() {
     if (!muteText) return;
-    muteText.setText(audioMuted ? 'M: SOUND OFF' : 'M: MUTE');
+    const prefix = shouldShowTouchControls() ? '' : 'M: ';
+    muteText.setText(audioMuted ? prefix + 'SOUND OFF' : prefix + 'MUTE');
     muteText.setFill(audioMuted ? '#ff8877' : '#8aa0c8');
 }
 
@@ -2586,6 +2643,7 @@ function clearBoostInput() {
     boostHeld = false;
     fireHeld = false;
     heldMoveInputs.clear();
+    clearTouchActionState();
 }
 
 function clearInputWhenHidden() {
@@ -2593,14 +2651,273 @@ function clearInputWhenHidden() {
 }
 
 function isBoostHeld() {
-    return boostHeld ||
+    return touchBoostHeld ||
+        boostHeld ||
         (boostKey && boostKey.isDown) ||
         (boostAltKey && boostAltKey.isDown) ||
         (boostZKey && boostZKey.isDown);
 }
 
 function isFireHeld() {
-    return fireHeld || (spaceKey && spaceKey.isDown);
+    return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown);
+}
+
+function shouldShowTouchControls() {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+            return true;
+        }
+    } catch (err) {
+        // Ignore matchMedia failures.
+    }
+    return ('ontouchstart' in window) ||
+        (typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints) > 0);
+}
+
+function getMovementAxes() {
+    if (touchMoveActive) {
+        return { x: touchMoveX, y: touchMoveY };
+    }
+
+    const inputX = (isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0);
+    const inputY = (isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0);
+    if (inputX === 0 && inputY === 0) return { x: 0, y: 0 };
+
+    const length = Math.sqrt(inputX * inputX + inputY * inputY) || 1;
+    return { x: inputX / length, y: inputY / length };
+}
+
+function clearTouchActionState() {
+    touchMoveX = 0;
+    touchMoveY = 0;
+    touchMoveActive = false;
+    touchFireHeld = false;
+    touchBoostHeld = false;
+
+    if (!touchControls) return;
+
+    touchControls.stickPointerId = null;
+    touchControls.firePointerId = null;
+    touchControls.boostPointerId = null;
+
+    if (touchControls.knob) {
+        touchControls.knob.setPosition(TOUCH_JOYSTICK.x, TOUCH_JOYSTICK.y);
+        touchControls.knob.setFillStyle(0x66f6ff, 0.55);
+    }
+    if (touchControls.fireBtn) {
+        touchControls.fireBtn.setFillStyle(0xff6644, 0.32);
+    }
+    if (touchControls.boostBtn) {
+        touchControls.boostBtn.setFillStyle(0x44aaff, 0.32);
+    }
+}
+
+function destroyTouchControls() {
+    if (!touchControls) {
+        clearTouchActionState();
+        return;
+    }
+
+    if (touchControls.cleanup) touchControls.cleanup();
+    if (touchControls.container) touchControls.container.destroy(true);
+    touchControls = null;
+    clearTouchActionState();
+}
+
+function createTouchControls(scene) {
+    destroyTouchControls();
+    if (!shouldShowTouchControls()) return;
+
+    // Mouse + up to 2 extra pointers for multi-touch fire/boost/move.
+    if (scene.input && typeof scene.input.addPointer === 'function') {
+        scene.input.addPointer(2);
+    }
+
+    const depth = 30;
+    const labelStyle = {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        fill: '#e8f0ff',
+        stroke: '#050816',
+        strokeThickness: 3
+    };
+
+    const container = scene.add.container(0, 0);
+    container.setDepth(depth);
+    container.setScrollFactor(0);
+
+    const stickBase = scene.add.circle(
+        TOUCH_JOYSTICK.x,
+        TOUCH_JOYSTICK.y,
+        TOUCH_JOYSTICK.radius,
+        0x081018,
+        0.42
+    );
+    stickBase.setStrokeStyle(2, 0x66f6ff, 0.55);
+
+    const stickKnob = scene.add.circle(
+        TOUCH_JOYSTICK.x,
+        TOUCH_JOYSTICK.y,
+        TOUCH_JOYSTICK.knobRadius,
+        0x66f6ff,
+        0.55
+    );
+    stickKnob.setStrokeStyle(2, 0xe8f0ff, 0.85);
+
+    const stickHit = scene.add.circle(
+        TOUCH_JOYSTICK.x,
+        TOUCH_JOYSTICK.y,
+        TOUCH_JOYSTICK.radius + 40,
+        0x000000,
+        0.001
+    );
+    stickHit.setInteractive();
+
+    const fireBtn = scene.add.circle(
+        TOUCH_FIRE_BTN.x,
+        TOUCH_FIRE_BTN.y,
+        TOUCH_FIRE_BTN.radius,
+        0xff6644,
+        0.32
+    );
+    fireBtn.setStrokeStyle(2, 0xffaa77, 0.9);
+    fireBtn.setInteractive();
+
+    const fireLabel = scene.add.text(TOUCH_FIRE_BTN.x, TOUCH_FIRE_BTN.y, 'FIRE', labelStyle)
+        .setOrigin(0.5);
+
+    const boostBtn = scene.add.circle(
+        TOUCH_BOOST_BTN.x,
+        TOUCH_BOOST_BTN.y,
+        TOUCH_BOOST_BTN.radius,
+        0x44aaff,
+        0.32
+    );
+    boostBtn.setStrokeStyle(2, 0x88ddff, 0.9);
+    boostBtn.setInteractive();
+
+    const boostLabel = scene.add.text(TOUCH_BOOST_BTN.x, TOUCH_BOOST_BTN.y, 'BOOST', {
+        ...labelStyle,
+        fontSize: '12px'
+    }).setOrigin(0.5);
+
+    container.add([
+        stickBase,
+        stickKnob,
+        stickHit,
+        fireBtn,
+        fireLabel,
+        boostBtn,
+        boostLabel
+    ]);
+
+    const controls = {
+        container,
+        knob: stickKnob,
+        fireBtn,
+        boostBtn,
+        stickPointerId: null,
+        firePointerId: null,
+        boostPointerId: null,
+        cleanup: null
+    };
+    touchControls = controls;
+
+    function updateStickFromPointer(pointer) {
+        // pointer.x/y are in game-camera space (correct under Scale.FIT).
+        const dx = pointer.x - TOUCH_JOYSTICK.x;
+        const dy = pointer.y - TOUCH_JOYSTICK.y;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const maxRadius = TOUCH_JOYSTICK.radius - 6;
+        const clamped = Math.min(distance, maxRadius);
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        stickKnob.setPosition(
+            TOUCH_JOYSTICK.x + nx * clamped,
+            TOUCH_JOYSTICK.y + ny * clamped
+        );
+
+        if (distance < TOUCH_JOYSTICK.deadzone) {
+            touchMoveX = 0;
+            touchMoveY = 0;
+            touchMoveActive = true;
+            stickKnob.setFillStyle(0x66f6ff, 0.55);
+            return;
+        }
+
+        const strength = Math.min(1, (distance - TOUCH_JOYSTICK.deadzone) /
+            (maxRadius - TOUCH_JOYSTICK.deadzone));
+        touchMoveX = nx * strength;
+        touchMoveY = ny * strength;
+        touchMoveActive = true;
+        stickKnob.setFillStyle(0x88ffff, 0.78);
+    }
+
+    function releaseStick() {
+        controls.stickPointerId = null;
+        touchMoveX = 0;
+        touchMoveY = 0;
+        touchMoveActive = false;
+        stickKnob.setPosition(TOUCH_JOYSTICK.x, TOUCH_JOYSTICK.y);
+        stickKnob.setFillStyle(0x66f6ff, 0.55);
+    }
+
+    stickHit.on('pointerdown', (pointer) => {
+        if (controls.stickPointerId !== null) return;
+        controls.stickPointerId = pointer.id;
+        updateStickFromPointer(pointer);
+        if (sfx) sfx.unlock();
+    });
+
+    fireBtn.on('pointerdown', (pointer) => {
+        if (controls.firePointerId !== null) return;
+        controls.firePointerId = pointer.id;
+        touchFireHeld = true;
+        fireBtn.setFillStyle(0xff8866, 0.62);
+        if (sfx) sfx.unlock();
+    });
+
+    boostBtn.on('pointerdown', (pointer) => {
+        if (controls.boostPointerId !== null) return;
+        controls.boostPointerId = pointer.id;
+        touchBoostHeld = true;
+        boostBtn.setFillStyle(0x66ccff, 0.62);
+        if (sfx) sfx.unlock();
+    });
+
+    const onPointerMove = (pointer) => {
+        if (controls.stickPointerId === pointer.id) {
+            updateStickFromPointer(pointer);
+        }
+    };
+
+    const onPointerUp = (pointer) => {
+        if (controls.stickPointerId === pointer.id) {
+            releaseStick();
+        }
+        if (controls.firePointerId === pointer.id) {
+            controls.firePointerId = null;
+            touchFireHeld = false;
+            fireBtn.setFillStyle(0xff6644, 0.32);
+        }
+        if (controls.boostPointerId === pointer.id) {
+            controls.boostPointerId = null;
+            touchBoostHeld = false;
+            boostBtn.setFillStyle(0x44aaff, 0.32);
+        }
+    };
+
+    scene.input.on('pointermove', onPointerMove);
+    scene.input.on('pointerup', onPointerUp);
+    scene.input.on('pointerupoutside', onPointerUp);
+
+    controls.cleanup = () => {
+        scene.input.off('pointermove', onPointerMove);
+        scene.input.off('pointerup', onPointerUp);
+        scene.input.off('pointerupoutside', onPointerUp);
+    };
 }
 
 function trackMovementInput(event, isDown) {
@@ -2634,6 +2951,7 @@ function getMovementInputId(event) {
 
 function isMoveHeld(direction) {
     if (heldMoveInputs.has(direction)) return true;
+    if (!cursors || !wasdKeys) return false;
 
     if (direction === 'left') return (cursors.left && cursors.left.isDown) || (wasdKeys.left && wasdKeys.left.isDown);
     if (direction === 'right') return (cursors.right && cursors.right.isDown) || (wasdKeys.right && wasdKeys.right.isDown);
@@ -2649,6 +2967,11 @@ function activateSprite(sprite, x, y) {
     sprite.setPosition(x, y);
     sprite.clearTint();
     sprite.setAlpha(1);
+    // Clear pooled projectile flags so recycled bullets never keep laser behavior.
+    sprite.isBossLaser = false;
+    sprite.nextHitEffectAt = null;
+    sprite.damage = null;
+    sprite.dying = false;
 
     if (sprite.body) {
         sprite.enableBody(true, x, y, true, true);
@@ -2676,6 +2999,14 @@ function releaseSprite(sprite) {
     sprite.damage = null;
     sprite.isBossLaser = false;
     sprite.nextHitEffectAt = null;
+    sprite.enemyType = null;
+    sprite.splitsOnDeath = false;
+    sprite.usesMissile = false;
+    sprite.killScore = null;
+    sprite.boostRefill = null;
+    sprite.driftVelocityY = null;
+    sprite.minPlayY = null;
+    sprite.maxPlayY = null;
     if (sprite.body) {
         sprite.setVelocity(0, 0);
         sprite.setAngularVelocity(0);
@@ -3124,11 +3455,14 @@ function completeRunOnServer(completionTimeMs) {
     }
 
     const requestId = runRequestSequence;
+    // Capture the run id for this attempt so a restart mid-flight cannot swap tokens.
     const tokenPromise = runTokenPromise || Promise.resolve(currentRunId);
 
     runCompletePromise = tokenPromise
         .then(runId => {
-            if (requestId !== runRequestSequence || !runId || runId !== currentRunId) return null;
+            if (requestId !== runRequestSequence || !runId) return null;
+            // Prefer the resolved token id; currentRunId may lag behind the promise resolve.
+            if (currentRunId && runId !== currentRunId) return null;
 
             return fetch(RUN_API_URL, {
                 method: 'PATCH',
@@ -3141,12 +3475,15 @@ function completeRunOnServer(completionTimeMs) {
                     runId,
                     timeMs: completionTimeMs
                 })
-            });
+            }).then(response => ({ response, runId }));
         })
-        .then(response => {
-            if (!response) return null;
-            if (!response.ok) throw new Error('Run completion unavailable');
-            return response.json();
+        .then(result => {
+            if (!result || !result.response) return null;
+            if (!result.response.ok) throw new Error('Run completion unavailable');
+            return result.response.json().then(payload => ({
+                ...payload,
+                runId: typeof payload.runId === 'string' ? payload.runId : result.runId
+            }));
         })
         .then(payload => {
             if (!payload || requestId !== runRequestSequence) return null;
@@ -3179,37 +3516,6 @@ function submitLeaderboard(entry) {
         return Promise.resolve(result);
     }
 
-    const submitOnline = () => fetch(LEADERBOARD_API_URL, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(createLeaderboardPayload(entry))
-    })
-        .then(response => {
-            if (!response.ok) throw new Error('Score submission failed');
-            return response.json();
-        })
-        .then(payload => {
-            const entries = normalizeLeaderboardEntries(payload.entries);
-            leaderboardEntries = entries;
-            leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
-            saveLocalLeaderboard(entries);
-            return {
-                rank: Number(payload.rank) || null,
-                entries,
-                entry: normalizeLeaderboardEntry(payload.entry),
-                online: true
-            };
-        })
-        .catch(() => {
-            const result = recordLocalLeaderboard(entry);
-            leaderboardStatus = 'Saved locally; online leaderboard unavailable';
-            result.online = false;
-            return result;
-        });
-
     const completionPromise = runCompletePromise || completeRunOnServer(entry.timeMs);
 
     return completionPromise.then(completion => {
@@ -3220,11 +3526,52 @@ function submitLeaderboard(entry) {
             return result;
         }
 
-        return submitOnline();
+        // Prefer server-measured time and the verified run id from completion.
+        const officialTimeMs = Math.round(Number(completion.timeMs));
+        const verifiedEntry = {
+            ...entry,
+            timeMs: Number.isFinite(officialTimeMs) && officialTimeMs > 0
+                ? officialTimeMs
+                : entry.timeMs
+        };
+        const runId = typeof completion.runId === 'string' && completion.runId
+            ? completion.runId
+            : currentRunId;
+
+        return fetch(LEADERBOARD_API_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(createLeaderboardPayload(verifiedEntry, runId))
+        })
+            .then(response => {
+                if (!response.ok) throw new Error('Score submission failed');
+                return response.json();
+            })
+            .then(payload => {
+                const entries = normalizeLeaderboardEntries(payload.entries);
+                leaderboardEntries = entries;
+                leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
+                saveLocalLeaderboard(entries);
+                return {
+                    rank: Number(payload.rank) || null,
+                    entries,
+                    entry: normalizeLeaderboardEntry(payload.entry),
+                    online: true
+                };
+            })
+            .catch(() => {
+                const result = recordLocalLeaderboard(verifiedEntry);
+                leaderboardStatus = 'Saved locally; online leaderboard unavailable';
+                result.online = false;
+                return result;
+            });
     });
 }
 
-function createLeaderboardPayload(entry) {
+function createLeaderboardPayload(entry, runId = currentRunId) {
     return {
         name: entry.name,
         timeMs: entry.timeMs,
@@ -3232,7 +3579,7 @@ function createLeaderboardPayload(entry) {
         kills: entry.kills,
         accuracy: entry.accuracy,
         version: GAME_VERSION,
-        runId: currentRunId
+        runId
     };
 }
 
@@ -3279,7 +3626,19 @@ function endLevel(title, color, options = {}) {
     if (sfx && sfx.setEngine) sfx.setEngine(0);
     this.physics.pause();
 
-    const accuracy = shotsFired > 0 ? Math.round((shotsHit / shotsFired) * 100) : 0;
+    // Drop boss HUD so it does not linger under the result panel (e.g. game over mid-boss).
+    if (bossHealthBar) {
+        bossHealthBar.destroy();
+        bossHealthBar = null;
+    }
+    if (bossHealthFill) {
+        bossHealthFill.destroy();
+        bossHealthFill = null;
+    }
+
+    const accuracy = shotsFired > 0
+        ? Math.min(100, Math.round((shotsHit / shotsFired) * 100))
+        : 0;
     const completionTimeMs = options.completionTimeMs || Math.max(0, this.time.now - levelStartTime);
     const completed = Boolean(options.completed);
     const playerName = completed ? promptForPlayerName() : null;
@@ -3349,14 +3708,28 @@ function endLevel(title, color, options = {}) {
         shareScoreResult(submittedEntry, submittedRank, shareStatusText);
     });
 
-    this.add.text(400, 566, 'Press R or Enter to restart', {
+    const restartHint = shouldShowTouchControls()
+        ? 'Tap here or press R to restart'
+        : 'Press R or Enter to restart';
+    const restartText = this.add.text(400, 566, restartHint, {
         fontSize: '18px',
         fill: '#aab2c8',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11);
+    restartText.setInteractive({ useHandCursor: true });
 
-    this.input.keyboard.once('keydown-R', () => this.scene.restart());
-    this.input.keyboard.once('keydown-ENTER', () => this.scene.restart());
+    const restartScene = () => this.scene.restart();
+    restartText.on('pointerdown', restartScene);
+    if (this.input.keyboard) {
+        this.input.keyboard.once('keydown-R', restartScene);
+        this.input.keyboard.once('keydown-ENTER', restartScene);
+    }
+
+    // Hide virtual controls under the end-game panel so taps hit restart/share.
+    if (touchControls && touchControls.container) {
+        touchControls.container.setVisible(false);
+    }
+    clearTouchActionState();
 
     if (completed) {
         const scoreEntry = {
@@ -4121,3 +4494,51 @@ function createSfx() {
         }
     };
 }
+
+// Test/debug surface for automated and manual verification.
+window.__novawingDebug = {
+    ready() {
+        return Boolean(game && game.isBooted && game.scene && game.scene.scenes && game.scene.scenes[0]);
+    },
+    shouldShowTouchControls,
+    getTouchState() {
+        return {
+            hasControls: Boolean(touchControls && touchControls.container && touchControls.container.visible),
+            touchMoveActive,
+            touchFireHeld,
+            touchBoostHeld,
+            touchMoveX,
+            touchMoveY,
+            stickPointerId: touchControls ? touchControls.stickPointerId : null,
+            firePointerId: touchControls ? touchControls.firePointerId : null,
+            boostPointerId: touchControls ? touchControls.boostPointerId : null
+        };
+    },
+    getPlayerState() {
+        if (!player) return null;
+        return {
+            x: player.x,
+            y: player.y,
+            vx: player.body ? player.body.velocity.x : 0,
+            vy: player.body ? player.body.velocity.y : 0,
+            levelEnded
+        };
+    },
+    getMovementAxes,
+    isFireHeld,
+    isBoostHeld,
+    getScale() {
+        if (!game || !game.scale) return null;
+        return {
+            width: game.scale.width,
+            height: game.scale.height,
+            displaySize: {
+                width: game.scale.displaySize ? game.scale.displaySize.width : null,
+                height: game.scale.displaySize ? game.scale.displaySize.height : null
+            },
+            canvasWidth: game.canvas ? game.canvas.clientWidth : null,
+            canvasHeight: game.canvas ? game.canvas.clientHeight : null,
+            mode: game.scale.scaleMode
+        };
+    }
+};
