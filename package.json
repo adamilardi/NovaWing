@@ -6,11 +6,15 @@
     "sprites": "node scripts/generate-sprites.js",
     "build": "npm run sprites && rm -rf dist && mkdir -p dist && cp index.html game.js dist/ && cp -R assets dist/assets",
     "check": "node --check server.js && node --check game.js && node --check functions/api/leaderboard.js && node --check functions/api/run.js",
+    "bot": "node scripts/play-bot.mjs",
+    "bot:watch": "HEADLESS=0 RECORD_VIDEO=1 node scripts/play-bot.mjs",
+    "bot:headed": "HEADLESS=0 node scripts/play-bot.mjs",
     "db:migrate:local": "wrangler d1 migrations apply novawing-leaderboard --local",
     "db:migrate:remote": "wrangler d1 migrations apply novawing-leaderboard --remote",
     "deploy": "npm run build && wrangler pages deploy dist --project-name novawing"
   },
   "devDependencies": {
+    "playwright": "^1.49.0",
     "wrangler": "^4.100.0"
   }
 }

@@ -347,6 +347,8 @@ let touchMoveActive = false;
 let touchFireHeld = false;
 let touchBoostHeld = false;
 let touchControls = null;
+// Optional external pilot (Playwright bot): { x, y, fire, boost } axes in [-1,1].
+let botInput = null;
 let bullets;
 let enemyBullets;
 let enemies;
@@ -823,6 +825,7 @@ function create() {
     fireHeld = false;
     heldBoostInputs.clear();
     heldMoveInputs.clear();
+    botInput = null;
     nextBoostTrailAt = 0;
     currentPlayerAnimation = null;
     playerAnimationOverride = null;
@@ -2651,6 +2654,7 @@ function clearInputWhenHidden() {
 }
 
 function isBoostHeld() {
+    if (botInput && typeof botInput.boost === 'boolean') return botInput.boost;
     return touchBoostHeld ||
         boostHeld ||
         (boostKey && boostKey.isDown) ||
@@ -2659,6 +2663,7 @@ function isBoostHeld() {
 }
 
 function isFireHeld() {
+    if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
     return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown);
 }
 
@@ -2676,6 +2681,15 @@ function shouldShowTouchControls() {
 }
 
 function getMovementAxes() {
+    if (botInput && Number.isFinite(botInput.x) && Number.isFinite(botInput.y)) {
+        const bx = Phaser.Math.Clamp(botInput.x, -1, 1);
+        const by = Phaser.Math.Clamp(botInput.y, -1, 1);
+        const length = Math.sqrt(bx * bx + by * by);
+        if (length < 0.04) return { x: 0, y: 0 };
+        // Always full-speed in the requested direction for decisive dodges.
+        return { x: bx / length, y: by / length };
+    }
+
     if (touchMoveActive) {
         return { x: touchMoveX, y: touchMoveY };
     }
@@ -2686,6 +2700,20 @@ function getMovementAxes() {
 
     const length = Math.sqrt(inputX * inputX + inputY * inputY) || 1;
     return { x: inputX / length, y: inputY / length };
+}
+
+function setBotInput(input) {
+    if (!input) {
+        botInput = null;
+        return null;
+    }
+    botInput = {
+        x: Number.isFinite(input.x) ? Phaser.Math.Clamp(input.x, -1, 1) : 0,
+        y: Number.isFinite(input.y) ? Phaser.Math.Clamp(input.y, -1, 1) : 0,
+        fire: input.fire !== false,
+        boost: Boolean(input.boost)
+    };
+    return botInput;
 }
 
 function clearTouchActionState() {
@@ -4495,6 +4523,147 @@ function createSfx() {
     };
 }
 
+function collectActiveSpriteSnapshots(group, mapFn) {
+    if (!group || !group.getChildren) return [];
+    const out = [];
+    group.getChildren().forEach(sprite => {
+        if (!sprite || !sprite.active) return;
+        const mapped = mapFn(sprite);
+        if (mapped) out.push(mapped);
+    });
+    return out;
+}
+
+function bodyCenter(sprite) {
+    if (sprite && sprite.body) {
+        return {
+            x: sprite.body.center.x,
+            y: sprite.body.center.y,
+            w: sprite.body.halfWidth * 2,
+            h: sprite.body.halfHeight * 2,
+            vx: sprite.body.velocity.x,
+            vy: sprite.body.velocity.y
+        };
+    }
+    return {
+        x: sprite.x,
+        y: sprite.y,
+        w: sprite.displayWidth || 40,
+        h: sprite.displayHeight || 40,
+        vx: 0,
+        vy: 0
+    };
+}
+
+function getBotSnapshot() {
+    const worldHeight = (typeof getLevelWorldHeight === 'function'
+        ? getLevelWorldHeight(typeof currentLevel === 'number' ? currentLevel : 1)
+        : GAME_HEIGHT) || GAME_HEIGHT;
+
+    return {
+        ready: Boolean(player && player.active),
+        time: game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0].time.now : 0,
+        phase: gamePhase,
+        levelEnded: Boolean(levelEnded),
+        victoryPending: Boolean(victoryPending),
+        level: typeof currentLevel === 'number' ? currentLevel : 1,
+        levelProgressMs: typeof levelProgressMs === 'number' ? levelProgressMs : 0,
+        levelDurationMs: typeof LEVEL_DURATION_MS === 'number' ? LEVEL_DURATION_MS : 60000,
+        elapsedMs: (typeof levelStartTime === 'number' && game && game.scene && game.scene.scenes[0])
+            ? Math.max(0, game.scene.scenes[0].time.now - levelStartTime)
+            : 0,
+        score,
+        lives,
+        weaponLevel,
+        hasShield: Boolean(hasShield),
+        boostEnergy,
+        isBoosting: Boolean(isBoosting),
+        boostLocked: Boolean(boostLocked),
+        playerInvulnerableUntil: typeof playerInvulnerableUntil === 'number' ? playerInvulnerableUntil : 0,
+        world: {
+            width: GAME_WIDTH,
+            height: worldHeight,
+            cameraY: game && game.scene && game.scene.scenes[0]
+                ? game.scene.scenes[0].cameras.main.scrollY
+                : 0
+        },
+        openBands: (typeof currentOpenBands !== 'undefined' && currentOpenBands)
+            ? currentOpenBands.map(band => [band[0], band[1]])
+            : null,
+        player: player && player.active ? (() => {
+            const b = bodyCenter(player);
+            return { x: b.x, y: b.y, vx: b.vx, vy: b.vy, w: b.w, h: b.h };
+        })() : null,
+        enemies: collectActiveSpriteSnapshots(enemies, enemy => {
+            const b = bodyCenter(enemy);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx || enemy.baseVelocityX || 0,
+                vy: b.vy,
+                w: b.w,
+                h: b.h,
+                type: enemy.enemyType || 'regular',
+                health: enemy.health || 1
+            };
+        }),
+        obstacles: collectActiveSpriteSnapshots(obstacles, obstacle => {
+            const b = bodyCenter(obstacle);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx || obstacle.baseVelocityX || 0,
+                vy: b.vy,
+                w: b.w,
+                h: b.h
+            };
+        }),
+        walls: collectActiveSpriteSnapshots(typeof walls !== 'undefined' ? walls : null, wall => {
+            const b = bodyCenter(wall);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx || wall.baseVelocityX || 0,
+                w: b.w,
+                h: b.h,
+                danger: Boolean(wall.isDangerWall)
+            };
+        }),
+        enemyBullets: collectActiveSpriteSnapshots(enemyBullets, bullet => {
+            const b = bodyCenter(bullet);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx,
+                vy: b.vy,
+                w: b.w,
+                h: b.h,
+                isLaser: Boolean(bullet.isBossLaser)
+            };
+        }),
+        powerups: collectActiveSpriteSnapshots(powerups, powerup => {
+            const b = bodyCenter(powerup);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx || powerup.baseVelocityX || 0,
+                type: powerup.powerupType || 'weapon'
+            };
+        }),
+        boss: boss && boss.active ? (() => {
+            const b = bodyCenter(boss);
+            return {
+                x: b.x,
+                y: b.y,
+                health: bossHealth,
+                phase: bossPhase,
+                w: b.w,
+                h: b.h
+            };
+        })() : null
+    };
+}
+
 // Test/debug surface for automated and manual verification.
 window.__novawingDebug = {
     ready() {
@@ -4523,6 +4692,11 @@ window.__novawingDebug = {
             vy: player.body ? player.body.velocity.y : 0,
             levelEnded
         };
+    },
+    getBotSnapshot,
+    setBotInput,
+    clearBotInput() {
+        botInput = null;
     },
     getMovementAxes,
     isFireHeld,
