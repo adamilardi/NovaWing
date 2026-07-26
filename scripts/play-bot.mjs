@@ -497,6 +497,10 @@ async function runOnce(browser, trialIndex) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('trial', String(trialIndex));
+    // Optional: LEVEL=2 npm run bot to start on the canyon stage.
+    if (process.env.LEVEL) {
+        url.searchParams.set('level', String(process.env.LEVEL));
+    }
 
     const videoDir = path.join(SCREENSHOT_DIR, 'video');
     if (RECORD_VIDEO) fs.mkdirSync(videoDir, { recursive: true });

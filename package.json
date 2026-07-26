@@ -9,6 +9,7 @@
     "bot": "node scripts/play-bot.mjs",
     "bot:watch": "HEADLESS=0 RECORD_VIDEO=1 node scripts/play-bot.mjs",
     "bot:headed": "HEADLESS=0 node scripts/play-bot.mjs",
+    "bot:level2": "LEVEL=2 HEADLESS=1 RECORD_VIDEO=1 node scripts/play-bot.mjs",
     "db:migrate:local": "wrangler d1 migrations apply novawing-leaderboard --local",
     "db:migrate:remote": "wrangler d1 migrations apply novawing-leaderboard --remote",
     "deploy": "npm run build && wrangler pages deploy dist --project-name novawing"
