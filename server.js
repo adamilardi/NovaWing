@@ -19,6 +19,7 @@ const BOSS_SCORE = 2500;
 // Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
 const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
+const MIN_MS_PER_KILL = 200;
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const activeRuns = new Map();
@@ -40,6 +41,13 @@ function sendJson(res, statusCode, payload) {
 
 function readRequestJson(req) {
     return new Promise((resolve, reject) => {
+        const contentLength = Number(req.headers['content-length']);
+        if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+            reject(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
+            req.resume();
+            return;
+        }
+
         let body = '';
         let settled = false;
         let byteLength = 0;
@@ -168,7 +176,7 @@ async function handleLeaderboardRequest(req, res) {
     }
 
     const payload = await readRequestJson(req);
-    // Validate the completed run first; only burn the token after the entry checks out.
+    // Stats were locked at run completion. Leaderboard POST may only choose a name.
     const runValidation = inspectRunToken(payload);
     if (!runValidation.ok) {
         sendJson(res, 400, { error: runValidation.error });
@@ -176,9 +184,12 @@ async function handleLeaderboardRequest(req, res) {
     }
 
     const submittedEntry = normalizeEntry({
-        ...payload,
+        name: payload.name,
         version: runValidation.version,
         timeMs: runValidation.timeMs,
+        score: runValidation.score,
+        kills: runValidation.kills,
+        accuracy: runValidation.accuracy,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
@@ -237,6 +248,9 @@ async function handleRunRequest(req, res) {
             runId: completion.runId,
             version: completion.version,
             timeMs: completion.timeMs,
+            score: completion.score,
+            kills: completion.kills,
+            accuracy: completion.accuracy,
             completedAt: new Date(completion.completedAt).toISOString()
         });
         return;
@@ -256,7 +270,10 @@ async function handleRunRequest(req, res) {
         clientKey,
         startedAt: now,
         expiresAt: now + RUN_TOKEN_TTL_MS,
-        completedAt: null
+        completedAt: null,
+        score: null,
+        kills: null,
+        accuracy: null
     });
     pruneExpiredRuns();
 
@@ -280,6 +297,9 @@ function inspectRunToken(payload) {
         return { ok: false, error: 'Run token expired' };
     }
     if (!run.completedAt) return { ok: false, error: 'Run is not complete' };
+    if (!Number.isFinite(run.score) || !Number.isFinite(run.kills) || !Number.isFinite(run.accuracy)) {
+        return { ok: false, error: 'Run is missing locked stats' };
+    }
 
     return {
         ok: true,
@@ -287,7 +307,10 @@ function inspectRunToken(payload) {
         version: run.version,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
-        timeMs: run.completedAt - run.startedAt
+        timeMs: run.completedAt - run.startedAt,
+        score: run.score,
+        kills: run.kills,
+        accuracy: run.accuracy
     };
 }
 
@@ -318,21 +341,67 @@ function completeRunToken(payload) {
         return { ok: false, error: 'Run token expired' };
     }
 
-    const completedAt = run.completedAt || now;
+    // Already completed: return locked stats; do not accept a rewrite.
+    if (run.completedAt) {
+        if (!Number.isFinite(run.score) || !Number.isFinite(run.kills) || !Number.isFinite(run.accuracy)) {
+            return { ok: false, error: 'Run is missing locked stats' };
+        }
+
+        return {
+            ok: true,
+            runId,
+            version: run.version,
+            completedAt: run.completedAt,
+            timeMs: run.completedAt - run.startedAt,
+            score: run.score,
+            kills: run.kills,
+            accuracy: run.accuracy
+        };
+    }
+
+    const completedAt = now;
     const timeMs = completedAt - run.startedAt;
     if (timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
         return { ok: false, error: 'Implausible run completion time' };
     }
 
+    const stats = parseRunStats(payload);
+    if (!stats) {
+        return { ok: false, error: 'Invalid run stats' };
+    }
+    if (!isPlausibleCompletedRun({ timeMs, ...stats })) {
+        return { ok: false, error: 'Implausible run stats' };
+    }
+
     run.completedAt = completedAt;
+    run.score = stats.score;
+    run.kills = stats.kills;
+    run.accuracy = stats.accuracy;
 
     return {
         ok: true,
         runId,
         version: run.version,
         completedAt,
-        timeMs
+        timeMs,
+        score: stats.score,
+        kills: stats.kills,
+        accuracy: stats.accuracy
     };
+}
+
+function parseRunStats(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const score = Math.round(Number(payload.score));
+    const kills = Math.round(Number(payload.kills));
+    const accuracy = Math.round(Number(payload.accuracy));
+
+    if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
+    if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
+    if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
+
+    return { score, kills, accuracy };
 }
 
 function pruneExpiredRuns() {
@@ -359,18 +428,28 @@ function isPlausibleCompletedRun(entry) {
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
     if (entry.score < BOSS_SCORE) return false;
 
+    if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
+
     const regularKills = Math.max(0, entry.kills - 1);
     const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
+
+    if (entry.kills === 1 && entry.score > BOSS_SCORE + MAX_POWERUP_BONUS_SCORE) return false;
 
     return true;
 }
 
 function getClientKey(req) {
-    const forwardedFor = String(req.headers['x-forwarded-for'] || '')
-        .split(',')[0]
-        .trim();
-    return forwardedFor || req.socket.remoteAddress || 'unknown';
+    // Only honor X-Forwarded-For when explicitly behind a trusted reverse proxy.
+    // Otherwise clients can spoof the header and bypass the run rate limit.
+    if (process.env.TRUST_PROXY === '1') {
+        const forwardedFor = String(req.headers['x-forwarded-for'] || '')
+            .split(',')[0]
+            .trim();
+        if (forwardedFor) return forwardedFor;
+    }
+
+    return req.socket.remoteAddress || 'unknown';
 }
 
 function allowRunRequest(clientKey) {

@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS leaderboard_runs (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     completed_at TEXT,
-    used_at TEXT
+    used_at TEXT,
+    score INTEGER,
+    kills INTEGER,
+    accuracy INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS leaderboard_runs_expiry_idx

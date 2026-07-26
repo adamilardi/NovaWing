@@ -1507,12 +1507,17 @@ function hitBoss(bullet, bossSprite) {
 }
 
 function hitPlayer(player, enemy) {
+    // During i-frames the ship phases through contacts — do not grant free kills/score.
+    if (!canApplyPlayerContactDamage(this)) return;
+
     // Ramming a splitter still ruptures it into drones.
     destroyEnemy.call(this, enemy, { allowSplit: true });
     damagePlayer.call(this);
 }
 
 function hitObstacle(player, obstacle) {
+    if (!canApplyPlayerContactDamage(this)) return;
+
     const obstacleX = obstacle.x;
     const obstacleY = obstacle.y;
     releaseSprite(obstacle);
@@ -1804,8 +1809,15 @@ function hitPlayerShot(player, enemyBullet) {
 
 function hitBossCollision(player, bossSprite) {
     if (!bossSprite.active) return;
+    if (!canApplyPlayerContactDamage(this)) return;
     createExplosion(this, player.x + 34, player.y, 18);
     damagePlayer.call(this);
+}
+
+function canApplyPlayerContactDamage(scene) {
+    if (levelEnded || victoryPending) return false;
+    if (!scene || !scene.time) return false;
+    return scene.time.now >= playerInvulnerableUntil;
 }
 
 function damagePlayer() {
@@ -3384,6 +3396,7 @@ function defeatBoss(bossSprite) {
     flashVignette(this, 0xffcc55, 0.55);
     sfx.explosion(1.4, bossX);
 
+    // Award boss kill before locking run stats on the server (final level only).
     enemiesKilled++;
     score += isFinalLevel ? 2500 : 1500;
     refillBoost(this, BOOST_MAX, bossX, bossY);
@@ -3400,7 +3413,12 @@ function defeatBoss(bossSprite) {
 
     victoryPending = true;
     const completionTimeMs = this.time.now - levelStartTime;
-    completeRunOnServer(completionTimeMs);
+    completeRunOnServer({
+        timeMs: completionTimeMs,
+        score,
+        kills: enemiesKilled,
+        accuracy: getRunAccuracy()
+    });
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
     sfx.victory();
     this.time.delayedCall(650, () => {
@@ -4636,7 +4654,13 @@ function startRunOnServer() {
     return runTokenPromise;
 }
 
-function completeRunOnServer(completionTimeMs) {
+function getRunAccuracy() {
+    return shotsFired > 0
+        ? Math.min(100, Math.round((shotsHit / shotsFired) * 100))
+        : 0;
+}
+
+function completeRunOnServer(stats = {}) {
     currentRunOfficialTimeMs = null;
 
     if (!window.fetch) {
@@ -4647,6 +4671,11 @@ function completeRunOnServer(completionTimeMs) {
     const requestId = runRequestSequence;
     // Capture the run id for this attempt so a restart mid-flight cannot swap tokens.
     const tokenPromise = runTokenPromise || Promise.resolve(currentRunId);
+    const score = Math.round(Number(stats.score));
+    const kills = Math.round(Number(stats.kills));
+    const accuracy = Math.round(Number(
+        Number.isFinite(stats.accuracy) ? stats.accuracy : getRunAccuracy()
+    ));
 
     runCompletePromise = tokenPromise
         .then(runId => {
@@ -4663,7 +4692,9 @@ function completeRunOnServer(completionTimeMs) {
                 body: JSON.stringify({
                     version: GAME_VERSION,
                     runId,
-                    timeMs: completionTimeMs
+                    score,
+                    kills,
+                    accuracy
                 })
             }).then(response => ({ response, runId }));
         })
@@ -4706,7 +4737,13 @@ function submitLeaderboard(entry) {
         return Promise.resolve(result);
     }
 
-    const completionPromise = runCompletePromise || completeRunOnServer(entry.timeMs);
+    // Prefer the completion started at final boss defeat (stats already locked there).
+    const completionPromise = runCompletePromise || completeRunOnServer({
+        timeMs: entry.timeMs,
+        score: entry.score,
+        kills: entry.kills,
+        accuracy: entry.accuracy
+    });
 
     return completionPromise.then(completion => {
         if (!completion) {
@@ -4716,14 +4753,8 @@ function submitLeaderboard(entry) {
             return result;
         }
 
-        // Prefer server-measured time and the verified run id from completion.
-        const officialTimeMs = Math.round(Number(completion.timeMs));
-        const verifiedEntry = {
-            ...entry,
-            timeMs: Number.isFinite(officialTimeMs) && officialTimeMs > 0
-                ? officialTimeMs
-                : entry.timeMs
-        };
+        // Prefer server-locked stats from run completion; name still comes from the player.
+        const verifiedEntry = mergeCompletionStats(entry, completion);
         const runId = typeof completion.runId === 'string' && completion.runId
             ? completion.runId
             : currentRunId;
@@ -4761,13 +4792,27 @@ function submitLeaderboard(entry) {
     });
 }
 
+function mergeCompletionStats(entry, completion) {
+    const officialTimeMs = Math.round(Number(completion.timeMs));
+    const officialScore = Math.round(Number(completion.score));
+    const officialKills = Math.round(Number(completion.kills));
+    const officialAccuracy = Math.round(Number(completion.accuracy));
+
+    return {
+        ...entry,
+        timeMs: Number.isFinite(officialTimeMs) && officialTimeMs > 0
+            ? officialTimeMs
+            : entry.timeMs,
+        score: Number.isFinite(officialScore) ? officialScore : entry.score,
+        kills: Number.isFinite(officialKills) ? officialKills : entry.kills,
+        accuracy: Number.isFinite(officialAccuracy) ? officialAccuracy : entry.accuracy
+    };
+}
+
 function createLeaderboardPayload(entry, runId = currentRunId) {
+    // Combat stats are locked on the run row; only name + token are needed to post.
     return {
         name: entry.name,
-        timeMs: entry.timeMs,
-        score: entry.score,
-        kills: entry.kills,
-        accuracy: entry.accuracy,
         version: GAME_VERSION,
         runId
     };
@@ -4832,9 +4877,7 @@ function endLevel(title, color, options = {}) {
         bossHealthFill = null;
     }
 
-    const accuracy = shotsFired > 0
-        ? Math.min(100, Math.round((shotsHit / shotsFired) * 100))
-        : 0;
+    const accuracy = getRunAccuracy();
     const completionTimeMs = options.completionTimeMs || Math.max(0, this.time.now - levelStartTime);
     const completed = Boolean(options.completed);
     const playerName = completed ? promptForPlayerName() : null;

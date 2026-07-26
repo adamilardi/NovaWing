@@ -8,24 +8,25 @@ const BOSS_SCORE = 2500;
 // Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
 const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
+const MIN_MS_PER_KILL = 200;
 
 export async function onRequest(context) {
     const { request, env } = context;
 
     if (request.method === 'OPTIONS') {
-        return new Response(null, { status: 204, headers: corsHeaders() });
+        return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
     if (request.method === 'GET') {
         const version = getRequestVersion(request);
         const entries = await getLeaderboard(env.DB, version);
-        return jsonResponse({ version, entries });
+        return jsonResponse(request, { version, entries });
     }
 
     if (request.method !== 'POST') {
         return new Response('Method not allowed', {
             status: 405,
-            headers: { Allow: 'GET, POST, OPTIONS' }
+            headers: { Allow: 'GET, POST, OPTIONS', ...corsHeaders(request) }
         });
     }
 
@@ -33,45 +34,34 @@ export async function onRequest(context) {
     try {
         payload = await readJson(request);
     } catch (err) {
-        return jsonResponse({ error: err.message || 'Invalid request' }, err.statusCode || 400);
+        return jsonResponse(request, { error: err.message || 'Invalid request' }, err.statusCode || 400);
     }
 
-    // Validate the completed run first; only burn the token after the entry checks out.
+    // Stats were locked at run completion. Leaderboard POST may only choose a name.
     const runValidation = await inspectRunToken(env.DB, payload);
     if (!runValidation.ok) {
-        return jsonResponse({ error: runValidation.error }, 400);
+        return jsonResponse(request, { error: runValidation.error }, 400);
     }
 
     const entry = normalizeEntry({
-        ...payload,
+        name: payload.name,
         version: runValidation.version,
         timeMs: runValidation.timeMs,
+        score: runValidation.score,
+        kills: runValidation.kills,
+        accuracy: runValidation.accuracy,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
 
     if (!entry || !isPlausibleCompletedRun(entry)) {
-        return jsonResponse({ error: 'Invalid leaderboard entry' }, 400);
+        return jsonResponse(request, { error: 'Invalid leaderboard entry' }, 400);
     }
 
-    const consumed = await markRunTokenUsed(env.DB, runValidation.runId);
+    const consumed = await consumeRunTokenAndInsert(env.DB, runValidation.runId, entry);
     if (!consumed.ok) {
-        return jsonResponse({ error: consumed.error }, 400);
+        return jsonResponse(request, { error: consumed.error }, 400);
     }
-
-    await env.DB.prepare(`
-        INSERT INTO leaderboard_entries (id, game_version, name, time_ms, score, kills, accuracy, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-        entry.id,
-        entry.version,
-        entry.name,
-        entry.timeMs,
-        entry.score,
-        entry.kills,
-        entry.accuracy,
-        entry.createdAt
-    ).run();
 
     const rankedEntries = await getRankedEntries(env.DB, entry.version);
     const rank = rankedEntries.findIndex(candidate => candidate.id === entry.id) + 1;
@@ -79,10 +69,15 @@ export async function onRequest(context) {
 
     await pruneLeaderboard(env.DB);
 
-    return jsonResponse({ entry, rank, version: entry.version, entries }, 201);
+    return jsonResponse(request, { entry, rank, version: entry.version, entries }, 201);
 }
 
 async function readJson(request) {
+    const contentLength = Number(request.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+        throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
+    }
+
     const body = await request.text();
     // Compare UTF-8 byte length, not JS string length (multi-byte names can under-count).
     if (new TextEncoder().encode(body).length > MAX_REQUEST_BODY_BYTES) {
@@ -147,7 +142,7 @@ async function inspectRunToken(db, payload) {
     const now = Date.now();
 
     const result = await db.prepare(`
-        SELECT id, game_version, created_at, expires_at, used_at, completed_at
+        SELECT id, game_version, created_at, expires_at, used_at, completed_at, score, kills, accuracy
         FROM leaderboard_runs
         WHERE id = ?
     `).bind(runId).first();
@@ -160,8 +155,14 @@ async function inspectRunToken(db, payload) {
     const startedAt = Date.parse(result.created_at);
     const completedAt = Date.parse(result.completed_at);
     const timeMs = completedAt - startedAt;
+    const score = Number(result.score);
+    const kills = Number(result.kills);
+    const accuracy = Number(result.accuracy);
     if (!Number.isFinite(timeMs) || timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
         return { ok: false, error: 'Implausible run completion time' };
+    }
+    if (!Number.isFinite(score) || !Number.isFinite(kills) || !Number.isFinite(accuracy)) {
+        return { ok: false, error: 'Run is missing locked stats' };
     }
 
     return {
@@ -170,22 +171,65 @@ async function inspectRunToken(db, payload) {
         version: result.game_version,
         startedAt,
         completedAt,
-        timeMs
+        timeMs,
+        score,
+        kills,
+        accuracy
     };
 }
 
-async function markRunTokenUsed(db, runId) {
-    const update = await db.prepare(`
-        UPDATE leaderboard_runs
-        SET used_at = ?
-        WHERE id = ? AND used_at IS NULL AND completed_at IS NOT NULL
-    `).bind(new Date().toISOString(), runId).run();
+/**
+ * Mark the run token used and insert the leaderboard row in one D1 batch
+ * (transactional). The INSERT is gated on the exact used_at stamp so a
+ * concurrent loser cannot insert after losing the mark race.
+ */
+async function consumeRunTokenAndInsert(db, runId, entry) {
+    const usedAt = new Date().toISOString();
 
-    if (!update.meta || update.meta.changes !== 1) {
-        return { ok: false, error: 'Invalid or expired run token' };
+    try {
+        const results = await db.batch([
+            db.prepare(`
+                UPDATE leaderboard_runs
+                SET used_at = ?
+                WHERE id = ? AND used_at IS NULL AND completed_at IS NOT NULL
+            `).bind(usedAt, runId),
+            db.prepare(`
+                INSERT INTO leaderboard_entries (
+                    id, game_version, name, time_ms, score, kills, accuracy, created_at
+                )
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM leaderboard_runs
+                    WHERE id = ? AND used_at = ? AND completed_at IS NOT NULL
+                )
+            `).bind(
+                entry.id,
+                entry.version,
+                entry.name,
+                entry.timeMs,
+                entry.score,
+                entry.kills,
+                entry.accuracy,
+                entry.createdAt,
+                runId,
+                usedAt
+            )
+        ]);
+
+        const markResult = results[0];
+        const insertResult = results[1];
+        if (!markResult || !markResult.meta || markResult.meta.changes !== 1) {
+            return { ok: false, error: 'Invalid or expired run token' };
+        }
+        if (!insertResult || !insertResult.meta || insertResult.meta.changes !== 1) {
+            return { ok: false, error: 'Failed to save leaderboard entry' };
+        }
+
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: 'Failed to save leaderboard entry' };
     }
-
-    return { ok: true };
 }
 
 function normalizeEntry(entry) {
@@ -231,9 +275,13 @@ function isPlausibleCompletedRun(entry) {
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
     if (entry.score < BOSS_SCORE) return false;
 
+    if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
+
     const regularKills = Math.max(0, entry.kills - 1);
     const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
+
+    if (entry.kills === 1 && entry.score > BOSS_SCORE + MAX_POWERUP_BONUS_SCORE) return false;
 
     return true;
 }
@@ -252,21 +300,35 @@ function sanitizeName(value) {
     return cleaned || 'Pilot';
 }
 
-function jsonResponse(payload, status = 200) {
+function jsonResponse(request, payload, status = 200) {
     return new Response(JSON.stringify(payload), {
         status,
         headers: {
-            ...corsHeaders(),
+            ...corsHeaders(request),
             'Content-Type': 'application/json; charset=utf-8',
             'Cache-Control': 'no-store'
         }
     });
 }
 
-function corsHeaders() {
+function corsHeaders(request) {
+    // Same-origin browser clients do not need CORS. Only echo a same-origin
+    // Origin so third-party sites cannot call the API from a page context.
+    const origin = request && request.headers ? request.headers.get('Origin') : null;
+    if (!origin) return {};
+
+    try {
+        const requestUrl = new URL(request.url);
+        const originUrl = new URL(origin);
+        if (originUrl.origin !== requestUrl.origin) return {};
+    } catch (err) {
+        return {};
+    }
+
     return {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Vary': 'Origin'
     };
 }
