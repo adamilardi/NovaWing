@@ -114,17 +114,24 @@ async function recordEpisode(browser, episodeIndex) {
             if (snap && snap.ready && snap.player && status.input && !snap.levelTransitioning) {
                 const obs = encodeObservation(snap);
                 const action = encodeAction(status.input);
+                const dur = snap.levelDurationMs || 60000;
+                const progNorm = dur > 0
+                    ? Math.min(1, (snap.levelProgressMs || 0) / dur)
+                    : 0;
                 steps.push({
                     obs: Array.from(obs),
                     action,
                     reward: 0,
                     meta: {
                         t: snap.time || 0,
+                        elapsedMs: snap.elapsedMs != null ? snap.elapsedMs : null,
                         level: snap.level || 1,
                         phase: snap.phase || 'waves',
                         score: snap.score || 0,
                         lives: snap.lives || 0,
-                        progress: snap.levelProgressMs || 0
+                        progress: progNorm,
+                        levelProgressMs: snap.levelProgressMs || 0,
+                        levelDurationMs: dur
                     }
                 });
             }
@@ -185,6 +192,10 @@ async function main() {
                 DEMO_DIR,
                 `demo-${stamp()}-ep${String(i).padStart(2, '0')}${ep.won ? '-win' : ''}.jsonl`
             );
+            const clearMs = ep.samples.length
+                ? (ep.samples[ep.samples.length - 1].meta.elapsedMs
+                    ?? Math.round(ep.elapsedSec * 1000))
+                : Math.round(ep.elapsedSec * 1000);
             const header = {
                 type: 'header',
                 obsVersion: OBS_VERSION,
@@ -196,7 +207,10 @@ async function main() {
                 maxLevel: ep.maxLevel,
                 peakScore: ep.peakScore,
                 steps: ep.steps,
+                elapsedSec: ep.elapsedSec,
+                elapsedMs: clearMs,
                 level: process.env.LEVEL || null,
+                expert: process.env.EXPERT || 'heuristic',
                 createdAt: new Date().toISOString()
             };
             const lines = [JSON.stringify(header)];

@@ -10,5 +10,6 @@ cloudflare.env
 .bot-runs/
 rl/demos/
 rl/weights/
+# keep tracked placeholders only if added later
 __pycache__/
 *.pyc

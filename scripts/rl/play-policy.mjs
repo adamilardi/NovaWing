@@ -320,16 +320,35 @@ async function main() {
             await page.waitForTimeout(100);
         }
 
+        const elapsedMs = finalSnap && finalSnap.elapsedMs != null
+            ? finalSnap.elapsedMs
+            : (Date.now() - started);
         const result = {
             won,
             score: finalSnap ? finalSnap.score : null,
             lives: finalSnap ? finalSnap.lives : null,
             level: finalSnap ? finalSnap.level : null,
             phase: finalSnap ? finalSnap.phase : null,
-            elapsedMs: finalSnap ? finalSnap.elapsedMs : null
+            elapsedMs: Math.round(elapsedMs),
+            elapsedSec: Number((elapsedMs / 1000).toFixed(2)),
+            // Speedrun key metric: wall/game clear time when won
+            clearSec: won ? Number((elapsedMs / 1000).toFixed(2)) : null
         };
         console.log('\n======== POLICY RUN ========');
         console.log(JSON.stringify(result, null, 2));
+        if (won) {
+            console.log(`SPEEDRUN CLEAR: ${result.clearSec}s  score=${result.score}`);
+        }
+        // Append to eval log for the train loop / speedrun tracking
+        try {
+            const boardPath = path.join(ROOT, 'rl', 'weights', 'eval-log.jsonl');
+            fs.mkdirSync(path.dirname(boardPath), { recursive: true });
+            fs.appendFileSync(boardPath, JSON.stringify({
+                at: new Date().toISOString(),
+                policy: POLICY_PATH,
+                ...result
+            }) + '\n');
+        } catch (_) { /* ignore */ }
         process.exitCode = won ? 0 : 2;
     } finally {
         await page.evaluate(() => {
