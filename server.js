@@ -27,7 +27,13 @@ const runRequestLog = new Map();
 let leaderboardWriteQueue = Promise.resolve();
 
 function isPublicRequest(requestPath) {
-    if (requestPath === '/index.html' || requestPath === '/game.js') return true;
+    if (
+        requestPath === '/index.html' ||
+        requestPath === '/game.js' ||
+        requestPath === '/levels.js'
+    ) {
+        return true;
+    }
     return /^\/assets\/[\w.-]+\.(png|jpe?g)$/i.test(requestPath);
 }
 

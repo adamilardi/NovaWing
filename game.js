@@ -37,32 +37,26 @@ const config = {
 const game = new Phaser.Game(config);
 
 const GAME_VERSION = '1.0.0';
-const LEVEL_DURATION_MS = 60000;
-const TOTAL_LEVELS = 2;
+// Level catalog lives in levels.js (loaded before this file). Adding a level
+// is: append defineLevel({...}) to LEVEL_DEFS there — TOTAL_LEVELS follows.
+const LEVEL_DURATION_MS = (typeof window !== 'undefined' && window.NovaWingLevels
+    ? window.NovaWingLevels.DEFAULT_DURATION_MS
+    : 60000);
+const TOTAL_LEVELS = (typeof window !== 'undefined' && window.TOTAL_LEVELS) || 1;
 const WALL_SLICE_WIDTH = 96;
 const WALL_SCROLL_SPEED = -128;
 const WALL_MIN_BLOCK_HEIGHT = 18;
 const WALL_TEXTURE_FALLBACK_SIZE = 40;
-// Pre-place corridor slices so Level 2 is a canyon from the first frame.
+// Pre-place corridor slices so canyon levels open as a tunnel from frame one.
 // ~92px step slightly under WALL_SLICE_WIDTH so columns overlap (no sky gaps).
 const WALL_SEED_XS = [140, 232, 324, 416, 508, 600, 692, 784, 876];
 // How far ahead (by level progress) to flash dead-end warnings before a route seals.
 const PATH_WARNING_LEAD_MS = 3800;
 const PATH_WARNING_MIN_CLOSE_HEIGHT = 70;
-// Level 2 is taller than the viewport so flying up/down reveals new routes.
-const LEVEL_2_WORLD_HEIGHT = 1500;
-const LEVEL_2_DURATION_MS = 90000;
 // Camera soft-follow on tall levels (deadzone keeps micro-dodges from panning).
 const CAMERA_DEADZONE_Y = 78;
 const CAMERA_LOOKAHEAD_Y = 0.11;
 const CAMERA_FOLLOW_RATE = 0.011;
-// Named corridor bands in world Y (roomy enough for the ship to weave).
-// Slightly wider openings than the first draft so vertical dodges feel fair.
-const LEVEL_2_PATHS = {
-    top: [70, 400],
-    mid: [530, 930],
-    bot: [1060, 1430]
-};
 const ENEMY_FIRE_CHANCE = 0.42;
 const REGULAR_ENEMY_SPEED = -155;
 const INTERCEPTOR_ENEMY_SPEED = -245;
@@ -106,6 +100,8 @@ const BOSS_LASER_ACTIVE_MS = 540;
 const BOSS_LASER_DELAY_MIN_MS = 4200;
 const BOSS_LASER_DELAY_MAX_MS = 5600;
 const PLAYER_DAMAGE_COOLDOWN_MS = 900;
+// Slightly longer i-frames for automated play-test pilots only.
+const PLAYTEST_BOT_DAMAGE_COOLDOWN_MS = 1200;
 const FIRST_WAVE_DELAY_MS = 650;
 const WAVE_INTERVAL_MIN_MS = 1650;
 const WAVE_INTERVAL_MAX_MS = 2300;
@@ -165,152 +161,13 @@ const BAKED_SPRITE_ASSETS = {
     powerupRepair: { path: 'assets/powerup-repair.png', sourceKey: 'powerupRepairSource' },
     powerupBoost: { path: 'assets/powerup-boost.png', sourceKey: 'powerupBoostSource' },
     powerupBomb: { path: 'assets/powerup-bomb.png', sourceKey: 'powerupBombSource' },
-    // Crystal asteroid canyon walls for Level 2 corridors.
+    // Crystal asteroid canyon walls for corridor levels.
     wall: { path: 'assets/wall.png', sourceKey: 'wallSource' }
 };
-// Fixed powerup beats along the wave phase (by level progress, not wall-clock).
-// Weapon upgrades are early and readable so the player can plan routes.
-const POWERUP_SPAWNS_LEVEL_1 = [
-    { progressMs: 4000, type: 'weapon', y: 200 },
-    { progressMs: 10000, type: 'boost', y: 420 },
-    { progressMs: 16000, type: 'weapon', y: 320 },
-    { progressMs: 22000, type: 'shield', y: 160 },
-    { progressMs: 28000, type: 'repair', y: 440 },
-    { progressMs: 34000, type: 'bomb', y: 280 },
-    { progressMs: 40000, type: 'boost', y: 180 },
-    { progressMs: 46000, type: 'weapon', y: 360 },
-    { progressMs: 52000, type: 'shield', y: 240 }
-];
-// Level 2 powerups sit in corridor centers so collecting them means picking a path.
-const POWERUP_SPAWNS_LEVEL_2 = [
-    { progressMs: 5000, type: 'weapon', y: pathCenter('mid') },
-    { progressMs: 14000, type: 'boost', y: pathCenter('top') },
-    { progressMs: 22000, type: 'shield', y: pathCenter('bot') },
-    { progressMs: 32000, type: 'repair', y: pathCenter('mid') },
-    { progressMs: 42000, type: 'weapon', y: pathCenter('top') },
-    { progressMs: 42000, type: 'bomb', y: pathCenter('bot') },
-    { progressMs: 55000, type: 'boost', y: pathCenter('top') },
-    { progressMs: 55000, type: 'shield', y: pathCenter('mid') },
-    { progressMs: 68000, type: 'weapon', y: pathCenter('bot') },
-    { progressMs: 78000, type: 'repair', y: pathCenter('mid') }
-];
-// Legacy alias for any external references.
-const POWERUP_SPAWNS = POWERUP_SPAWNS_LEVEL_1;
 
-// Authored Level 2 corridor slices in world space (taller than the screen).
-// Flying up/down pans the camera and reveals alternate routes.
-const LEVEL_2_PATH_EVENTS = buildLevel2PathEvents();
-
-const LEVEL_DEFS = [
-    {
-        id: 1,
-        name: 'OPEN SPACE',
-        durationMs: LEVEL_DURATION_MS,
-        worldHeight: GAME_HEIGHT,
-        cameraFollowY: false,
-        startY: 300,
-        powerups: POWERUP_SPAWNS_LEVEL_1,
-        wavePatternKeys: null, // all patterns
-        hasPathWalls: false,
-        bossHealth: BOSS_MAX_HEALTH
-    },
-    {
-        id: 2,
-        name: 'THE CANYON',
-        durationMs: LEVEL_2_DURATION_MS,
-        worldHeight: LEVEL_2_WORLD_HEIGHT,
-        cameraFollowY: true,
-        startY: pathCenter('mid'),
-        powerups: POWERUP_SPAWNS_LEVEL_2,
-        // Dense asteroid walls fight the authored corridors; keep maneuver patterns.
-        wavePatternKeys: [
-            'diagonal',
-            'oppositeInterceptors',
-            'chaser',
-            'vFormation',
-            'pincer',
-            'swarm',
-            'sandwich',
-            'splitterPair',
-            'splitterAmbush'
-        ],
-        hasPathWalls: true,
-        pathEvents: LEVEL_2_PATH_EVENTS,
-        bossHealth: Math.round(BOSS_MAX_HEALTH * 1.15)
-    }
-];
-
-function pathBand(name) {
-    const band = LEVEL_2_PATHS[name];
-    return band ? [band[0], band[1]] : [200, 400];
-}
-
-function pathCenter(name) {
-    const band = pathBand(name);
-    return Math.round((band[0] + band[1]) * 0.5);
-}
-
-function bandsFor(...names) {
-    return names.map(pathBand);
-}
-
-function buildLevel2PathEvents() {
-    const events = [];
-    // Step sized so slices slightly overlap at WALL_SCROLL_SPEED (continuous walls).
-    const pushStretch = (startMs, durationMs, openBands, stepMs = 700) => {
-        for (let t = startMs; t < startMs + durationMs; t += stepMs) {
-            events.push({
-                progressMs: t,
-                openBands: openBands.map(band => [band[0], band[1]])
-            });
-        }
-    };
-
-    // Continuous connectors so the player can climb/dive into newly revealed routes.
-    const topMidShaft = [[pathBand('top')[0], pathBand('mid')[1]]];
-    const midBotShaft = [[pathBand('mid')[0], pathBand('bot')[1]]];
-    const fullShaft = [[pathBand('top')[0], pathBand('bot')[1]]];
-
-    // 0–12s: roomy mid intro — seeded walls cover the first seconds on-screen.
-    pushStretch(0, 6000, bandsFor('mid'), 700);
-    pushStretch(6200, 4800, [[500, 980]], 700);
-
-    // 12–24s: shaft opens upward — fly up and the camera reveals the high road.
-    pushStretch(11500, 3800, topMidShaft, 680);
-    pushStretch(15800, 3200, bandsFor('top', 'mid'), 680);
-    pushStretch(19500, 6000, bandsFor('top'), 660);
-
-    // 26–42s: drop back, then open a shaft downward into the deep route.
-    pushStretch(26000, 3200, topMidShaft, 680);
-    pushStretch(29700, 3600, bandsFor('mid'), 700);
-    pushStretch(33800, 3600, midBotShaft, 680);
-    pushStretch(38000, 3200, bandsFor('mid', 'bot'), 680);
-    pushStretch(41800, 5800, bandsFor('bot'), 660);
-
-    // 48–62s: full multi-path choice — three lanes, camera follows your pick.
-    pushStretch(48200, 3200, fullShaft, 680);
-    pushStretch(52000, 9800, bandsFor('top', 'mid', 'bot'), 660);
-
-    // 62–78s: force vertical travel with shafts between exclusive routes.
-    pushStretch(62400, 2800, topMidShaft, 680);
-    pushStretch(65800, 4400, bandsFor('top'), 660);
-    pushStretch(70800, 2800, fullShaft, 680);
-    pushStretch(74200, 4800, bandsFor('bot'), 660);
-
-    // 79–90s: pre-boss funnel back to mid (camera settles for the fight).
-    pushStretch(79600, 3200, midBotShaft, 700);
-    pushStretch(83400, 5600, bandsFor('mid'), 700);
-
-    events.sort((a, b) => a.progressMs - b.progressMs);
-    return events;
-}
-
-function getLevelDef(levelId) {
-    return LEVEL_DEFS[(levelId || 1) - 1] || LEVEL_DEFS[0];
-}
-
-function getLevelWorldHeight(levelId) {
-    return getLevelDef(levelId).worldHeight || GAME_HEIGHT;
+// Level registry (LEVEL_DEFS / getLevelDef / TOTAL_LEVELS) is provided by levels.js.
+if (typeof getLevelDef !== 'function' || !LEVEL_DEFS || !LEVEL_DEFS.length) {
+    console.error('NovaWing: levels.js must load before game.js');
 }
 const MOVEMENT_INPUTS = {
     up: {
@@ -1029,7 +886,9 @@ function create() {
     audioMuted = loadAudioMuted();
     sfx.setMuted(audioMuted);
     score = 0;
-    lives = 3;
+    // Automated play-test sessions (`?bot=…`) get a small life buffer so the
+    // pilot can clear the campaign without changing normal player balance.
+    lives = isPlaytestBotSession() ? 5 : 3;
     weaponLevel = 1;
     hasShield = false;
     shieldVisual = null;
@@ -1825,7 +1684,10 @@ function damagePlayer() {
 
     const now = this.time.now;
     if (now < playerInvulnerableUntil) return;
-    playerInvulnerableUntil = now + PLAYER_DAMAGE_COOLDOWN_MS;
+    const cooldown = isPlaytestBotSession()
+        ? PLAYTEST_BOT_DAMAGE_COOLDOWN_MS
+        : PLAYER_DAMAGE_COOLDOWN_MS;
+    playerInvulnerableUntil = now + cooldown;
 
     if (hasShield) {
         hasShield = false;
@@ -2411,7 +2273,7 @@ function getObstacleVariant(variantKey) {
 function spawnScheduledPowerups() {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
 
-    const powerupsPlan = getLevelDef(currentLevel).powerups || POWERUP_SPAWNS;
+    const powerupsPlan = getLevelDef(currentLevel).powerups || [];
     while (
         nextPowerupIndex < powerupsPlan.length &&
         levelProgressMs >= powerupsPlan[nextPowerupIndex].progressMs
@@ -3093,8 +2955,10 @@ function startBossFight() {
     deactivateGroup(enemyBullets);
 
     const levelDef = getLevelDef(currentLevel);
-    // Boss arena sits in the mid lane on tall levels so the fight is readable.
-    const bossArenaY = levelDef.cameraFollowY ? pathCenter('mid') : 300;
+    // Prefer authored bossArenaY (falls back to startY via defineLevel).
+    const bossArenaY = Number.isFinite(levelDef.bossArenaY)
+        ? levelDef.bossArenaY
+        : (Number.isFinite(levelDef.startY) ? levelDef.startY : 300);
     if (player && player.active) {
         player.setPosition(120, bossArenaY);
         player.setVelocity(0, 0);
@@ -3486,6 +3350,13 @@ function startLevel(levelId, options = {}) {
     lastWavePatternKey = null;
     playerInvulnerableUntil = this.time.now + 1500;
 
+    // Play-test bot: top up lives between stages so mid-campaign deaths after a
+    // hard boss fight don't make later levels un-testable.
+    if (isPlaytestBotSession()) {
+        lives = Math.max(lives, 4);
+        updateLivesText();
+    }
+
     if (player && player.active) {
         const startY = Number.isFinite(levelDef.startY) ? levelDef.startY : 300;
         player.setPosition(120, startY);
@@ -3504,8 +3375,8 @@ function startLevel(levelId, options = {}) {
         ? 'DEBUG: LEVEL ' + currentLevel
         : 'LEVEL ' + currentLevel + ': ' + levelDef.name;
     showFloatingText(this, 400, 130, banner, '#66f6ff', { screenSpace: true });
-    if (currentLevel >= 2) {
-        showFloatingText(this, 400, 170, 'FLY UP / DOWN TO REVEAL PATHS', '#ffcc55', { screenSpace: true });
+    if (levelDef.introHint) {
+        showFloatingText(this, 400, 170, levelDef.introHint, '#ffcc55', { screenSpace: true });
     }
     flashVignette(this, 0x66f6ff, 0.35);
     sfx.startMusic('waves');
@@ -3531,6 +3402,16 @@ function getDebugStartLevel() {
         // Ignore bad query strings; fall back to level 1.
     }
     return 1;
+}
+
+/** True when Playwright / automated pilot loaded the page with `?bot=…`. */
+function isPlaytestBotSession() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        return params.has('bot');
+    } catch (error) {
+        return false;
+    }
 }
 
 function updateLevelText() {
@@ -5785,8 +5666,12 @@ function getBotSnapshot() {
         time: game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0].time.now : 0,
         phase: gamePhase,
         levelEnded: Boolean(levelEnded),
+        levelTransitioning: Boolean(levelTransitioning),
         victoryPending: Boolean(victoryPending),
+        playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,
         level: typeof currentLevel === 'number' ? currentLevel : 1,
+        totalLevels: typeof TOTAL_LEVELS === 'number' ? TOTAL_LEVELS : 1,
+        levelName: levelDef && levelDef.name ? levelDef.name : null,
         levelProgressMs: typeof levelProgressMs === 'number' ? levelProgressMs : 0,
         levelDurationMs: (levelDef && levelDef.durationMs) ||
             (typeof LEVEL_DURATION_MS === 'number' ? LEVEL_DURATION_MS : 60000),

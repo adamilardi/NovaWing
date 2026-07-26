@@ -1,0 +1,258 @@
+/**
+ * NovaWing level definitions + authoring helpers.
+ *
+ * HOW TO ADD A LEVEL
+ * ------------------
+ * 1. Append a new object to LEVEL_DEFS below (use defineLevel for defaults).
+ * 2. Optionally use pathHelpers() + buildPathEvents() for canyon corridors.
+ * 3. TOTAL_LEVELS is derived from LEVEL_DEFS.length — no other constant to bump.
+ * 4. Wave keys must match ENEMY_WAVE_PATTERNS in game.js (null = all patterns).
+ * 5. Powerups are scheduled by level progressMs (boost-warped time), not wall clock.
+ *
+ * Level shape (all optional fields have defaults via defineLevel):
+ *   id, name, durationMs, worldHeight, cameraFollowY, startY, bossArenaY,
+ *   powerups[{ progressMs, type, y?, x? }], wavePatternKeys[string]|null,
+ *   hasPathWalls, pathEvents[{ progressMs, openBands:[[top,bot],...] }],
+ *   paths{ name:[top,bot] }, bossHealth, introHint
+ */
+(function (root) {
+    'use strict';
+
+    const GAME_HEIGHT = 600;
+    const DEFAULT_DURATION_MS = 60000;
+    const DEFAULT_BOSS_HEALTH = 240;
+
+    /**
+     * Fill in defaults so a new level only needs the fields that matter.
+     * @param {object} def
+     * @returns {object}
+     */
+    function defineLevel(def) {
+        const startY = Number.isFinite(def.startY) ? def.startY : 300;
+        return {
+            id: def.id,
+            name: def.name || ('LEVEL ' + def.id),
+            durationMs: Number.isFinite(def.durationMs) ? def.durationMs : DEFAULT_DURATION_MS,
+            worldHeight: Number.isFinite(def.worldHeight) ? def.worldHeight : GAME_HEIGHT,
+            cameraFollowY: Boolean(def.cameraFollowY),
+            startY: startY,
+            bossArenaY: Number.isFinite(def.bossArenaY) ? def.bossArenaY : startY,
+            powerups: Array.isArray(def.powerups) ? def.powerups : [],
+            // null / omitted => all wave patterns available in game.js
+            wavePatternKeys: def.wavePatternKeys == null ? null : def.wavePatternKeys.slice(),
+            hasPathWalls: Boolean(def.hasPathWalls),
+            pathEvents: Array.isArray(def.pathEvents) ? def.pathEvents : null,
+            paths: def.paths || null,
+            bossHealth: Number.isFinite(def.bossHealth) ? def.bossHealth : DEFAULT_BOSS_HEALTH,
+            introHint: def.introHint || null
+        };
+    }
+
+    /**
+     * Named corridor bands for a tall / canyon level.
+     * @param {Record<string, [number, number]>} paths
+     */
+    function pathHelpers(paths) {
+        function band(name) {
+            const b = paths[name];
+            return b ? [b[0], b[1]] : [200, 400];
+        }
+        function center(name) {
+            const b = band(name);
+            return Math.round((b[0] + b[1]) * 0.5);
+        }
+        function bands() {
+            const names = Array.prototype.slice.call(arguments);
+            return names.map(band);
+        }
+        /** Continuous open range from the top of `from` to the bottom of `to`. */
+        function shaft(from, to) {
+            return [[band(from)[0], band(to)[1]]];
+        }
+        return { band: band, center: center, bands: bands, shaft: shaft };
+    }
+
+    /**
+     * Expand authored corridor stretches into discrete wall-slice events.
+     * Each stretch: { startMs, durationMs, openBands, stepMs? }
+     * @param {Array<object>} stretches
+     * @returns {Array<{progressMs:number, openBands:number[][]}>}
+     */
+    function buildPathEvents(stretches) {
+        const events = [];
+        (stretches || []).forEach(function (stretch) {
+            const stepMs = stretch.stepMs || 700;
+            const startMs = stretch.startMs || 0;
+            const durationMs = stretch.durationMs || 0;
+            const openBands = stretch.openBands || [[120, 480]];
+            for (let t = startMs; t < startMs + durationMs; t += stepMs) {
+                events.push({
+                    progressMs: t,
+                    openBands: openBands.map(function (band) {
+                        return [band[0], band[1]];
+                    })
+                });
+            }
+        });
+        events.sort(function (a, b) {
+            return a.progressMs - b.progressMs;
+        });
+        return events;
+    }
+
+    // -------------------------------------------------------------------------
+    // Level 1 — open space (classic horizontal shmup)
+    // -------------------------------------------------------------------------
+    const LEVEL_1 = defineLevel({
+        id: 1,
+        name: 'OPEN SPACE',
+        durationMs: 60000,
+        worldHeight: GAME_HEIGHT,
+        cameraFollowY: false,
+        startY: 300,
+        bossArenaY: 300,
+        bossHealth: DEFAULT_BOSS_HEALTH,
+        wavePatternKeys: null,
+        hasPathWalls: false,
+        powerups: [
+            { progressMs: 4000, type: 'weapon', y: 200 },
+            { progressMs: 10000, type: 'boost', y: 420 },
+            { progressMs: 16000, type: 'weapon', y: 320 },
+            { progressMs: 22000, type: 'shield', y: 160 },
+            { progressMs: 28000, type: 'repair', y: 440 },
+            { progressMs: 34000, type: 'bomb', y: 280 },
+            { progressMs: 40000, type: 'boost', y: 180 },
+            { progressMs: 46000, type: 'weapon', y: 360 },
+            { progressMs: 52000, type: 'shield', y: 240 }
+        ]
+    });
+
+    // -------------------------------------------------------------------------
+    // Level 2 — tall crystal canyon with authored multi-path walls
+    // -------------------------------------------------------------------------
+    const CANYON_PATHS = {
+        top: [70, 400],
+        mid: [530, 930],
+        bot: [1060, 1430]
+    };
+    const canyon = pathHelpers(CANYON_PATHS);
+    const topMidShaft = canyon.shaft('top', 'mid');
+    const midBotShaft = canyon.shaft('mid', 'bot');
+    const fullShaft = canyon.shaft('top', 'bot');
+
+    const LEVEL_2 = defineLevel({
+        id: 2,
+        name: 'THE CANYON',
+        durationMs: 90000,
+        worldHeight: 1500,
+        cameraFollowY: true,
+        startY: canyon.center('mid'),
+        bossArenaY: canyon.center('mid'),
+        bossHealth: Math.round(DEFAULT_BOSS_HEALTH * 1.15),
+        introHint: 'FLY UP / DOWN TO REVEAL PATHS',
+        // Dense asteroid walls fight the authored corridors; keep maneuver patterns.
+        wavePatternKeys: [
+            'diagonal',
+            'oppositeInterceptors',
+            'chaser',
+            'vFormation',
+            'pincer',
+            'swarm',
+            'sandwich',
+            'splitterPair',
+            'splitterAmbush'
+        ],
+        hasPathWalls: true,
+        paths: CANYON_PATHS,
+        powerups: [
+            { progressMs: 5000, type: 'weapon', y: canyon.center('mid') },
+            { progressMs: 14000, type: 'boost', y: canyon.center('top') },
+            { progressMs: 22000, type: 'shield', y: canyon.center('bot') },
+            { progressMs: 32000, type: 'repair', y: canyon.center('mid') },
+            { progressMs: 42000, type: 'weapon', y: canyon.center('top') },
+            { progressMs: 42000, type: 'bomb', y: canyon.center('bot') },
+            { progressMs: 55000, type: 'boost', y: canyon.center('top') },
+            { progressMs: 55000, type: 'shield', y: canyon.center('mid') },
+            { progressMs: 68000, type: 'weapon', y: canyon.center('bot') },
+            { progressMs: 78000, type: 'repair', y: canyon.center('mid') }
+        ],
+        pathEvents: buildPathEvents([
+            // 0–12s: roomy mid intro — seeded walls cover the first seconds on-screen.
+            { startMs: 0, durationMs: 6000, openBands: canyon.bands('mid'), stepMs: 700 },
+            { startMs: 6200, durationMs: 4800, openBands: [[500, 980]], stepMs: 700 },
+            // 12–24s: shaft opens upward — fly up and the camera reveals the high road.
+            { startMs: 11500, durationMs: 3800, openBands: topMidShaft, stepMs: 680 },
+            { startMs: 15800, durationMs: 3200, openBands: canyon.bands('top', 'mid'), stepMs: 680 },
+            { startMs: 19500, durationMs: 6000, openBands: canyon.bands('top'), stepMs: 660 },
+            // 26–42s: drop back, then open a shaft downward into the deep route.
+            { startMs: 26000, durationMs: 3200, openBands: topMidShaft, stepMs: 680 },
+            { startMs: 29700, durationMs: 3600, openBands: canyon.bands('mid'), stepMs: 700 },
+            { startMs: 33800, durationMs: 3600, openBands: midBotShaft, stepMs: 680 },
+            { startMs: 38000, durationMs: 3200, openBands: canyon.bands('mid', 'bot'), stepMs: 680 },
+            { startMs: 41800, durationMs: 5800, openBands: canyon.bands('bot'), stepMs: 660 },
+            // 48–62s: full multi-path choice — three lanes, camera follows your pick.
+            { startMs: 48200, durationMs: 3200, openBands: fullShaft, stepMs: 680 },
+            { startMs: 52000, durationMs: 9000, openBands: canyon.bands('top', 'mid', 'bot'), stepMs: 660 },
+            // 62–78s: emphasize routes without ever sealing the player in.
+            // Mid stays open as a highway so vertical travel is optional, not mandatory death.
+            { startMs: 61200, durationMs: 2400, openBands: fullShaft, stepMs: 680 },
+            { startMs: 63800, durationMs: 5000, openBands: canyon.bands('top', 'mid'), stepMs: 660 },
+            { startMs: 69000, durationMs: 2400, openBands: fullShaft, stepMs: 680 },
+            { startMs: 71600, durationMs: 5000, openBands: canyon.bands('mid', 'bot'), stepMs: 660 },
+            { startMs: 76800, durationMs: 2800, openBands: fullShaft, stepMs: 680 },
+            // 79–90s: pre-boss funnel back to mid (camera settles for the fight).
+            { startMs: 79800, durationMs: 2800, openBands: topMidShaft, stepMs: 700 },
+            { startMs: 82800, durationMs: 6200, openBands: canyon.bands('mid'), stepMs: 700 }
+        ])
+    });
+
+    // Registry — append new defineLevel(...) results here.
+    const LEVEL_DEFS = [LEVEL_1, LEVEL_2];
+    const TOTAL_LEVELS = LEVEL_DEFS.length;
+
+    function getLevelDef(levelId) {
+        const index = (levelId || 1) - 1;
+        return LEVEL_DEFS[index] || LEVEL_DEFS[0];
+    }
+
+    function getLevelWorldHeight(levelId) {
+        return getLevelDef(levelId).worldHeight || GAME_HEIGHT;
+    }
+
+    /**
+     * Center Y of a named path on a level that defines `paths`.
+     * Falls back to startY / 300 when the name is missing.
+     */
+    function getLevelPathCenter(levelId, pathName) {
+        const def = getLevelDef(levelId);
+        if (def.paths && def.paths[pathName]) {
+            const band = def.paths[pathName];
+            return Math.round((band[0] + band[1]) * 0.5);
+        }
+        return Number.isFinite(def.startY) ? def.startY : 300;
+    }
+
+    const api = {
+        GAME_HEIGHT: GAME_HEIGHT,
+        DEFAULT_DURATION_MS: DEFAULT_DURATION_MS,
+        DEFAULT_BOSS_HEALTH: DEFAULT_BOSS_HEALTH,
+        LEVEL_DEFS: LEVEL_DEFS,
+        TOTAL_LEVELS: TOTAL_LEVELS,
+        defineLevel: defineLevel,
+        pathHelpers: pathHelpers,
+        buildPathEvents: buildPathEvents,
+        getLevelDef: getLevelDef,
+        getLevelWorldHeight: getLevelWorldHeight,
+        getLevelPathCenter: getLevelPathCenter
+    };
+
+    root.NovaWingLevels = api;
+
+    // Convenience globals used by game.js (same names as the old inlined API).
+    root.LEVEL_DEFS = LEVEL_DEFS;
+    root.TOTAL_LEVELS = TOTAL_LEVELS;
+    root.getLevelDef = getLevelDef;
+    root.getLevelWorldHeight = getLevelWorldHeight;
+    root.getLevelPathCenter = getLevelPathCenter;
+    root.LEVEL_DURATION_MS = DEFAULT_DURATION_MS;
+})(typeof window !== 'undefined' ? window : globalThis);

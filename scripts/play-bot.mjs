@@ -1,12 +1,12 @@
 /**
- * NovaWing speed-clear bot — Playwright pilot tuned to minimize clear time.
+ * NovaWing play-test bot — Playwright pilot for clearing levels reliably.
  *
- * Strategy:
- *  - Wave phase: boost as much as boost economy allows (progress multiplies up to 1.55x).
- *  - Route for weapon → boost powerups; kill for boost refill.
- *  - Boss phase: track boss Y for DPS, micro-dodge missiles/lasers only when needed.
+ * The decision brain runs *inside* the page (rAF loop) so dodge latency is
+ * one frame, not a Playwright round-trip. Node only logs and waits for outcome.
  *
  *   npm run bot
+ *   npm run bot:campaign
+ *   LEVEL=2 npm run bot
  *   TRIALS=5 npm run bot
  *   HEADLESS=0 RECORD_VIDEO=1 npm run bot
  */
@@ -20,8 +20,9 @@ const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 const HEADLESS = process.env.HEADLESS === '0' ? false
     : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
-const DURATION_MS = Number(process.env.DURATION_MS || 180000);
-const TICK_MS = Number(process.env.TICK_MS || 16);
+// Full campaign (L1 + L2) can take ~3–4 minutes with boost; default wide enough.
+const DURATION_MS = Number(process.env.DURATION_MS || 360000);
+const LOG_MS = Number(process.env.LOG_MS || 2000);
 const SLOW_MO = Number(process.env.SLOW_MO || 0);
 const TRIALS = Math.max(1, Number(process.env.TRIALS || 1));
 const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
@@ -29,458 +30,772 @@ const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
 const SCREENSHOT_DIR = process.env.BOT_SCREENSHOT_DIR ||
     path.join(__dirname, '..', '.bot-runs');
 const RECORD_VIDEO = process.env.RECORD_VIDEO !== '0';
-// Stay left for reaction time; slide right slightly during boss for shot travel.
-const HOME_X = 100;
-const BOSS_X = 165;
-const LANE_COUNT = 20;
 
-function clamp(v, min, max) {
-    return Math.max(min, Math.min(max, v));
-}
+/**
+ * In-page pilot. Serialized into the browser; no Node closures.
+ * Tuned for survival first, then progress (boost), then DPS.
+ */
+/** In-page heuristic pilot (also used by scripts/rl/record-demos.mjs). */
+export function installInPagePilot() {
+    if (window.__novawingPilotInstalled) return true;
 
-function halfSize(entity) {
-    return {
-        hw: Math.max(6, (entity.w || 40) * 0.5),
-        hh: Math.max(6, (entity.h || 40) * 0.5)
-    };
-}
+    const HOME_X = 100;
+    const BOSS_X = 140;
+    const LANE_COUNT = 18;
 
-/** Continuous-time AABB sweep: earliest t in [0,horizon] where boxes overlap. */
-function timeToCollision(px, py, pw, ph, threat, horizon = 2.8) {
-    const { hw: thw, hh: thh } = halfSize(threat);
-    const needX = pw + thw + 8;
-    const needY = ph + thh + 10;
-    const dx0 = threat.x - px;
-    const dy0 = threat.y - py;
-    const vx = threat.vx || 0;
-    const vy = threat.vy || 0;
-
-    if (Math.abs(dx0) <= needX && Math.abs(dy0) <= needY) return 0;
-
-    // Separating-axis entry times for moving threat vs static ship.
-    let tEnter = 0;
-    let tExit = horizon;
-
-    // X axis
-    if (vx === 0) {
-        if (Math.abs(dx0) > needX) return Infinity;
-    } else {
-        const t1 = (-needX - dx0) / vx;
-        const t2 = (needX - dx0) / vx;
-        const tin = Math.min(t1, t2);
-        const tout = Math.max(t1, t2);
-        tEnter = Math.max(tEnter, tin);
-        tExit = Math.min(tExit, tout);
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
     }
 
-    // Y axis
-    if (vy === 0) {
-        if (Math.abs(dy0) > needY) return Infinity;
-    } else {
-        const t1 = (-needY - dy0) / vy;
-        const t2 = (needY - dy0) / vy;
-        const tin = Math.min(t1, t2);
-        const tout = Math.max(t1, t2);
-        tEnter = Math.max(tEnter, tin);
-        tExit = Math.min(tExit, tout);
+    function worldHeight(snap) {
+        return (snap.world && snap.world.height) || 600;
     }
 
-    if (tEnter > tExit || tExit < 0 || tEnter > horizon) return Infinity;
-    return Math.max(0, tEnter);
-}
+    function playBounds(snap) {
+        const wh = worldHeight(snap);
+        if (snap.phase === 'boss' && snap.boss) {
+            const arena = snap.boss.y;
+            return {
+                minY: clamp(arena - 250, 60, wh - 120),
+                maxY: clamp(arena + 250, 120, wh - 60),
+                wh: wh
+            };
+        }
+        if (snap.openBands && snap.openBands.length) {
+            const tops = snap.openBands.map(function (b) { return b[0]; });
+            const bots = snap.openBands.map(function (b) { return b[1]; });
+            return {
+                minY: Math.min.apply(null, tops) + 40,
+                maxY: Math.max.apply(null, bots) - 40,
+                wh: wh
+            };
+        }
+        return { minY: 80, maxY: wh - 80, wh: wh };
+    }
 
-function allThreats(snap) {
-    const out = [];
-    for (const e of snap.enemies || []) {
-        out.push({
-            ...e,
-            kind: 'enemy',
-            h: (e.h || 36) * (e.type === 'interceptor' ? 1.2 : 1)
+    function yInOpenBand(y, snap, pad) {
+        pad = pad == null ? 30 : pad;
+        if (!snap.openBands || !snap.openBands.length) return true;
+        return snap.openBands.some(function (b) {
+            return y >= b[0] + pad && y <= b[1] - pad;
         });
     }
-    for (const o of snap.obstacles || []) out.push({ ...o, kind: 'obstacle' });
-    for (const b of snap.enemyBullets || []) {
-        out.push({
-            ...b,
-            kind: b.isLaser ? 'laser' : 'bullet',
-            w: b.isLaser ? 800 : (b.w || 16),
-            h: b.isLaser ? Math.max(30, b.h || 24) : (b.h || 12)
-        });
-    }
-    for (const w of snap.walls || []) out.push({ ...w, kind: 'wall' });
-    if (snap.boss && snap.boss.active !== false) {
-        // Soft body threat — avoid ramming, not full hitbox for lane scoring.
-        out.push({
-            x: snap.boss.x - 40,
-            y: snap.boss.y,
-            vx: 0,
-            vy: 0,
-            w: Math.max(80, (snap.boss.w || 300) * 0.35),
-            h: Math.max(60, (snap.boss.h || 150) * 0.38),
-            kind: 'boss'
-        });
-    }
-    return out;
-}
 
-function laneYs(snap) {
-    const wh = (snap.world && snap.world.height) || 600;
-    const ys = [];
-    if (snap.openBands && snap.openBands.length) {
-        for (const [top, bot] of snap.openBands) {
-            const innerTop = top + 32;
-            const innerBot = bot - 32;
-            if (innerBot <= innerTop) {
-                ys.push((top + bot) * 0.5);
+    function nearestOpenBandY(y, snap) {
+        if (!snap.openBands || !snap.openBands.length) return y;
+        let best = y;
+        let bestDist = Infinity;
+        for (let i = 0; i < snap.openBands.length; i++) {
+            const top = snap.openBands[i][0];
+            const bot = snap.openBands[i][1];
+            const center = (top + bot) * 0.5;
+            const clamped = clamp(y, top + 40, bot - 40);
+            const dist = Math.abs(y - clamped);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = clamped;
+            }
+            if (!yInOpenBand(y, snap, 20) && Math.abs(y - center) < bestDist + 8) {
+                best = center;
+                bestDist = Math.abs(y - center);
+            }
+        }
+        return best;
+    }
+
+    function halfSize(entity) {
+        return {
+            hw: Math.max(6, (entity.w || 40) * 0.5),
+            hh: Math.max(6, (entity.h || 40) * 0.5)
+        };
+    }
+
+    function timeToCollision(px, py, pw, ph, threat, horizon) {
+        horizon = horizon == null ? 2.6 : horizon;
+        const hs = halfSize(threat);
+        const needX = pw + hs.hw + 8;
+        const needY = ph + hs.hh + 10;
+        const dx0 = threat.x - px;
+        const dy0 = threat.y - py;
+        const vx = threat.vx || 0;
+        const vy = threat.vy || 0;
+
+        if (Math.abs(dx0) <= needX && Math.abs(dy0) <= needY) return 0;
+
+        let tEnter = 0;
+        let tExit = horizon;
+
+        if (vx === 0) {
+            if (Math.abs(dx0) > needX) return Infinity;
+        } else {
+            const t1 = (-needX - dx0) / vx;
+            const t2 = (needX - dx0) / vx;
+            tEnter = Math.max(tEnter, Math.min(t1, t2));
+            tExit = Math.min(tExit, Math.max(t1, t2));
+        }
+
+        if (vy === 0) {
+            if (Math.abs(dy0) > needY) return Infinity;
+        } else {
+            const t1 = (-needY - dy0) / vy;
+            const t2 = (needY - dy0) / vy;
+            tEnter = Math.max(tEnter, Math.min(t1, t2));
+            tExit = Math.min(tExit, Math.max(t1, t2));
+        }
+
+        if (tEnter > tExit || tExit < 0 || tEnter > horizon) return Infinity;
+        return Math.max(0, tEnter);
+    }
+
+    function allThreats(snap) {
+        const out = [];
+        const enemies = snap.enemies || [];
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            out.push(Object.assign({}, e, {
+                kind: 'enemy',
+                h: (e.h || 36) * (e.type === 'interceptor' ? 1.3 : 1)
+            }));
+        }
+        const obstacles = snap.obstacles || [];
+        for (let i = 0; i < obstacles.length; i++) {
+            out.push(Object.assign({}, obstacles[i], { kind: 'obstacle' }));
+        }
+        const bullets = snap.enemyBullets || [];
+        for (let i = 0; i < bullets.length; i++) {
+            const b = bullets[i];
+            out.push(Object.assign({}, b, {
+                kind: b.isLaser ? 'laser' : 'bullet',
+                w: b.isLaser ? 800 : (b.w || 16),
+                h: b.isLaser ? Math.max(30, b.h || 24) : (b.h || 12)
+            }));
+        }
+        const walls = snap.walls || [];
+        for (let i = 0; i < walls.length; i++) {
+            const w = walls[i];
+            out.push(Object.assign({}, w, {
+                kind: 'wall',
+                w: (w.w || 96) + 14,
+                h: (w.h || 40) + 12
+            }));
+        }
+        if (snap.boss && snap.boss.active !== false) {
+            out.push({
+                x: snap.boss.x - 40,
+                y: snap.boss.y,
+                vx: 0,
+                vy: 0,
+                w: Math.max(80, (snap.boss.w || 300) * 0.35),
+                h: Math.max(60, (snap.boss.h || 150) * 0.38),
+                kind: 'boss'
+            });
+        }
+        return out;
+    }
+
+    function powerupValue(pu, snap) {
+        const lives = snap.lives || 0;
+        const low = lives <= 1;
+        if (pu.type === 'repair' && lives <= 2) return low ? 100 : 72;
+        if (pu.type === 'shield' && !snap.hasShield) return low ? 90 : 48;
+        if (pu.type === 'weapon' && snap.weaponLevel < 3) {
+            return low ? 36 : (58 - snap.weaponLevel * 8);
+        }
+        if (pu.type === 'boost' && snap.boostEnergy < 65) return low ? 12 : 38;
+        if (pu.type === 'bomb') return 10;
+        return 4;
+    }
+
+    function scoreLane(y, x, snap, threats) {
+        const p = snap.player;
+        const pw = (p.w || 48) * 0.48;
+        const ph = (p.h || 28) * 0.48;
+        const bounds = playBounds(snap);
+        let score = 0;
+        let minTtc = Infinity;
+
+        if (snap.openBands && snap.openBands.length && !yInOpenBand(y, snap, 24)) {
+            score += 1100;
+            score += Math.abs(y - nearestOpenBandY(y, snap)) * 3;
+        }
+
+        for (let i = 0; i < threats.length; i++) {
+            const t = threats[i];
+            if (t.x < x - 50 && (t.vx || 0) <= 0 && t.kind !== 'laser' && t.kind !== 'wall') continue;
+            if (t.x > x + 700 && t.kind !== 'wall') continue;
+
+            const expanded = Object.assign({}, t);
+            if (t.kind === 'enemy' && t.type === 'interceptor') expanded.h = (t.h || 36) + 48;
+            if (t.kind === 'bullet') {
+                expanded.w = (t.w || 16) + 8;
+                expanded.h = (t.h || 12) + 18;
+            }
+            if (t.kind === 'wall') {
+                expanded.w = (t.w || 96) + 18;
+                expanded.h = (t.h || 40) + 16;
+            }
+
+            const ttc = timeToCollision(x, y, pw, ph, expanded, 2.6);
+            if (ttc < Infinity) {
+                minTtc = Math.min(minTtc, ttc);
+                if (ttc < 0.07) score += 1600;
+                else if (ttc < 0.14) score += 700;
+                else if (ttc < 0.25) score += 360;
+                else if (ttc < 0.4) score += 190;
+                else if (ttc < 0.7) score += 85;
+                else if (ttc < 1.1) score += 34;
+                else score += 12;
+
+                if (t.kind === 'laser') score += 240 / (0.08 + ttc);
+                if (t.kind === 'bullet') score += 110 / (0.12 + ttc);
+                if (t.kind === 'obstacle') score += 60 / (0.18 + ttc);
+                if (t.kind === 'enemy') score += 38 / (0.2 + ttc);
+                if (t.kind === 'wall') score += 160 / (0.1 + ttc);
+                if (t.kind === 'boss') score += 80 / (0.18 + ttc);
+            } else if (t.kind === 'wall') {
+                const dy = Math.abs(t.y - y);
+                const dx = t.x - x;
+                const sepX = pw + (t.w || 96) * 0.5 + 18;
+                if (Math.abs(dx) < sepX) {
+                    const overlapY = (ph + (t.h || 40) * 0.5 + 14) - dy;
+                    if (overlapY > 0) score += overlapY * 10;
+                }
+            }
+        }
+
+        if (minTtc < Infinity) score -= Math.min(minTtc, 2) * 40;
+        else score -= 100;
+
+        // Prefer corridor centers in canyon levels (strong).
+        if (snap.openBands && snap.openBands.length) {
+            const preferred = preferredOpenBands(snap) || snap.openBands;
+            let bestCenterDist = Infinity;
+            for (let i = 0; i < preferred.length; i++) {
+                const c = (preferred[i][0] + preferred[i][1]) * 0.5;
+                bestCenterDist = Math.min(bestCenterDist, Math.abs(y - c));
+            }
+            score += bestCenterDist * 0.35;
+            // Soft penalty for leaving the preferred band entirely.
+            const inPref = preferred.some(function (b) {
+                return y >= b[0] + 45 && y <= b[1] - 45;
+            });
+            if (!inPref) score += 180;
+        } else if ((snap.weaponLevel || 1) < 2) {
+            // Early game: stay mid-screen, avoid top/bottom death traps.
+            score += Math.abs(y - 300) * 0.25;
+        }
+
+        const puGate = (snap.lives || 0) <= 1 ? 0.32 : 0.4;
+        if (minTtc > puGate) {
+            const powerups = snap.powerups || [];
+            for (let i = 0; i < powerups.length; i++) {
+                const pu = powerups[i];
+                if (pu.x < x - 20 || pu.x > x + 500) continue;
+                if (snap.openBands && snap.openBands.length && !yInOpenBand(pu.y, snap, 14)) continue;
+                const dy = Math.abs(pu.y - y);
+                if (dy > 110) continue;
+                const value = powerupValue(pu, snap);
+                score -= value * clamp(1 - dy / 110, 0, 1) * clamp(1 - (pu.x - x) / 500, 0.35, 1);
+            }
+        }
+
+        if (minTtc > 0.5 && snap.phase === 'waves' && (snap.lives || 0) >= 2 && snap.weaponLevel >= 2) {
+            const enemies = snap.enemies || [];
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (e.x < x + 20 || e.x > x + 480) continue;
+                if (e.type === 'splitter' || (e.health || 1) >= 8) continue;
+                const dy = Math.abs(e.y - y);
+                if (dy < 26) score -= 10 * clamp(1 - (e.x - x) / 480, 0.2, 1);
+            }
+        }
+
+        if (snap.phase === 'boss' && snap.boss) {
+            const b = snap.boss;
+            const bodyHalf = (b.h || 150) * 0.22;
+            if (Math.abs(y - b.y) < bodyHalf + 20) score += 150;
+            const trackW = (snap.lives || 0) <= 1 ? 0.22 : 0.48;
+            score += Math.abs(y - b.y) * trackW;
+        }
+
+        if (y < bounds.minY) score += (bounds.minY - y) * 1.6;
+        if (y > bounds.maxY) score += (y - bounds.maxY) * 1.6;
+        score += Math.abs(y - p.y) * 0.03;
+
+        return { score: score, minTtc: minTtc };
+    }
+
+    /** Prefer the band that already contains the player, else the widest corridor. */
+    function preferredOpenBands(snap) {
+        if (!snap.openBands || !snap.openBands.length) return null;
+        const p = snap.player;
+        if (p) {
+            for (let i = 0; i < snap.openBands.length; i++) {
+                const b = snap.openBands[i];
+                if (p.y >= b[0] + 20 && p.y <= b[1] - 20) return [b];
+            }
+        }
+        // Widest band first (safest for canyon travel).
+        let best = snap.openBands[0];
+        let bestW = best[1] - best[0];
+        for (let i = 1; i < snap.openBands.length; i++) {
+            const w = snap.openBands[i][1] - snap.openBands[i][0];
+            if (w > bestW) {
+                best = snap.openBands[i];
+                bestW = w;
+            }
+        }
+        return [best];
+    }
+
+    function laneYs(snap) {
+        const bounds = playBounds(snap);
+        const ys = [];
+        const bands = preferredOpenBands(snap) || snap.openBands;
+        if (bands && bands.length) {
+            for (let i = 0; i < bands.length; i++) {
+                // Stay well inside walls — pad more aggressively than playBounds.
+                const top = bands[i][0] + 50;
+                const bot = bands[i][1] - 50;
+                if (bot <= top) {
+                    ys.push((bands[i][0] + bands[i][1]) * 0.5);
+                    continue;
+                }
+                const mid = (top + bot) * 0.5;
+                // Heavy center bias — canyon walls punish edge hugging.
+                ys.push(mid, mid, mid - 28, mid + 28, mid - 55, mid + 55);
+                const steps = Math.max(2, Math.round((bot - top) / 40));
+                for (let s = 0; s <= steps; s++) {
+                    ys.push(top + (bot - top) * (s / steps));
+                }
+            }
+        } else {
+            // Early weapon: stick near screen center; later sample full height.
+            const early = (snap.weaponLevel || 1) < 2;
+            const lo = early ? 180 : bounds.minY;
+            const hi = early ? 420 : bounds.maxY;
+            for (let i = 0; i < LANE_COUNT; i++) {
+                ys.push(lo + (hi - lo) * (i / (LANE_COUNT - 1)));
+            }
+            ys.push(300, 280, 320);
+        }
+        if (snap.player) {
+            const py = snap.player.y;
+            ys.push(py, py - 24, py + 24, py - 48, py + 48);
+        }
+        return ys.map(function (y) { return clamp(y, 50, bounds.wh - 50); });
+    }
+
+    function pickTarget(snap) {
+        const p = snap.player;
+        const threats = allThreats(snap);
+        const ys = laneYs(snap);
+        const bounds = playBounds(snap);
+        ys.push(p.y);
+
+        if (snap.phase === 'boss' && snap.boss) {
+            for (let d = -170; d <= 170; d += 17) {
+                ys.push(clamp(snap.boss.y + d, bounds.minY, bounds.maxY));
+            }
+        }
+
+        const powerups = snap.powerups || [];
+        for (let i = 0; i < powerups.length; i++) {
+            const pu = powerups[i];
+            if (pu.x > p.x - 30 && pu.x < p.x + 460) {
+                if (!snap.openBands || yInOpenBand(pu.y, snap, 12)) ys.push(pu.y);
+            }
+        }
+
+        const fragile = (snap.lives || 0) <= 1 && !snap.hasShield;
+        const homeX = snap.phase === 'boss' ? BOSS_X : HOME_X;
+        let xOptions;
+        if (snap.phase === 'boss') {
+            xOptions = fragile
+                ? [homeX - 25, homeX - 8, homeX, 110]
+                : [homeX, homeX - 15, homeX + 15, Math.min(185, p.x + 6)];
+        } else {
+            xOptions = [HOME_X, HOME_X + 12, HOME_X + 24, Math.max(72, p.x - 6)];
+        }
+
+        let best = { x: homeX, y: p.y, score: Infinity, minTtc: 0 };
+        for (let yi = 0; yi < ys.length; yi++) {
+            for (let xi = 0; xi < xOptions.length; xi++) {
+                const y = ys[yi];
+                const x = xOptions[xi];
+                const result = scoreLane(y, x, snap, threats);
+                const total = result.score + Math.abs(x - homeX) * 0.04;
+                if (total < best.score) {
+                    best = { x: x, y: y, score: total, minTtc: result.minTtc };
+                }
+            }
+        }
+        if (snap.openBands && snap.openBands.length && !yInOpenBand(best.y, snap, 20)) {
+            best.y = nearestOpenBandY(best.y, snap);
+        }
+        return best;
+    }
+
+    function currentThreat(snap) {
+        const p = snap.player;
+        if (!p) return { ttc: Infinity, dodgeDir: 0, bullets: 0, kind: null };
+        const pw = (p.w || 48) * 0.48;
+        const ph = (p.h || 28) * 0.48;
+        const threats = allThreats(snap);
+        let minTtc = Infinity;
+        let dodgeDir = 0;
+        let bullets = 0;
+        let kind = null;
+
+        for (let i = 0; i < threats.length; i++) {
+            const t = threats[i];
+            if (t.kind === 'bullet' || t.kind === 'laser') bullets += 1;
+            const expanded = Object.assign({}, t);
+            if (t.kind === 'bullet') {
+                expanded.w = (t.w || 16) + 14;
+                expanded.h = (t.h || 12) + 24;
+            }
+            if (t.kind === 'laser') expanded.h = (t.h || 28) + 28;
+            if (t.kind === 'wall') {
+                expanded.w = (t.w || 96) + 12;
+                expanded.h = (t.h || 40) + 14;
+            }
+            const ttc = timeToCollision(p.x, p.y, pw, ph, expanded, 2.4);
+            if (ttc < minTtc) {
+                minTtc = ttc;
+                kind = t.kind;
+                if (t.kind === 'laser' || t.kind === 'bullet' || t.kind === 'enemy' || t.kind === 'wall') {
+                    const predY = t.y + (t.vy || 0) * Math.min(ttc, 0.35);
+                    dodgeDir = predY >= p.y ? -1 : 1;
+                }
+            }
+        }
+
+        const bulletsList = snap.enemyBullets || [];
+        for (let i = 0; i < bulletsList.length; i++) {
+            const b = bulletsList[i];
+            if (b.isLaser) {
+                if (Math.abs(b.y - p.y) < 54) {
+                    minTtc = Math.min(minTtc, 0.04);
+                    dodgeDir = b.y >= p.y ? -1 : 1;
+                    kind = 'laser';
+                }
                 continue;
             }
-            const steps = Math.max(4, Math.round((innerBot - innerTop) / 24));
-            for (let i = 0; i <= steps; i++) {
-                ys.push(innerTop + (innerBot - innerTop) * (i / steps));
-            }
-        }
-    } else {
-        for (let i = 0; i < LANE_COUNT; i++) {
-            ys.push(70 + (wh - 140) * (i / (LANE_COUNT - 1)));
-        }
-    }
-    return ys;
-}
-
-function powerupValue(pu, snap) {
-    const low = (snap.lives || 0) <= 1;
-    if (pu.type === 'weapon' && snap.weaponLevel < 3) return 60 - snap.weaponLevel * 8;
-    if (pu.type === 'boost' && snap.boostEnergy < 70) return low ? 28 : 44;
-    if (pu.type === 'shield' && !snap.hasShield) return low ? 55 : 34;
-    if (pu.type === 'repair' && snap.lives <= 2) return low ? 70 : 42;
-    if (pu.type === 'bomb') return 16;
-    if (pu.type === 'weapon') return 6;
-    return 4;
-}
-
-function scoreLane(y, x, snap, threats) {
-    const p = snap.player;
-    const pw = (p.w || 48) * 0.5;
-    const ph = (p.h || 28) * 0.5;
-    let score = 0;
-    let minTtc = Infinity;
-
-    for (const t of threats) {
-        if (t.x < x - 60 && (t.vx || 0) <= 0 && t.kind !== 'laser' && t.kind !== 'wall') continue;
-        if (t.x > x + 720 && t.kind !== 'wall') continue;
-
-        const expanded = { ...t };
-        if (t.kind === 'enemy' && t.type === 'interceptor') {
-            expanded.h = (t.h || 36) + 40;
-        }
-        if (t.kind === 'bullet' && Math.abs(t.vy || 0) > 50) {
-            expanded.h = (t.h || 12) + 16;
-        }
-
-        const ttc = timeToCollision(x, y, pw, ph, expanded, 2.8);
-        if (ttc < Infinity) {
-            minTtc = Math.min(minTtc, ttc);
-            // Survival cost curve (lower score = better)
-            if (ttc < 0.08) score += 1200;
-            else if (ttc < 0.16) score += 520;
-            else if (ttc < 0.28) score += 280;
-            else if (ttc < 0.45) score += 150;
-            else if (ttc < 0.75) score += 70;
-            else if (ttc < 1.2) score += 28;
-            else score += 10;
-
-            if (t.kind === 'laser') score += 160 / (0.1 + ttc);
-            if (t.kind === 'bullet') score += 70 / (0.15 + ttc);
-            if (t.kind === 'obstacle') score += 45 / (0.2 + ttc);
-            if (t.kind === 'enemy') score += 30 / (0.22 + ttc);
-            if (t.kind === 'wall') score += 70 / (0.18 + ttc);
-            if (t.kind === 'boss') score += 55 / (0.2 + ttc);
-        } else {
-            const dy = Math.abs(t.y - y);
-            const dx = t.x - x;
-            if (dx > -20 && dx < 380 && dy < 70) {
-                score += (70 - dy) * 0.18 * clamp(1 - dx / 380, 0, 1);
-            }
-        }
-    }
-
-    if (minTtc < Infinity) score -= Math.min(minTtc, 2.0) * 32;
-    else score -= 80;
-
-    // Powerup chase when lane is safe enough
-    if (minTtc > 0.35) {
-        for (const pu of snap.powerups || []) {
-            if (pu.x < x - 20 || pu.x > x + 480) continue;
-            const dy = Math.abs(pu.y - y);
-            if (dy > 100) continue;
-            const value = powerupValue(pu, snap);
-            score -= value * clamp(1 - dy / 100, 0, 1) * clamp(1 - (pu.x - x) / 480, 0.35, 1);
-        }
-    }
-
-    // Kill pressure: soft enemies for boost refill; lighter weight early.
-    if (minTtc > 0.45 && snap.phase === 'waves') {
-        const killW = snap.weaponLevel >= 2 ? 1 : 0.45;
-        for (const e of snap.enemies || []) {
-            if (e.x < x + 20 || e.x > x + 520) continue;
-            if ((e.type === 'splitter' || (e.health || 1) >= 8)) continue;
-            const dy = Math.abs(e.y - y);
-            if (dy < 28) score -= 12 * killW * clamp(1 - (e.x - x) / 520, 0.2, 1);
-            else if (dy < 50) score -= 5 * killW * clamp(1 - (e.x - x) / 520, 0.2, 1);
-        }
-    }
-
-    // Boss: track boss Y hard when safe (DPS), dodge body
-    if (snap.phase === 'boss' && snap.boss) {
-        const b = snap.boss;
-        const bodyHalf = (b.h || 150) * 0.22;
-        if (Math.abs(y - b.y) < bodyHalf + 18) score += 110;
-        // Prefer center-line track for max multi-shot hits
-        score += Math.abs(y - b.y) * 0.55;
-        // Slight pocket offset only when under heavy fire
-        if (minTtc < 0.5) {
-            const pockets = [b.y - 95, b.y + 95, b.y - 140, b.y + 140];
-            let best = Infinity;
-            for (const pocket of pockets) {
-                best = Math.min(best, Math.abs(y - clamp(pocket, 90, 510)));
-            }
-            score += best * 0.08;
-        }
-    }
-
-    const wh = (snap.world && snap.world.height) || 600;
-    if (y < 72) score += (72 - y) * 1.1;
-    if (y > wh - 72) score += (y - (wh - 72)) * 1.1;
-    const edgeDist = Math.min(y - 72, wh - 72 - y);
-    if (edgeDist < 40) score += (40 - edgeDist) * 0.35;
-
-    // Mild hysteresis
-    score += Math.abs(y - p.y) * 0.04;
-
-    return { score, minTtc };
-}
-
-function pickTarget(snap) {
-    const p = snap.player;
-    const threats = allThreats(snap);
-    const ys = laneYs(snap);
-    ys.push(p.y);
-
-    if (snap.phase === 'boss' && snap.boss) {
-        // Dense samples around boss for tracking
-        for (let d = -160; d <= 160; d += 20) {
-            ys.push(clamp(snap.boss.y + d, 80, 520));
-        }
-    }
-
-    for (const pu of snap.powerups || []) {
-        if (pu.x > p.x - 30 && pu.x < p.x + 450) ys.push(pu.y);
-    }
-    for (const e of snap.enemies || []) {
-        if (e.x > p.x && e.x < p.x + 400) ys.push(e.y);
-    }
-
-    const homeX = snap.phase === 'boss' ? BOSS_X : HOME_X;
-    const xOptions = snap.phase === 'boss'
-        ? [homeX, homeX - 20, homeX + 25, Math.min(210, p.x + 10)]
-        : [HOME_X, HOME_X + 18, HOME_X + 36, Math.max(70, p.x - 8)];
-
-    let best = { x: homeX, y: p.y, score: Infinity, minTtc: 0 };
-
-    for (const y of ys) {
-        for (const x of xOptions) {
-            const { score, minTtc } = scoreLane(y, x, snap, threats);
-            const total = score + Math.abs(x - homeX) * 0.04;
-            if (total < best.score) {
-                best = { x, y, score: total, minTtc };
-            }
-        }
-    }
-    return best;
-}
-
-let bossWeaveDir = 1;
-let bossWeaveUntil = 0;
-let bossOrbitSign = 1;
-let lastAimY = 300;
-
-/** Threat at the ship's CURRENT position (not a candidate lane). */
-function currentThreat(snap) {
-    const p = snap.player;
-    if (!p) return { ttc: Infinity, dodgeDir: 0, bullets: 0 };
-    const pw = (p.w || 48) * 0.5;
-    const ph = (p.h || 28) * 0.5;
-    const threats = allThreats(snap);
-    let minTtc = Infinity;
-    let dodgeDir = 0;
-    let bullets = 0;
-
-    for (const t of threats) {
-        if (t.kind === 'bullet' || t.kind === 'laser') bullets += 1;
-        // Inflate bullets for reaction margin
-        const expanded = { ...t };
-        if (t.kind === 'bullet') {
-            expanded.w = (t.w || 16) + 10;
-            expanded.h = (t.h || 12) + 18;
-        }
-        if (t.kind === 'laser') {
-            expanded.h = (t.h || 28) + 20;
-        }
-        const ttc = timeToCollision(p.x, p.y, pw, ph, expanded, 2.5);
-        if (ttc < minTtc) {
-            minTtc = ttc;
-            // Step away from threat centerline
-            if (t.kind === 'laser' || t.kind === 'bullet' || t.kind === 'enemy') {
-                dodgeDir = (t.y + (t.vy || 0) * Math.min(ttc, 0.4)) >= p.y ? -1 : 1;
-            }
-        }
-    }
-
-    // Predictive intercept for bullets aimed at us (boss missiles lead)
-    for (const b of snap.enemyBullets || []) {
-        if (b.isLaser) {
-            if (Math.abs(b.y - p.y) < 48) {
-                minTtc = Math.min(minTtc, 0.05);
-                dodgeDir = b.y >= p.y ? -1 : 1;
-            }
-            continue;
-        }
-        const vx = b.vx || -380;
-        if (vx >= -20) continue;
-        if (b.x < p.x - 30 || b.x > p.x + 420) continue;
-        const tHit = (b.x - p.x) / -vx;
-        if (tHit < 0 || tHit > 0.85) continue;
-        const predY = b.y + (b.vy || 0) * tHit;
-        const miss = Math.abs(predY - p.y);
-        if (miss < 46) {
-            const urgency = tHit;
-            if (urgency < minTtc) {
-                minTtc = urgency;
+            const vx = b.vx || -380;
+            if (vx >= -20) continue;
+            if (b.x < p.x - 30 || b.x > p.x + 480) continue;
+            const tHit = (b.x - p.x) / -vx;
+            if (tHit < 0 || tHit > 0.95) continue;
+            const predY = b.y + (b.vy || 0) * tHit;
+            if (Math.abs(predY - p.y) < 52 && tHit < minTtc) {
+                minTtc = tHit;
                 dodgeDir = predY >= p.y ? -1 : 1;
+                kind = 'bullet';
             }
         }
-    }
 
-    return { ttc: minTtc, dodgeDir, bullets };
-}
-
-function decide(snap) {
-    if (!snap || !snap.ready || !snap.player || snap.levelEnded || snap.victoryPending) {
-        return { x: 0, y: 0, fire: false, boost: false, note: 'idle' };
-    }
-
-    const p = snap.player;
-    const target = pickTarget(snap);
-    const here = currentThreat(snap);
-    const dx = target.x - p.x;
-    const dy = target.y - p.y;
-    // Use the tighter of lane-plan TTC and current-position TTC
-    const ttc = Math.min(target.minTtc, here.ttc);
-    const now = snap.time || Date.now();
-    const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil;
-    const lowLives = (snap.lives || 0) <= 1 && !snap.hasShield;
-
-    let ax = 0;
-    let ay = 0;
-    if (dx < -6) ax = -1;
-    else if (dx > 10) ax = 1;
-    if (dy < -4) ay = -1;
-    else if (dy > 4) ay = 1;
-
-    // Hard override: dodge threats at current position first
-    if (here.ttc < 0.55 && here.dodgeDir !== 0) {
-        ay = here.dodgeDir;
-        if (here.ttc < 0.28 && p.x > 80) ax = -1;
-    } else if (ttc < 0.28 && Math.abs(dy) > 2) {
-        ay = dy < 0 ? -1 : 1;
-        if (p.x > 85) ax = -1;
-    }
-
-    if (snap.phase === 'boss' && snap.boss) {
-        const b = snap.boss;
-        const phase = b.phase || 1;
-        const hp = Number.isFinite(b.health) ? b.health : 240;
-        const panic = here.ttc < 0.36 && here.dodgeDir !== 0;
-        const pressured = here.ttc < 0.58 || here.bullets >= 4;
-        const onEdge = p.y < 125 || p.y > 475;
-
-        if (now > bossWeaveUntil) {
-            bossOrbitSign *= -1;
-            bossWeaveUntil = now + (pressured ? 320 : 460);
-        }
-        if (p.y <= 105) bossOrbitSign = 1;
-        if (p.y >= 495) bossOrbitSign = -1;
-
-        if (panic && !onEdge) {
-            ay = here.dodgeDir;
-            if (p.x > 85) ax = -1;
-        } else if (onEdge) {
-            // Edge camping stalls DPS for seconds — force back into the boss band
-            ay = p.y < 300 ? 1 : -1;
-        } else if (invuln) {
-            const err = b.y - p.y;
-            ay = Math.abs(err) > 6 ? (err > 0 ? 1 : -1) : bossOrbitSign * 0.5;
-        } else if (hp > 160) {
-            // Phase 1: glue to boss, micro-weave only
-            const aimY = clamp(b.y + bossOrbitSign * 18, 110, 490);
-            lastAimY = aimY;
-            ay = Math.abs(p.y - aimY) > 7 ? (p.y < aimY ? 1 : -1) : bossOrbitSign * 0.55;
-        } else if (pressured) {
-            // Phase 2/3 under fire: orbit just outside missile lead, still on body
-            const amp = phase >= 3 ? 62 : 48;
-            const aimY = clamp(b.y + bossOrbitSign * amp, 110, 490);
-            lastAimY = aimY;
-            ay = Math.abs(p.y - aimY) > 10 ? (p.y < aimY ? 1 : -1) : bossOrbitSign * 0.7;
-        } else {
-            const aimY = clamp(b.y + bossOrbitSign * 24, 110, 490);
-            lastAimY = aimY;
-            ay = Math.abs(p.y - aimY) > 8 ? (p.y < aimY ? 1 : -1) : bossOrbitSign * 0.5;
+        if (snap.openBands && snap.openBands.length && !yInOpenBand(p.y, snap, 26)) {
+            const target = nearestOpenBandY(p.y, snap);
+            dodgeDir = target >= p.y ? 1 : -1;
+            minTtc = Math.min(minTtc, 0.1);
+            kind = kind || 'wall';
         }
 
-        // Hold DPS X
-        if (p.x < 148) ax = Math.max(ax, 0.7);
-        if (p.x > 205) ax = -1;
-        if (b.x > 750 && p.x < 175) ax = Math.max(ax, 0.35);
-        if (b.x <= 700 && p.x < 155) ax = Math.max(ax, 0.5);
+        return { ttc: minTtc, dodgeDir: dodgeDir, bullets: bullets, kind: kind };
     }
 
-    // --- Boost policy (speed clear) ---
-    let boost = false;
-    const energy = snap.boostEnergy || 0;
-    const locked = snap.boostLocked;
-    if (!locked && energy > 4) {
-        if (snap.phase === 'waves') {
-            // Early weapon: cautious boost (ramming at 470 speed is a common early death).
-            // After wpn2+: push progress hard.
-            const early = snap.weaponLevel < 2;
-            const safeTtc = early ? 0.42 : (lowLives ? 0.32 : 0.18);
-            if (ttc > safeTtc || invuln) boost = true;
-            else if (!early && (snap.lives >= 2 || snap.hasShield) && energy > 45 && ttc > 0.12) {
-                boost = true;
-            }
-            const prog = snap.levelProgressMs || 0;
-            const dur = snap.levelDurationMs || 60000;
-            if (prog > dur * 0.88 && energy > 8 && ttc > 0.14) boost = true;
-        } else if (snap.phase === 'boss') {
-            if (here.ttc < 0.55 || ttc < 0.55) boost = true;
-            else if (Math.abs(p.y - lastAimY) > 50 && energy > 25) boost = true;
-            else if (here.bullets >= 3 && energy > 15) boost = true;
-        }
-    }
-
-    const fire = true;
-
-    const ttcLabel = ttc === Infinity ? 'inf' : ttc.toFixed(2);
-    const prog = snap.levelProgressMs != null
-        ? `${Math.round((snap.levelProgressMs / (snap.levelDurationMs || 60000)) * 100)}%`
-        : '?';
-    return {
-        x: ax,
-        y: ay,
-        fire,
-        boost,
-        note: `ttc=${ttcLabel} cur=${here.ttc === Infinity ? 'inf' : here.ttc.toFixed(2)} bl=${here.bullets} y=${target.y.toFixed(0)} e=${energy.toFixed(0)} p=${prog} w${snap.weaponLevel}`
+    const state = {
+        bossOrbitSign: 1,
+        bossWeaveUntil: 0,
+        lastAimY: 300,
+        holdDodgeDir: 0,
+        holdDodgeUntil: 0,
+        safeY: 300
     };
+
+    /**
+     * Classic shmup gap-finder: pick the Y with max clearance from predicted
+     * bullet / laser / boss-body occupancy in the next ~0.7s.
+     */
+    function safestBossY(snap, preferY) {
+        const p = snap.player;
+        const bounds = playBounds(snap);
+        const bullets = snap.enemyBullets || [];
+        const samples = [];
+        for (let y = bounds.minY; y <= bounds.maxY; y += 14) samples.push(y);
+        samples.push(preferY, p.y, state.safeY);
+        if (snap.boss) {
+            samples.push(snap.boss.y, snap.boss.y - 90, snap.boss.y + 90);
+        }
+
+        let bestY = preferY;
+        let bestScore = -Infinity;
+
+        for (let si = 0; si < samples.length; si++) {
+            const y = clamp(samples[si], bounds.minY, bounds.maxY);
+            let score = 0;
+            // Prefer near boss for DPS, but weakly.
+            if (snap.boss) score -= Math.abs(y - snap.boss.y) * 0.15;
+            score -= Math.abs(y - p.y) * 0.05;
+            score -= Math.abs(y - preferY) * 0.08;
+
+            // Soft boss body
+            if (snap.boss) {
+                const bodyHalf = (snap.boss.h || 150) * 0.24;
+                const bodyDist = Math.abs(y - snap.boss.y);
+                if (bodyDist < bodyHalf + 16) score -= (bodyHalf + 16 - bodyDist) * 6;
+            }
+
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                if (b.isLaser) {
+                    const dy = Math.abs(b.y - y);
+                    if (dy < 40) score -= (40 - dy) * 14;
+                    continue;
+                }
+                const vx = b.vx || -380;
+                if (vx >= -10) continue;
+                // Only care about bullets that will cross our X soon.
+                if (b.x < p.x - 40 || b.x > p.x + 520) continue;
+                const tHit = (b.x - p.x) / -vx;
+                if (tHit < 0 || tHit > 0.85) continue;
+                const predY = b.y + (b.vy || 0) * tHit;
+                const miss = Math.abs(predY - y);
+                if (miss < 48) {
+                    const urgency = 1 / (0.08 + tHit);
+                    score -= (48 - miss) * urgency * 1.6;
+                } else if (miss < 80) {
+                    score -= (80 - miss) * 0.15;
+                }
+            }
+
+            // Edge soft penalty
+            const edge = Math.min(y - bounds.minY, bounds.maxY - y);
+            if (edge < 35) score -= (35 - edge) * 0.8;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestY = y;
+            }
+        }
+        return bestY;
+    }
+
+    function decide(snap) {
+        if (!snap || !snap.ready || !snap.player || snap.levelEnded || snap.victoryPending) {
+            return { x: 0, y: 0, fire: false, boost: false, note: 'idle' };
+        }
+        if (snap.levelTransitioning) {
+            return { x: 0, y: 0, fire: true, boost: false, note: 'transition' };
+        }
+
+        const p = snap.player;
+        let target = pickTarget(snap);
+        // Canyon: hard-bias toward the preferred corridor center so we do not
+        // scrape oncoming wall faces (the only wall contact that costs a life).
+        if (snap.openBands && snap.openBands.length && snap.phase === 'waves') {
+            const pref = preferredOpenBands(snap) || snap.openBands;
+            const band = pref[0];
+            const center = (band[0] + band[1]) * 0.5;
+            const safeTop = band[0] + 55;
+            const safeBot = band[1] - 55;
+            if (target.y < safeTop || target.y > safeBot) {
+                target = Object.assign({}, target, { y: clamp(target.y, safeTop, safeBot) });
+            }
+            // If outside the band entirely, abandon combat aim and return home.
+            if (p.y < band[0] + 30 || p.y > band[1] - 30) {
+                target = Object.assign({}, target, { y: center, x: Math.min(target.x, HOME_X + 10) });
+            }
+        }
+        const here = currentThreat(snap);
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const ttc = Math.min(target.minTtc, here.ttc);
+        const now = snap.time || performance.now();
+        const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil;
+        const lowLives = (snap.lives || 0) <= 1 && !snap.hasShield;
+        const bounds = playBounds(snap);
+
+        let ax = 0;
+        let ay = 0;
+        if (dx < -6) ax = -1;
+        else if (dx > 10) ax = 1;
+        if (dy < -5) ay = -1;
+        else if (dy > 5) ay = 1;
+
+        // Commit to a dodge direction briefly to avoid thrashing.
+        if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+            if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
+                state.holdDodgeDir = here.dodgeDir;
+                state.holdDodgeUntil = now + (here.kind === 'laser' ? 240 : 160);
+            }
+            ay = state.holdDodgeDir;
+            if (here.ttc < 0.3 && p.x > 72) ax = -1;
+            if (here.kind === 'laser' || here.kind === 'wall') {
+                ay = state.holdDodgeDir;
+                if (p.x > 68) ax = -1;
+            }
+        } else if (ttc < 0.24 && Math.abs(dy) > 2) {
+            ay = dy < 0 ? -1 : 1;
+            if (p.x > 82) ax = -1;
+        }
+
+        if (snap.phase === 'boss' && snap.boss) {
+            const b = snap.boss;
+            const hp = Number.isFinite(b.health) ? b.health : 240;
+            const pressured = here.ttc < 0.7 || here.bullets >= 2;
+            const preferY = clamp(
+                b.y + state.bossOrbitSign * (lowLives || hp < 100 ? 70 : 28),
+                bounds.minY + 12,
+                bounds.maxY - 12
+            );
+
+            if (now > state.bossWeaveUntil) {
+                state.bossOrbitSign *= -1;
+                state.bossWeaveUntil = now + (pressured ? 360 : 520);
+            }
+            if (p.y <= bounds.minY + 20) state.bossOrbitSign = 1;
+            if (p.y >= bounds.maxY - 20) state.bossOrbitSign = -1;
+
+            // Always recompute a clearance-based aim Y during boss.
+            const safeY = safestBossY(snap, preferY);
+            state.safeY = safeY;
+            state.lastAimY = safeY;
+
+            if (invuln && here.ttc > 0.4) {
+                // Use i-frames to re-center for DPS.
+                const err = b.y - p.y;
+                ay = Math.abs(err) > 12 ? (err > 0 ? 1 : -1) : 0;
+            } else {
+                const err = safeY - p.y;
+                if (Math.abs(err) > 8) ay = err > 0 ? 1 : -1;
+                else ay = 0;
+            }
+
+            // Immediate laser/bullet override still wins.
+            if (here.ttc < 0.4 && here.dodgeDir !== 0) {
+                ay = here.dodgeDir;
+            }
+
+            // Park left for reaction time; further left when fragile, low HP phase, or storm.
+            const endgame = hp < 80 || here.bullets >= 5;
+            const preferX = (lowLives || endgame || b.x < 520) ? 98 : 130;
+            if (p.x < preferX - 10) ax = 0.5;
+            else if (p.x > preferX + 18) ax = -1;
+            else ax = 0;
+            if (here.ttc < 0.32 && p.x > 78) ax = -1;
+
+            // Don't over-weave into edges during bullet storms.
+            if (endgame && (p.y < bounds.minY + 40 || p.y > bounds.maxY - 40)) {
+                ay = p.y < b.y ? 1 : -1;
+            }
+        }
+
+        // Boost: survival first. No boost until weapon 2 unless near wave end.
+        let boost = false;
+        const energy = snap.boostEnergy || 0;
+        if (!snap.boostLocked && energy > 5) {
+            if (snap.phase === 'waves') {
+                const early = snap.weaponLevel < 2;
+                const corridorTight = snap.openBands && snap.openBands.length === 1;
+                let safeTtc = early ? 0.75 : (lowLives ? 0.45 : 0.26);
+                if (corridorTight) safeTtc += 0.12;
+                const prog = snap.levelProgressMs || 0;
+                const dur = snap.levelDurationMs || 60000;
+                const late = prog > dur * 0.88;
+
+                if (!early && (ttc > safeTtc || invuln)) boost = true;
+                else if (early && late && ttc > 0.6) boost = true;
+                else if (!early && !lowLives && energy > 60 && ttc > 0.22) boost = true;
+                else if (late && energy > 10 && ttc > 0.24) boost = true;
+
+                if (here.kind === 'wall' && here.ttc < 0.55) boost = false;
+                if (here.ttc < 0.2) boost = false;
+                // Never boost while vertically off-corridor (rams the next wall column).
+                if (snap.openBands && snap.openBands.length && !yInOpenBand(p.y, snap, 40)) {
+                    boost = false;
+                }
+            } else if (snap.phase === 'boss') {
+                // Boss: boost mainly for emergency vertical repositioning.
+                if (here.ttc < 0.4) boost = true;
+                else if (Math.abs(p.y - state.safeY) > 70 && energy > 25 && here.ttc > 0.35) boost = true;
+                if (lowLives && here.ttc > 0.5) boost = false;
+            }
+        }
+
+        const aimY = snap.phase === 'boss' ? state.safeY : target.y;
+        const ttcLabel = ttc === Infinity ? 'inf' : ttc.toFixed(2);
+        const prog = snap.levelProgressMs != null
+            ? Math.round((snap.levelProgressMs / (snap.levelDurationMs || 60000)) * 100) + '%'
+            : '?';
+        return {
+            x: ax,
+            y: ay,
+            fire: true,
+            boost: boost,
+            note: 'L' + (snap.level || '?') +
+                ' ttc=' + ttcLabel +
+                ' cur=' + (here.ttc === Infinity ? 'inf' : here.ttc.toFixed(2)) +
+                ' bl=' + here.bullets +
+                ' y=' + aimY.toFixed(0) +
+                ' e=' + energy.toFixed(0) +
+                ' p=' + prog +
+                ' w' + snap.weaponLevel
+        };
+    }
+
+    function tick() {
+        try {
+            if (!window.__novawingDebug || !window.__novawingDebug.getBotSnapshot) return;
+            const snap = window.__novawingDebug.getBotSnapshot();
+            window.__novawingPilotLastSnap = snap;
+            if (!snap || !snap.ready) return;
+            if (snap.levelEnded || snap.victoryPending) {
+                window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
+                window.__novawingPilotOutcome = snap.victoryPending ? 'win' : 'lose';
+                return;
+            }
+            const decision = decide(snap);
+            window.__novawingPilotLastNote = decision.note;
+            const input = {
+                x: decision.x,
+                y: decision.y,
+                fire: decision.fire,
+                boost: decision.boost
+            };
+            window.__novawingPilotLastInput = input;
+            window.__novawingDebug.setBotInput(input);
+        } catch (err) {
+            window.__novawingPilotError = String(err && err.message ? err.message : err);
+        }
+    }
+
+    function loop() {
+        tick();
+        window.__novawingPilotRaf = requestAnimationFrame(loop);
+    }
+
+    // Reset state for each install (new page).
+    state.bossOrbitSign = 1;
+    state.bossWeaveUntil = 0;
+    state.lastAimY = 300;
+    state.holdDodgeDir = 0;
+    state.holdDodgeUntil = 0;
+    window.__novawingPilotOutcome = null;
+    window.__novawingPilotError = null;
+    window.__novawingPilotLastNote = '';
+    window.__novawingPilotLastSnap = null;
+    window.__novawingPilotInstalled = true;
+    window.__novawingPilotStop = function () {
+        if (window.__novawingPilotRaf) cancelAnimationFrame(window.__novawingPilotRaf);
+        window.__novawingPilotRaf = null;
+        if (window.__novawingDebug && window.__novawingDebug.clearBotInput) {
+            window.__novawingDebug.clearBotInput();
+        }
+    };
+    window.__novawingPilotRaf = requestAnimationFrame(loop);
+    return true;
 }
 
 async function waitForGame(page, timeout = 25000) {
@@ -497,7 +812,6 @@ async function runOnce(browser, trialIndex) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('trial', String(trialIndex));
-    // Optional: LEVEL=2 npm run bot to start on the canyon stage.
     if (process.env.LEVEL) {
         url.searchParams.set('level', String(process.env.LEVEL));
     }
@@ -514,7 +828,6 @@ async function runOnce(browser, trialIndex) {
     const page = await context.newPage();
 
     page.on('dialog', async dialog => {
-        // Auto-submit leaderboard name on victory
         if (dialog.type() === 'prompt') await dialog.accept('BotPilot');
         else await dialog.accept();
     });
@@ -525,19 +838,14 @@ async function runOnce(browser, trialIndex) {
 
     await waitForGame(page);
     await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(150);
 
-    const hookOk = await page.evaluate(() => {
-        window.__novawingDebug.setBotInput({ x: 0, y: -1, fire: true, boost: false });
-        const axes = window.__novawingDebug.getMovementAxes();
-        return axes && axes.y < -0.5;
-    });
-    if (!hookOk) console.error('Bot input hook failed');
-    else console.log(`[trial ${trialIndex}] input hook OK`);
+    const installed = await page.evaluate(installInPagePilot);
+    if (!installed) throw new Error('Failed to install in-page pilot');
+    console.log(`[trial ${trialIndex}] in-page pilot installed`);
 
     const started = Date.now();
     let lastLog = 0;
-    let ticks = 0;
     let finalSnap = null;
     let peakScore = 0;
     let peakWeapon = 1;
@@ -545,80 +853,81 @@ async function runOnce(browser, trialIndex) {
     let bossAtMs = null;
     let won = false;
     let maxProgress = 0;
-
-    // Reset weave state per trial
-    bossWeaveDir = 1;
-    bossWeaveUntil = 0;
-    bossOrbitSign = 1;
-    lastAimY = 300;
+    let maxLevel = 1;
+    let bossesCleared = 0;
+    let lastPhase = 'waves';
+    let lastLevel = 1;
+    let ticks = 0;
 
     try {
         while (Date.now() - started < DURATION_MS) {
-            const snap = await page.evaluate(() => window.__novawingDebug.getBotSnapshot());
-            finalSnap = snap;
-            ticks += 1;
-            if (snap && snap.score > peakScore) peakScore = snap.score;
-            if (snap && snap.weaponLevel > peakWeapon) peakWeapon = snap.weaponLevel;
-            if (snap && snap.levelProgressMs > maxProgress) maxProgress = snap.levelProgressMs;
-            if (snap && snap.phase === 'boss' && !reachedBoss) {
-                reachedBoss = true;
-                bossAtMs = snap.elapsedMs || (Date.now() - started);
-            }
-
-            if (!snap || !snap.ready) {
-                await page.waitForTimeout(TICK_MS);
-                continue;
-            }
-
-            if (snap.victoryPending) {
-                won = true;
-                await page.evaluate(() => window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false }));
-                // Allow victory panel + name prompt + submit
-                await page.waitForTimeout(2500);
-                break;
-            }
-
-            if (snap.levelEnded) {
-                won = false;
-                await page.evaluate(() => window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false }));
-                await page.waitForTimeout(600);
-                break;
-            }
-
-            const decision = decide(snap);
-            await page.evaluate((input) => {
-                window.__novawingDebug.setBotInput(input);
-            }, {
-                x: decision.x,
-                y: decision.y,
-                fire: decision.fire,
-                boost: decision.boost
+            const status = await page.evaluate(() => {
+                const snap = window.__novawingPilotLastSnap ||
+                    (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
+                        ? window.__novawingDebug.getBotSnapshot()
+                        : null);
+                return {
+                    snap,
+                    note: window.__novawingPilotLastNote || '',
+                    outcome: window.__novawingPilotOutcome,
+                    error: window.__novawingPilotError
+                };
             });
+            ticks += 1;
+            if (status.error) console.error('[pilot]', status.error);
+            const snap = status.snap;
+            finalSnap = snap;
+
+            if (snap) {
+                if (snap.score > peakScore) peakScore = snap.score;
+                if (snap.weaponLevel > peakWeapon) peakWeapon = snap.weaponLevel;
+                if (snap.levelProgressMs > maxProgress) maxProgress = snap.levelProgressMs;
+                if (snap.level > maxLevel) maxLevel = snap.level;
+                if (lastPhase === 'boss' && snap.phase === 'waves' && snap.level > lastLevel) {
+                    bossesCleared += 1;
+                    console.log(`[bot t${trialIndex}] cleared boss → level ${snap.level}`);
+                }
+                lastPhase = snap.phase;
+                lastLevel = snap.level || lastLevel;
+                if (snap.phase === 'boss' && !reachedBoss) {
+                    reachedBoss = true;
+                    bossAtMs = snap.elapsedMs || (Date.now() - started);
+                }
+            }
+
+            if (status.outcome === 'win' || (snap && snap.victoryPending)) {
+                won = true;
+                await page.waitForTimeout(2000);
+                break;
+            }
+            if (status.outcome === 'lose' || (snap && snap.levelEnded)) {
+                won = false;
+                await page.waitForTimeout(400);
+                break;
+            }
 
             const now = Date.now();
-            if (now - lastLog > 2000) {
-                const el = snap.elapsedMs != null ? (snap.elapsedMs / 1000).toFixed(1) : ((now - started) / 1000).toFixed(1);
-                const bhp = snap.boss && Number.isFinite(snap.boss.health) ? ` hp=${snap.boss.health}` : '';
+            if (snap && now - lastLog > LOG_MS) {
+                const el = snap.elapsedMs != null
+                    ? (snap.elapsedMs / 1000).toFixed(1)
+                    : ((now - started) / 1000).toFixed(1);
+                const bhp = snap.boss && Number.isFinite(snap.boss.health)
+                    ? ` hp=${snap.boss.health}`
+                    : '';
+                const name = snap.levelName ? ` ${snap.levelName}` : '';
                 console.log(
-                    `[bot t${trialIndex}] t=${el}s score=${snap.score} lives=${snap.lives} ` +
-                    `wpn=${snap.weaponLevel} sh=${snap.hasShield ? 1 : 0} phase=${snap.phase}${bhp} ${decision.note}`
+                    `[bot t${trialIndex}] t=${el}s L${snap.level}${name} score=${snap.score} ` +
+                    `lives=${snap.lives} wpn=${snap.weaponLevel} sh=${snap.hasShield ? 1 : 0} ` +
+                    `phase=${snap.phase}${bhp} ${status.note}`
                 );
                 lastLog = now;
             }
 
-            if (TRIALS === 1 && ticks % 250 === 0) {
-                await page.screenshot({
-                    path: path.join(SCREENSHOT_DIR, `tick-${String(ticks).padStart(5, '0')}.png`)
-                }).catch(() => {});
-            }
-
-            await page.waitForTimeout(TICK_MS);
+            await page.waitForTimeout(100);
         }
     } finally {
         await page.evaluate(() => {
-            if (window.__novawingDebug && window.__novawingDebug.clearBotInput) {
-                window.__novawingDebug.clearBotInput();
-            }
+            if (window.__novawingPilotStop) window.__novawingPilotStop();
         }).catch(() => {});
         if (TRIALS === 1 || won) {
             await page.screenshot({
@@ -655,11 +964,14 @@ async function runOnce(browser, trialIndex) {
         trial: trialIndex,
         won,
         reachedBoss,
+        bossesCleared,
+        maxLevel,
         score: finalSnap ? finalSnap.score : peakScore,
         peakScore,
         peakWeapon,
         lives: finalSnap ? finalSnap.lives : null,
         phase: finalSnap ? finalSnap.phase : null,
+        level: finalSnap ? finalSnap.level : null,
         levelEnded: finalSnap ? finalSnap.levelEnded : null,
         victoryPending: finalSnap ? finalSnap.victoryPending : null,
         elapsedMs: Math.round(elapsedMs),
@@ -673,9 +985,10 @@ async function runOnce(browser, trialIndex) {
 }
 
 async function main() {
-    console.log('NovaWing speed-clear bot');
+    console.log('NovaWing play-test bot (in-page pilot)');
     console.log(`URL: ${BASE}`);
-    console.log(`headless=${HEADLESS} trials=${TRIALS} duration=${DURATION_MS}ms tick=${TICK_MS}ms video=${RECORD_VIDEO}`);
+    console.log(`headless=${HEADLESS} trials=${TRIALS} duration=${DURATION_MS}ms video=${RECORD_VIDEO}`);
+    if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
 
     const launchOptions = {
         headless: HEADLESS,
@@ -714,6 +1027,7 @@ async function main() {
         bestWinScore: wins.length ? Math.max(...wins.map(r => r.score)) : null,
         bestAnyScore: Math.max(...results.map(r => r.peakScore)),
         bossReaches: results.filter(r => r.reachedBoss).length,
+        maxLevelReached: Math.max(...results.map(r => r.maxLevel || 1)),
         results
     };
 
@@ -727,11 +1041,15 @@ async function main() {
     console.log(JSON.stringify(summary, null, 2));
     console.log(`Wrote ${path.join(SCREENSHOT_DIR, 'summary.json')}`);
 
-    // Exit 0 if any win (or single trial win); 2 if all losses
     process.exitCode = wins.length ? 0 : 2;
 }
 
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+// Only auto-run when executed directly (not when imported by rl/record-demos).
+const isMain = process.argv[1] &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+    main().catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
+}

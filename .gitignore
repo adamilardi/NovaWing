@@ -1,4 +1,5 @@
 .venv/
+.venv-rl/
 node_modules/
 .wrangler/
 data/
@@ -7,3 +8,7 @@ dist/
 .DS_Store
 cloudflare.env
 .bot-runs/
+rl/demos/
+rl/weights/
+__pycache__/
+*.pyc

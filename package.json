@@ -5,12 +5,16 @@
   "scripts": {
     "start": "node server.js",
     "sprites": "node scripts/generate-sprites.js",
-    "build": "npm run sprites && rm -rf dist && mkdir -p dist && cp index.html game.js dist/ && cp -R assets dist/assets",
-    "check": "node --check server.js && node --check game.js && node --check functions/api/leaderboard.js && node --check functions/api/run.js",
+    "build": "npm run sprites && rm -rf dist && mkdir -p dist && cp index.html levels.js game.js dist/ && cp -R assets dist/assets",
+    "check": "node --check server.js && node --check levels.js && node --check game.js && node --check functions/api/leaderboard.js && node --check functions/api/run.js && node --check scripts/rl/obs-encode.mjs && node --check scripts/rl/policy-infer.mjs",
     "bot": "node scripts/play-bot.mjs",
     "bot:watch": "HEADLESS=0 RECORD_VIDEO=1 node scripts/play-bot.mjs",
     "bot:headed": "HEADLESS=0 node scripts/play-bot.mjs",
     "bot:level2": "LEVEL=2 HEADLESS=1 RECORD_VIDEO=1 node scripts/play-bot.mjs",
+    "bot:campaign": "DURATION_MS=360000 HEADLESS=1 RECORD_VIDEO=0 node scripts/play-bot.mjs",
+    "rl:record": "node scripts/rl/record-demos.mjs",
+    "rl:train": "python3 rl/train_bc.py",
+    "rl:play": "node scripts/rl/play-policy.mjs",
     "db:migrate:local": "wrangler d1 migrations apply novawing-leaderboard --local",
     "db:migrate:remote": "wrangler d1 migrations apply novawing-leaderboard --remote",
     "deploy": "npm run build && wrangler pages deploy dist --project-name novawing"
