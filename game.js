@@ -67,12 +67,18 @@ const CAMERA_DEADZONE_Y = 78;
 const CAMERA_LOOKAHEAD_Y = 0.11;
 const CAMERA_FOLLOW_RATE = 0.011;
 const ENEMY_FIRE_CHANCE = 0.42;
+// L1 regulars fire less often; L2/L3 use the base chance (and interceptors).
+const ENEMY_FIRE_CHANCE_L1 = 0.28;
 const REGULAR_ENEMY_SPEED = -155;
 const INTERCEPTOR_ENEMY_SPEED = -245;
 const INTERCEPTOR_TRACK_SPEED = 175;
 const INTERCEPTOR_TRACK_RESPONSE = 2.35;
 const REGULAR_ENEMY_HEALTH = 2;
 const INTERCEPTOR_ENEMY_HEALTH = 3;
+// Default type mix when a wave doesn't specify: fewer trackers early.
+const INTERCEPTOR_SPAWN_CHANCE_L1 = 0.12;
+const INTERCEPTOR_SPAWN_CHANCE_L2 = 0.26;
+const INTERCEPTOR_SPAWN_CHANCE_DEFAULT = 0.3;
 const SPLITTER_PARENT_HEALTH = 11;
 const SPLITTER_DRONE_HEALTH = 1;
 const SPLITTER_PARENT_SPEED = -118;
@@ -355,8 +361,9 @@ const SPRITES = {
         sourceKey: 'playerVerticalSource',
         path: 'assets/player-vertical.png',
         hasAlpha: true,
-        displayWidth: 56,
-        body: { w: 0.48, h: 0.55, ox: 0.26, oy: 0.18 }
+        // Wider than side-view hull so the pilot craft reads on a tall vertical frame.
+        displayWidth: 72,
+        body: { w: 0.42, h: 0.52, ox: 0.29, oy: 0.20 }
     },
     enemy: {
         sourceKey: 'enemySource',
@@ -2070,6 +2077,13 @@ function getLevelWavePatterns() {
     return filtered;
 }
 
+/** How often unspecified spawns become blue interceptors (difficulty ramp). */
+function getInterceptorSpawnChance() {
+    if (currentLevel <= 1) return INTERCEPTOR_SPAWN_CHANCE_L1;
+    if (currentLevel === 2) return INTERCEPTOR_SPAWN_CHANCE_L2;
+    return INTERCEPTOR_SPAWN_CHANCE_DEFAULT;
+}
+
 function scheduleWavePart(scene, delayMs, callback) {
     if (delayMs <= 0) {
         if (!levelEnded && !levelTransitioning && gamePhase === 'waves') callback();
@@ -2592,7 +2606,7 @@ function spawnEnemy(options = {}) {
     const rawY = ahead.y;
     const y = options.skipPathClamp ? rawY : clampYToOpenBands(rawY);
     const x = ahead.x;
-    const type = options.type || (Math.random() < 0.3 ? 'interceptor' : 'regular');
+    const type = options.type || (Math.random() < getInterceptorSpawnChance() ? 'interceptor' : 'regular');
     const isInterceptor = type === 'interceptor';
     const isSplitter = type === 'splitter';
     const isSplitterDrone = type === 'splitterDrone';
@@ -2628,17 +2642,20 @@ function spawnEnemy(options = {}) {
     applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : REGULAR_ENEMY_SPEED);
     enemy.tracksPlayer = options.tracksPlayer === undefined ? false : Boolean(options.tracksPlayer);
     enemy.shotSpeed = ENEMY_SHOT_SPEED;
-    enemy.shotAimScale = 1.1;
-    enemy.shotMaxDy = 150;
-    enemy.shotMaxDx = 150;
-    enemy.shotCooldownMin = 1400;
-    enemy.shotCooldownMax = 2800;
+    // Red regulars: straight-line shots (no aim / no diagonal "spread").
+    // Blue interceptors keep aim — see isInterceptor block below.
+    enemy.shotAimScale = 0;
+    enemy.shotMaxDy = 0;
+    enemy.shotMaxDx = 0;
+    enemy.shotCooldownMin = currentLevel <= 1 ? 1800 : 1400;
+    enemy.shotCooldownMax = currentLevel <= 1 ? 3200 : 2800;
     enemy.health = Number.isFinite(options.health) ? options.health : REGULAR_ENEMY_HEALTH;
-    enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < ENEMY_FIRE_CHANCE;
+    const fireChance = currentLevel <= 1 ? ENEMY_FIRE_CHANCE_L1 : ENEMY_FIRE_CHANCE;
+    enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < fireChance;
     enemy.nextShotAt = this.time.now + (
         Number.isFinite(options.nextShotDelay)
             ? options.nextShotDelay
-            : Phaser.Math.Between(700, 2200)
+            : Phaser.Math.Between(currentLevel <= 1 ? 1000 : 700, currentLevel <= 1 ? 2600 : 2200)
     );
     // Existing red/blue art faces left; drone concept art faces right.
     enemy.setFlipX(isSplitterDrone);
@@ -2646,20 +2663,35 @@ function spawnEnemy(options = {}) {
 
     if (isInterceptor) {
         applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : INTERCEPTOR_ENEMY_SPEED);
+        // L1 blues still track a little, but aim softer than later levels.
         enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
         enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
-        enemy.shotAimScale = 1.45;
-        enemy.shotMaxDy = 230;
-        enemy.shotMaxDx = 230;
-        enemy.shotCooldownMin = 850;
-        enemy.shotCooldownMax = 1650;
+        if (currentLevel <= 1) {
+            enemy.shotAimScale = 0.55;
+            enemy.shotMaxDy = 90;
+            enemy.shotMaxDx = 90;
+            enemy.shotCooldownMin = 1200;
+            enemy.shotCooldownMax = 2100;
+            enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.55;
+            enemy.nextShotAt = this.time.now + (
+                Number.isFinite(options.nextShotDelay)
+                    ? options.nextShotDelay
+                    : Phaser.Math.Between(700, 1800)
+            );
+        } else {
+            enemy.shotAimScale = 1.45;
+            enemy.shotMaxDy = 230;
+            enemy.shotMaxDx = 230;
+            enemy.shotCooldownMin = 850;
+            enemy.shotCooldownMax = 1650;
+            enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.78;
+            enemy.nextShotAt = this.time.now + (
+                Number.isFinite(options.nextShotDelay)
+                    ? options.nextShotDelay
+                    : Phaser.Math.Between(500, 1450)
+            );
+        }
         enemy.health = Number.isFinite(options.health) ? options.health : INTERCEPTOR_ENEMY_HEALTH;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.78;
-        enemy.nextShotAt = this.time.now + (
-            Number.isFinite(options.nextShotDelay)
-                ? options.nextShotDelay
-                : Phaser.Math.Between(500, 1450)
-        );
     }
 
     if (isSplitter) {
@@ -3417,16 +3449,13 @@ function spawnPowerup(plan = {}) {
 
     const typeKey = plan.type || 'weapon';
     const type = POWERUP_TYPES[typeKey] || POWERUP_TYPES.weapon;
+    const vertical = isVerticalScroll();
     let x;
     let y;
-    if (isVerticalScroll()) {
-        const ahead = spawnAhead({
-            x: plan.x,
-            y: Number.isFinite(plan.y) ? plan.y : -40,
-            defaultX: 400
-        });
-        x = ahead.x;
-        y = ahead.y;
+    if (vertical) {
+        // Drop from above into the playfield (scroll axis is Y).
+        x = Number.isFinite(plan.x) ? plan.x : Phaser.Math.Between(120, 680);
+        y = Number.isFinite(plan.y) ? plan.y : -50;
     } else {
         const rawY = Number.isFinite(plan.y) ? plan.y : pickOpenBandY();
         y = clampYToOpenBands(rawY, 22);
@@ -3438,32 +3467,48 @@ function spawnPowerup(plan = {}) {
     powerup.setTexture(type.texture);
     powerup.powerupType = type.key;
     activateSprite(powerup, x, y);
-    applyApproachSpeed(powerup, -95);
+    // Slightly slower than enemies so pickups stay readable.
+    applyApproachSpeed(powerup, vertical ? -70 : -95);
     updateScrollVelocity(powerup);
     powerup.setAngularVelocity(80);
-    powerup.setDepth(3);
+    powerup.setDepth(5);
     powerup.setBlendMode(Phaser.BlendModes.NORMAL);
-    powerup.setDisplaySize(52, 52);
+    // Larger in vertical mode — easy to spot among dive traffic.
+    const display = vertical ? 64 : 52;
+    powerup.setDisplaySize(display, display);
     // Centered circle on the orb core (source-texture pixels).
     const bodyRadius = Math.max(14, Math.round(powerup.width * 0.30));
     const bodyOffset = Math.round((powerup.width - bodyRadius * 2) / 2);
     powerup.body.setCircle(bodyRadius, bodyOffset, bodyOffset);
 
-    // Gentle bob around the fixed lane so routes stay readable.
-    scene.tweens.add({
-        targets: powerup,
-        y: y + 18,
-        duration: 900,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-    });
+    // Bob on the *perpendicular* axis only — never lock scroll-axis position.
+    // Horizontal: bob Y while scrolling on X. Vertical: bob X while scrolling on Y.
+    // (Previously bob always tweened absolute Y, which pinned vertical pickups off-screen.)
+    if (vertical) {
+        scene.tweens.add({
+            targets: powerup,
+            x: x + 22,
+            duration: 900,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    } else {
+        scene.tweens.add({
+            targets: powerup,
+            y: y + 18,
+            duration: 900,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
     const baseScaleX = powerup.scaleX;
     const baseScaleY = powerup.scaleY;
     scene.tweens.add({
         targets: powerup,
-        scaleX: baseScaleX * 1.1,
-        scaleY: baseScaleY * 1.1,
+        scaleX: baseScaleX * 1.12,
+        scaleY: baseScaleY * 1.12,
         duration: 480,
         yoyo: true,
         repeat: -1,
@@ -3471,15 +3516,15 @@ function spawnPowerup(plan = {}) {
     });
 
     const aura = scene.add.image(x, y, 'glowOrb');
-    aura.setDepth(2);
+    aura.setDepth(4);
     aura.setTint(type.key === 'bomb' ? 0xffcc55
         : type.key === 'shield' ? 0x55ffaa
         : type.key === 'repair' ? 0xff6688
         : type.key === 'boost' ? 0x55ccff
         : 0x66f6ff);
     aura.setBlendMode(Phaser.BlendModes.ADD);
-    aura.setAlpha(0.35);
-    aura.setScale(1.4);
+    aura.setAlpha(vertical ? 0.5 : 0.35);
+    aura.setScale(vertical ? 1.75 : 1.4);
     powerup.aura = aura;
     scene.tweens.add({
         targets: aura,
@@ -4331,6 +4376,24 @@ function enterProgressWaves(scene, segDef) {
     lastWavePatternKey = null;
     if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
     if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
+
+    // Clear any leftover intro boss / bars if we skipped the transition path.
+    if (boss) {
+        if (boss.active) boss.destroy();
+        boss = null;
+    }
+    bossHealth = 0;
+    bossEncounterKey = null;
+    bossEscapeTimeoutAt = 0;
+    if (bossHealthBar) {
+        bossHealthBar.destroy();
+        bossHealthBar = null;
+    }
+    if (bossHealthFill) {
+        bossHealthFill.destroy();
+        bossHealthFill = null;
+    }
+    if (bosses) deactivateGroup(bosses);
 
     if (player && player.active && combatOrientation === 'up') {
         player.setPosition(400, 460);
@@ -6663,8 +6726,15 @@ function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
 function updatePlayerAnimation(scene, time) {
     if (!player || !player.active) return;
 
-    // Vertical mode uses a static upright texture (no horizontal flight sheet).
-    if (combatOrientation === 'up') return;
+    // Vertical mode: never run horizontal flight-sheet anims (they swap textures).
+    if (combatOrientation === 'up') {
+        if (playerAnimationOverride && time >= playerAnimationOverrideUntil) {
+            playerAnimationOverride = null;
+            playerAnimationOverrideUntil = 0;
+        }
+        ensureVerticalPlayerTexture(player);
+        return;
+    }
 
     if (playerAnimationOverride) {
         if (time < playerAnimationOverrideUntil) return;
@@ -6681,6 +6751,25 @@ function updatePlayerAnimation(scene, time) {
 function holdPlayerAnimation(scene, animationKey, durationMs) {
     if (!player || !player.active) return;
 
+    // Hit / powerup / KO poses use the side-view pilot sheet — skip in vertical mode
+    // so the upright craft never flickers back to the old ship.
+    if (combatOrientation === 'up') {
+        ensureVerticalPlayerTexture(player);
+        // Still flash the ship for feedback without texture swap.
+        if (animationKey === PLAYER_ANIMATION_KEYS.hit || animationKey === PLAYER_ANIMATION_KEYS.gameOver) {
+            player.setTint(0xff6688);
+            scene.time.delayedCall(140, () => {
+                if (player && player.active && combatOrientation === 'up') player.clearTint();
+            });
+        } else if (animationKey === PLAYER_ANIMATION_KEYS.powerup) {
+            player.setTint(0x66f6ff);
+            scene.time.delayedCall(160, () => {
+                if (player && player.active && combatOrientation === 'up') player.clearTint();
+            });
+        }
+        return;
+    }
+
     playerAnimationOverride = animationKey;
     playerAnimationOverrideUntil = durationMs === Infinity
         ? Infinity
@@ -6690,6 +6779,13 @@ function holdPlayerAnimation(scene, animationKey, durationMs) {
 
 function playPlayerAnimation(sprite, animationKey, restart = false) {
     if (!sprite || !sprite.active) return;
+
+    // Hard guard: any code path that tries to play sheet anims mid-vertical must no-op.
+    if (combatOrientation === 'up') {
+        ensureVerticalPlayerTexture(sprite);
+        return;
+    }
+
     if (!restart && currentPlayerAnimation === animationKey) return;
 
     currentPlayerAnimation = animationKey;
@@ -6699,6 +6795,25 @@ function playPlayerAnimation(sprite, animationKey, restart = false) {
         sprite.anims.currentAnim && sprite.anims.currentAnim.key === animationKey) {
         sprite.anims.restart();
     }
+}
+
+/** Keep the upright pilot craft texture + body when in top-down mode. */
+function ensureVerticalPlayerTexture(sprite) {
+    if (!sprite || !sprite.active) return;
+    const scene = sprite.scene;
+    if (!scene || !scene.textures || !scene.textures.exists('playerVertical')) return;
+
+    const onVertical = sprite.texture && sprite.texture.key === 'playerVertical';
+    if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
+    if (!onVertical) {
+        sprite.setTexture('playerVertical');
+        currentPlayerAnimation = null;
+    }
+    sprite.setFlipX(false);
+    sprite.setRotation(0);
+    sprite.setAngle(0);
+    const def = SPRITES.playerVertical;
+    applyShipSize(sprite, def.displayWidth, def.body);
 }
 
 function createTransparentTexture(scene, key, sourceKey, crop, options = {}) {
@@ -6823,16 +6938,14 @@ function applyPlayerOrientation(sprite, orientation) {
     const hasVerticalArt = scene && scene.textures && scene.textures.exists('playerVertical');
 
     if (orientation === 'up') {
+        playerAnimationOverride = null;
+        playerAnimationOverrideUntil = 0;
+        currentPlayerAnimation = null;
         if (hasVerticalArt) {
-            if (sprite.anims) sprite.anims.stop();
-            sprite.setTexture('playerVertical');
-            sprite.setFlipX(false);
-            sprite.setRotation(0);
-            sprite.setAngle(0);
-            const def = SPRITES.playerVertical;
-            applyShipSize(sprite, def.displayWidth, def.body);
+            ensureVerticalPlayerTexture(sprite);
         } else {
             // Fallback placeholder: rotate horizontal frames −90°.
+            if (sprite.anims) sprite.anims.stop();
             sprite.setFlipX(true);
             sprite.setRotation(-Math.PI / 2);
             applyPlayerShipSize(sprite);
@@ -6847,11 +6960,18 @@ function applyPlayerOrientation(sprite, orientation) {
             }
         }
     } else {
+        if (sprite.anims) sprite.anims.stop();
         sprite.setFlipX(true);
         sprite.setRotation(0);
         sprite.setAngle(0);
         applyPlayerShipSize(sprite);
-        playPlayerAnimation(sprite, PLAYER_ANIMATION_KEYS.flight);
+        // Force flight sheet anim after leaving vertical texture.
+        currentPlayerAnimation = null;
+        if (combatOrientation !== 'up') {
+            currentPlayerAnimation = null;
+            sprite.play(PLAYER_ANIMATION_KEYS.flight);
+            currentPlayerAnimation = PLAYER_ANIMATION_KEYS.flight;
+        }
     }
 }
 

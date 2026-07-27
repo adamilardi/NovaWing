@@ -119,8 +119,16 @@
         cameraFollowY: false,
         startY: 300,
         bossArenaY: 300,
-        bossHealth: DEFAULT_BOSS_HEALTH,
-        wavePatternKeys: null,
+        // Softer opener — L2/L3 scale boss HP up from DEFAULT.
+        bossHealth: Math.round(DEFAULT_BOSS_HEALTH * 0.9),
+        // Easy patterns only: no walls, pincers, mines, sandwiches, or splitters.
+        wavePatternKeys: [
+            'diagonal',
+            'vFormation',
+            'chaser',
+            'swarm',
+            'oppositeInterceptors'
+        ],
         hasPathWalls: false,
         powerups: [
             { progressMs: 4000, type: 'weapon', y: 200 },

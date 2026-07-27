@@ -1,7 +1,8 @@
 NovaWing Level 3 vertical art (PR4b) — Grok Imagine
 Generated 2026-07-27 from existing horizontal sprites as style refs.
 
-player-vertical.png     Player fighter, nose UP, thrusters DOWN
+player-vertical.png     Pilot craft (pink hair / pink-white hull), nose UP, cyan thrusters DOWN
+                        Style-matched to player-flight-sheet.jpg (not the old blue hull)
 enemy-dart.png          Dive attacker, nose DOWN (from red enemy)
 enemy-riser.png         Climbing enemy, nose UP (from blue interceptor)
 enemy-strafer.png       Wide lateral craft, nose DOWN, side thrusters
