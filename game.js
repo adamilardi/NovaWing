@@ -36,7 +36,7 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-const GAME_VERSION = '1.1.0';
+const GAME_VERSION = '1.1.1';
 // Level catalog lives in levels.js (loaded before this file). Campaign length is
 // live via getTotalLevels() — do not freeze TOTAL_LEVELS for victory/clamps.
 const LEVEL_DURATION_MS = (typeof window !== 'undefined' && window.NovaWingLevels
@@ -139,6 +139,7 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
+// Base touch layout (game coords 800×600). getTouchLayout() may enlarge for phones/tablets.
 const TOUCH_JOYSTICK = {
     x: 118,
     y: 498,
@@ -148,6 +149,11 @@ const TOUCH_JOYSTICK = {
 };
 const TOUCH_FIRE_BTN = { x: 708, y: 508, radius: 52 };
 const TOUCH_BOOST_BTN = { x: 598, y: 508, radius: 42 };
+// Mobile/tablet: auto-fire so thumbs can focus on stick + boost (Fire / Android / A11).
+let mobileAutoFire = false;
+let mobilePerfMode = false;
+let orientationHintText = null;
+let orientationHintShownAt = 0;
 const BOOST_INPUT_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyZ']);
 const BOOST_INPUT_KEYS = new Set(['shift', 'x', 'z']);
 const FIRE_INPUT_CODES = new Set(['Space']);
@@ -173,6 +179,8 @@ const BAKED_SPRITE_ASSETS = {
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
     bossVertical: { path: 'assets/boss-vertical.png', sourceKey: 'bossVerticalSource' },
+    // EHT-style singularity (Imagine) — orange photon ring + cool cyan/violet arcs.
+    blackHole: { path: 'assets/black-hole.png', sourceKey: 'blackHoleSource' },
     powerupWeapon: { path: 'assets/powerup-weapon.png', sourceKey: 'powerupWeaponSource' },
     powerupShield: { path: 'assets/powerup-shield.png', sourceKey: 'powerupShieldSource' },
     powerupRepair: { path: 'assets/powerup-repair.png', sourceKey: 'powerupRepairSource' },
@@ -531,6 +539,7 @@ let blackHolePreview = false;
 let blackHoleConfig = null;
 let hazardRingState = null;
 let blackHoleGfx = null;
+let blackHoleSprite = null;
 let hazardRingGfx = null;
 let blackHoleDust = null;
 let blackHoleLastDangerAt = 0;
@@ -1066,7 +1075,7 @@ function create() {
     hazardRingState = null;
     blackHoleLastDangerAt = 0;
     destroyBlackHoleVisuals();
-    fxQualityTier = 'high';
+    applyMobileDeviceProfile();
     boss = null;
     bossHealth = 0;
     bossNextVolleyAt = 0;
@@ -1156,7 +1165,33 @@ function create() {
     this.events.once('shutdown', () => {
         this.input.off('pointerdown', unlockAudioOnPointer);
     });
+    // Extra pointers for multi-touch stick + fire + boost (Fire / Android).
+    if (this.input && typeof this.input.addPointer === 'function') {
+        this.input.addPointer(3);
+    }
+    // Defer one frame: some WebViews (Silk / Chrome Android) report touch/UA
+    // more reliably after the first paint than mid-create.
+    applyMobileDeviceProfile();
     createTouchControls(this);
+    this.time.delayedCall(0, () => {
+        applyMobileDeviceProfile();
+        if (isMobileOrTabletDevice() && (!touchControls || !touchControls.container)) {
+            createTouchControls(this);
+        }
+        maybeShowOrientationHint(this);
+    });
+    maybeShowOrientationHint(this);
+    if (typeof window !== 'undefined') {
+        const onOrient = () => {
+            maybeShowOrientationHint(this);
+        };
+        window.addEventListener('orientationchange', onOrient);
+        window.addEventListener('resize', onOrient);
+        this.events.once('shutdown', () => {
+            window.removeEventListener('orientationchange', onOrient);
+            window.removeEventListener('resize', onOrient);
+        });
+    }
 
     // UI
     const hudTextStyle = {
@@ -1424,12 +1459,13 @@ function update(time, delta) {
     // Parallax starfield + drifting nebula
     drawBackgroundLayers(this, frameDelta, time);
 
-    // FX quality tier (cheap FPS gate)
+    // FX quality tier (cheap FPS gate). Mobile/Fire stays low unless FPS is excellent.
     if (time >= fxQualityCheckAt) {
         fxQualityCheckAt = time + 2000;
         const fps = this.game && this.game.loop ? this.game.loop.actualFps : 60;
-        if (fps < 50) fxQualityTier = 'low';
-        else if (fps > 57) fxQualityTier = 'high';
+        if (fps < 48) fxQualityTier = 'low';
+        else if (!mobilePerfMode && fps > 57) fxQualityTier = 'high';
+        else if (mobilePerfMode && fps > 55) fxQualityTier = 'high';
     }
 
     // Cleanup (orientation-aware; pads tuned to match pre-PR1 horizontal culls).
@@ -4580,6 +4616,14 @@ function ensureBlackHoleVisuals(scene) {
         blackHoleGfx.setDepth(1);
         blackHoleGfx.setScrollFactor(0);
     }
+    if (!blackHoleSprite && scene.textures && scene.textures.exists('blackHole')) {
+        blackHoleSprite = scene.add.image(400, 260, 'blackHole');
+        blackHoleSprite.setDepth(1);
+        blackHoleSprite.setScrollFactor(0);
+        blackHoleSprite.setBlendMode(Phaser.BlendModes.ADD);
+        blackHoleSprite.setOrigin(0.5, 0.5);
+        blackHoleSprite.setVisible(false);
+    }
     if (!hazardRingGfx) {
         hazardRingGfx = scene.add.graphics();
         hazardRingGfx.setDepth(2);
@@ -4591,6 +4635,10 @@ function destroyBlackHoleVisuals() {
     if (blackHoleGfx) {
         blackHoleGfx.destroy();
         blackHoleGfx = null;
+    }
+    if (blackHoleSprite) {
+        blackHoleSprite.destroy();
+        blackHoleSprite = null;
     }
     if (hazardRingGfx) {
         hazardRingGfx.destroy();
@@ -4712,6 +4760,7 @@ function drawBlackHoleVisuals(scene, time) {
     if (!blackHoleActive && !blackHolePreview) {
         if (blackHoleGfx) blackHoleGfx.clear();
         if (hazardRingGfx) hazardRingGfx.clear();
+        if (blackHoleSprite) blackHoleSprite.setVisible(false);
         return;
     }
     ensureBlackHoleVisuals(scene);
@@ -4719,20 +4768,40 @@ function drawBlackHoleVisuals(scene, time) {
     const anchor = blackHolePreview && !blackHoleActive
         ? (cfg.previewAnchor || { x: 400, y: 40 })
         : { x: cfg.x, y: cfg.y };
-    const pulse = 0.85 + Math.sin((time || 0) * 0.004) * 0.15;
+    const pulse = 0.88 + Math.sin((time || 0) * 0.0035) * 0.12;
+    const t = time || 0;
 
-    blackHoleGfx.clear();
-    // Accretion disc
-    const coreR = blackHoleActive ? 22 : 10;
-    blackHoleGfx.fillStyle(0x000000, 0.95);
-    blackHoleGfx.fillCircle(anchor.x, anchor.y, coreR);
-    blackHoleGfx.lineStyle(3, 0xaa44ff, 0.55 * pulse);
-    blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 10);
-    blackHoleGfx.lineStyle(2, 0x66ccff, 0.35 * pulse);
-    blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 22);
-    if (blackHoleActive && fxQualityTier !== 'low') {
-        blackHoleGfx.lineStyle(1, 0xff66aa, 0.25);
-        blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 40 + Math.sin(time * 0.003) * 6);
+    // Soft dark core under the art (event horizon reads even on ADD blend).
+    if (blackHoleGfx) {
+        blackHoleGfx.clear();
+        const coreR = blackHoleActive ? 36 : 14;
+        blackHoleGfx.fillStyle(0x000000, 0.92);
+        blackHoleGfx.fillCircle(anchor.x, anchor.y, coreR);
+        if (fxQualityTier !== 'low') {
+            blackHoleGfx.fillStyle(0x120818, 0.35);
+            blackHoleGfx.fillCircle(anchor.x, anchor.y, coreR + 18);
+        }
+    }
+
+    // EHT-style photon ring sprite (Imagine asset).
+    if (blackHoleSprite) {
+        blackHoleSprite.setVisible(true);
+        blackHoleSprite.setPosition(anchor.x, anchor.y);
+        const baseDisplay = blackHoleActive ? 280 : 90;
+        const breath = 1 + Math.sin(t * 0.0022) * 0.04;
+        blackHoleSprite.setDisplaySize(baseDisplay * breath, baseDisplay * breath);
+        blackHoleSprite.setAlpha((blackHoleActive ? 0.95 : 0.75) * pulse);
+        blackHoleSprite.setRotation(t * 0.00035);
+        if (fxQualityTier === 'low') {
+            blackHoleSprite.setAlpha((blackHoleActive ? 0.85 : 0.6) * pulse);
+        }
+    } else if (blackHoleGfx) {
+        // Fallback if texture missing: old stroke disc.
+        const coreR = blackHoleActive ? 22 : 10;
+        blackHoleGfx.lineStyle(3, 0xaa44ff, 0.55 * pulse);
+        blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 10);
+        blackHoleGfx.lineStyle(2, 0x66ccff, 0.35 * pulse);
+        blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 22);
     }
 
     if (hazardRingGfx) {
@@ -4740,7 +4809,7 @@ function drawBlackHoleVisuals(scene, time) {
         if (blackHoleActive && hazardRingState && (hazardRingState.phase === 'telegraph' || hazardRingState.phase === 'lethal')) {
             const lethal = hazardRingState.phase === 'lethal';
             const col = lethal ? 0xff3355 : 0xffcc55;
-            const alpha = lethal ? 0.85 : 0.45 + Math.sin(time * 0.02) * 0.25;
+            const alpha = lethal ? 0.85 : 0.45 + Math.sin(t * 0.02) * 0.25;
             hazardRingGfx.lineStyle(lethal ? 4 : 2, col, alpha);
             hazardRingGfx.strokeCircle(cfg.x, cfg.y, hazardRingState.radius);
             if (lethal && fxQualityTier !== 'low') {
@@ -5351,20 +5420,102 @@ function isBoostHeld() {
 
 function isFireHeld() {
     if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
+    // Touch devices auto-fire so one thumb can stay on the stick (A11 / Fire).
+    if (mobileAutoFire && !levelEnded && !victoryPending) return true;
     return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown);
 }
 
-function shouldShowTouchControls() {
-    if (typeof window === 'undefined') return false;
+/**
+ * True for phones, tablets, Kindle Fire / Silk, and coarse-pointer devices.
+ * Used for touch UI, auto-fire, and default low FX.
+ */
+function isMobileOrTabletDevice() {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    const ua = String(navigator.userAgent || '');
+    // Amazon Fire tablets (Silk) + generic Android/iOS tablets/phones.
+    if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|KF[A-Z0-9]{2,}|Fire\s?OS/i.test(ua)) {
+        return true;
+    }
     try {
-        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+        if (window.matchMedia && window.matchMedia('(hover: none)').matches &&
+            window.matchMedia('(max-width: 1024px)').matches) {
             return true;
         }
     } catch (err) {
-        // Ignore matchMedia failures.
+        // ignore
     }
-    return ('ontouchstart' in window) ||
-        (typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints) > 0);
+    const touchPoints = Number(navigator.maxTouchPoints) || 0;
+    if (touchPoints > 0 && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 1100) {
+        return true;
+    }
+    return ('ontouchstart' in window) && touchPoints > 0;
+}
+
+/** Apply mobile/tablet defaults (idempotent; safe to call more than once). */
+function applyMobileDeviceProfile() {
+    const mobile = isMobileOrTabletDevice();
+    mobilePerfMode = mobile;
+    if (mobile) {
+        mobileAutoFire = true;
+        // Prefer low FX until FPS proves we can step up.
+        if (fxQualityTier !== 'low') fxQualityTier = 'low';
+    }
+}
+
+function isPortraitViewport() {
+    if (typeof window === 'undefined') return false;
+    const w = window.innerWidth || 0;
+    const h = window.innerHeight || 0;
+    return h > w * 1.08;
+}
+
+function shouldShowTouchControls() {
+    return isMobileOrTabletDevice();
+}
+
+/** Game-space layout; enlarged hit targets for thumbs (Fire HD, A11, etc.). */
+function getTouchLayout() {
+    const mobile = isMobileOrTabletDevice();
+    if (!mobile) {
+        return {
+            stick: Object.assign({}, TOUCH_JOYSTICK),
+            fire: Object.assign({}, TOUCH_FIRE_BTN),
+            boost: Object.assign({}, TOUCH_BOOST_BTN),
+            autoFireLabel: false
+        };
+    }
+    // Larger pads sit in the lower corners of the 800×600 playfield.
+    return {
+        stick: {
+            x: 120,
+            y: 505,
+            radius: 82,
+            knobRadius: 36,
+            deadzone: 18
+        },
+        fire: { x: 700, y: 505, radius: 70 },
+        boost: { x: 560, y: 505, radius: 58 },
+        autoFireLabel: true
+    };
+}
+
+function maybeShowOrientationHint(scene) {
+    if (!scene || !isMobileOrTabletDevice()) return;
+    const now = scene.time ? scene.time.now : Date.now();
+    if (isPortraitViewport()) {
+        if (orientationHintText && orientationHintText.active) return;
+        if (now - orientationHintShownAt < 4000) return;
+        orientationHintShownAt = now;
+        orientationHintText = showFloatingText(
+            scene,
+            400,
+            300,
+            'ROTATE FOR BEST PLAY',
+            '#ffcc55',
+            { screenSpace: true }
+        );
+    }
 }
 
 function getMovementAxes() {
@@ -5416,15 +5567,18 @@ function clearTouchActionState() {
     touchControls.firePointerId = null;
     touchControls.boostPointerId = null;
 
+    const layout = (touchControls.layout && touchControls.layout.stick)
+        ? touchControls.layout
+        : getTouchLayout();
     if (touchControls.knob) {
-        touchControls.knob.setPosition(TOUCH_JOYSTICK.x, TOUCH_JOYSTICK.y);
+        touchControls.knob.setPosition(layout.stick.x, layout.stick.y);
         touchControls.knob.setFillStyle(0x66f6ff, 0.55);
     }
     if (touchControls.fireBtn) {
-        touchControls.fireBtn.setFillStyle(0xff6644, 0.32);
+        touchControls.fireBtn.setFillStyle(0xff6644, layout.autoFireLabel ? 0.22 : 0.32);
     }
     if (touchControls.boostBtn) {
-        touchControls.boostBtn.setFillStyle(0x44aaff, 0.32);
+        touchControls.boostBtn.setFillStyle(0x44aaff, 0.38);
     }
 }
 
@@ -5442,20 +5596,26 @@ function destroyTouchControls() {
 
 function createTouchControls(scene) {
     destroyTouchControls();
+    applyMobileDeviceProfile();
     if (!shouldShowTouchControls()) return;
 
-    // Mouse + up to 2 extra pointers for multi-touch fire/boost/move.
+    // Multi-touch: stick + fire + boost (and spare) for Fire / Android.
     if (scene.input && typeof scene.input.addPointer === 'function') {
-        scene.input.addPointer(2);
+        scene.input.addPointer(3);
     }
+
+    const layout = getTouchLayout();
+    const stick = layout.stick;
+    const fire = layout.fire;
+    const boost = layout.boost;
 
     const depth = 30;
     const labelStyle = {
         fontFamily: 'monospace',
-        fontSize: '14px',
+        fontSize: layout.autoFireLabel ? '16px' : '14px',
         fill: '#e8f0ff',
         stroke: '#050816',
-        strokeThickness: 3
+        strokeThickness: 4
     };
 
     const container = scene.add.container(0, 0);
@@ -5463,58 +5623,75 @@ function createTouchControls(scene) {
     container.setScrollFactor(0);
 
     const stickBase = scene.add.circle(
-        TOUCH_JOYSTICK.x,
-        TOUCH_JOYSTICK.y,
-        TOUCH_JOYSTICK.radius,
+        stick.x,
+        stick.y,
+        stick.radius,
         0x081018,
-        0.42
+        0.5
     );
-    stickBase.setStrokeStyle(2, 0x66f6ff, 0.55);
+    stickBase.setStrokeStyle(3, 0x66f6ff, 0.65);
 
     const stickKnob = scene.add.circle(
-        TOUCH_JOYSTICK.x,
-        TOUCH_JOYSTICK.y,
-        TOUCH_JOYSTICK.knobRadius,
+        stick.x,
+        stick.y,
+        stick.knobRadius,
         0x66f6ff,
-        0.55
+        0.6
     );
-    stickKnob.setStrokeStyle(2, 0xe8f0ff, 0.85);
+    stickKnob.setStrokeStyle(2, 0xe8f0ff, 0.9);
 
+    // Oversized invisible hit pad so thumbs don't need perfect aim (A11 / Fire).
     const stickHit = scene.add.circle(
-        TOUCH_JOYSTICK.x,
-        TOUCH_JOYSTICK.y,
-        TOUCH_JOYSTICK.radius + 40,
+        stick.x,
+        stick.y,
+        stick.radius + 56,
         0x000000,
         0.001
     );
     stickHit.setInteractive();
 
     const fireBtn = scene.add.circle(
-        TOUCH_FIRE_BTN.x,
-        TOUCH_FIRE_BTN.y,
-        TOUCH_FIRE_BTN.radius,
+        fire.x,
+        fire.y,
+        fire.radius,
         0xff6644,
-        0.32
+        layout.autoFireLabel ? 0.22 : 0.35
     );
-    fireBtn.setStrokeStyle(2, 0xffaa77, 0.9);
+    fireBtn.setStrokeStyle(3, 0xffaa77, 0.95);
     fireBtn.setInteractive();
 
-    const fireLabel = scene.add.text(TOUCH_FIRE_BTN.x, TOUCH_FIRE_BTN.y, 'FIRE', labelStyle)
-        .setOrigin(0.5);
+    const fireLabel = scene.add.text(
+        fire.x,
+        fire.y,
+        layout.autoFireLabel ? 'AUTO' : 'FIRE',
+        labelStyle
+    ).setOrigin(0.5);
 
     const boostBtn = scene.add.circle(
-        TOUCH_BOOST_BTN.x,
-        TOUCH_BOOST_BTN.y,
-        TOUCH_BOOST_BTN.radius,
+        boost.x,
+        boost.y,
+        boost.radius,
         0x44aaff,
-        0.32
+        0.38
     );
-    boostBtn.setStrokeStyle(2, 0x88ddff, 0.9);
+    boostBtn.setStrokeStyle(3, 0x88ddff, 0.95);
     boostBtn.setInteractive();
 
-    const boostLabel = scene.add.text(TOUCH_BOOST_BTN.x, TOUCH_BOOST_BTN.y, 'BOOST', {
+    const boostLabel = scene.add.text(boost.x, boost.y, 'BOOST', {
         ...labelStyle,
-        fontSize: '12px'
+        fontSize: layout.autoFireLabel ? '15px' : '12px'
+    }).setOrigin(0.5);
+
+    // Mute is hard on touch — add a small tap target.
+    const muteBtn = scene.add.circle(400, 560, 28, 0x202838, 0.55);
+    muteBtn.setStrokeStyle(2, 0x8aa0c8, 0.8);
+    muteBtn.setInteractive();
+    const muteLabel = scene.add.text(400, 560, 'MUTE', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        fill: '#c7ddff',
+        stroke: '#050816',
+        strokeThickness: 3
     }).setOrigin(0.5);
 
     container.add([
@@ -5524,7 +5701,9 @@ function createTouchControls(scene) {
         fireBtn,
         fireLabel,
         boostBtn,
-        boostLabel
+        boostLabel,
+        muteBtn,
+        muteLabel
     ]);
 
     const controls = {
@@ -5532,6 +5711,7 @@ function createTouchControls(scene) {
         knob: stickKnob,
         fireBtn,
         boostBtn,
+        layout: layout,
         stickPointerId: null,
         firePointerId: null,
         boostPointerId: null,
@@ -5541,20 +5721,20 @@ function createTouchControls(scene) {
 
     function updateStickFromPointer(pointer) {
         // pointer.x/y are in game-camera space (correct under Scale.FIT).
-        const dx = pointer.x - TOUCH_JOYSTICK.x;
-        const dy = pointer.y - TOUCH_JOYSTICK.y;
+        const dx = pointer.x - stick.x;
+        const dy = pointer.y - stick.y;
         const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const maxRadius = TOUCH_JOYSTICK.radius - 6;
+        const maxRadius = stick.radius - 6;
         const clamped = Math.min(distance, maxRadius);
         const nx = dx / distance;
         const ny = dy / distance;
 
         stickKnob.setPosition(
-            TOUCH_JOYSTICK.x + nx * clamped,
-            TOUCH_JOYSTICK.y + ny * clamped
+            stick.x + nx * clamped,
+            stick.y + ny * clamped
         );
 
-        if (distance < TOUCH_JOYSTICK.deadzone) {
+        if (distance < stick.deadzone) {
             touchMoveX = 0;
             touchMoveY = 0;
             touchMoveActive = true;
@@ -5562,12 +5742,14 @@ function createTouchControls(scene) {
             return;
         }
 
-        const strength = Math.min(1, (distance - TOUCH_JOYSTICK.deadzone) /
-            (maxRadius - TOUCH_JOYSTICK.deadzone));
-        touchMoveX = nx * strength;
-        touchMoveY = ny * strength;
+        // Slight ease near center, full speed outside — easier fine control on small screens.
+        const strength = Math.min(1, (distance - stick.deadzone) /
+            (maxRadius - stick.deadzone));
+        const eased = Math.sqrt(strength);
+        touchMoveX = nx * eased;
+        touchMoveY = ny * eased;
         touchMoveActive = true;
-        stickKnob.setFillStyle(0x88ffff, 0.78);
+        stickKnob.setFillStyle(0x88ffff, 0.82);
     }
 
     function releaseStick() {
@@ -5575,7 +5757,7 @@ function createTouchControls(scene) {
         touchMoveX = 0;
         touchMoveY = 0;
         touchMoveActive = false;
-        stickKnob.setPosition(TOUCH_JOYSTICK.x, TOUCH_JOYSTICK.y);
+        stickKnob.setPosition(stick.x, stick.y);
         stickKnob.setFillStyle(0x66f6ff, 0.55);
     }
 
@@ -5589,8 +5771,23 @@ function createTouchControls(scene) {
     fireBtn.on('pointerdown', (pointer) => {
         if (controls.firePointerId !== null) return;
         controls.firePointerId = pointer.id;
-        touchFireHeld = true;
-        fireBtn.setFillStyle(0xff8866, 0.62);
+        // Toggle auto-fire when the label is AUTO (mobile default).
+        if (layout.autoFireLabel) {
+            mobileAutoFire = !mobileAutoFire;
+            fireLabel.setText(mobileAutoFire ? 'AUTO' : 'FIRE');
+            fireBtn.setFillStyle(mobileAutoFire ? 0xff6644 : 0xff8866, mobileAutoFire ? 0.22 : 0.55);
+            showFloatingText(
+                scene,
+                fire.x,
+                fire.y - 70,
+                mobileAutoFire ? 'AUTO-FIRE ON' : 'HOLD TO FIRE',
+                '#66f6ff',
+                { screenSpace: true }
+            );
+        } else {
+            touchFireHeld = true;
+            fireBtn.setFillStyle(0xff8866, 0.62);
+        }
         if (sfx) sfx.unlock();
     });
 
@@ -5598,7 +5795,12 @@ function createTouchControls(scene) {
         if (controls.boostPointerId !== null) return;
         controls.boostPointerId = pointer.id;
         touchBoostHeld = true;
-        boostBtn.setFillStyle(0x66ccff, 0.62);
+        boostBtn.setFillStyle(0x66ccff, 0.7);
+        if (sfx) sfx.unlock();
+    });
+
+    muteBtn.on('pointerdown', () => {
+        toggleMute();
         if (sfx) sfx.unlock();
     });
 
@@ -5614,19 +5816,29 @@ function createTouchControls(scene) {
         }
         if (controls.firePointerId === pointer.id) {
             controls.firePointerId = null;
-            touchFireHeld = false;
-            fireBtn.setFillStyle(0xff6644, 0.32);
+            if (!layout.autoFireLabel) {
+                touchFireHeld = false;
+                fireBtn.setFillStyle(0xff6644, 0.32);
+            }
         }
         if (controls.boostPointerId === pointer.id) {
             controls.boostPointerId = null;
             touchBoostHeld = false;
-            boostBtn.setFillStyle(0x44aaff, 0.32);
+            boostBtn.setFillStyle(0x44aaff, 0.38);
         }
     };
 
     scene.input.on('pointermove', onPointerMove);
     scene.input.on('pointerup', onPointerUp);
     scene.input.on('pointerupoutside', onPointerUp);
+    // Silk / some Androids cancel pointers mid-gesture.
+    if (scene.input.on) {
+        scene.input.on('gameout', () => {
+            releaseStick();
+            touchFireHeld = false;
+            touchBoostHeld = false;
+        });
+    }
 
     controls.cleanup = () => {
         scene.input.off('pointermove', onPointerMove);
@@ -5785,8 +5997,12 @@ function updateBoostUi() {
 }
 
 function createBoostTrail(scene) {
+    // Skip most trails on Fire / budget Android to keep FPS up.
+    if (fxQualityTier === 'low' && Math.random() > 0.28) return;
+    if (mobilePerfMode && Math.random() > 0.55) return;
+
     const aft = getAftAnchor();
-    const count = boostIntensity > 0.7 ? 3 : 2;
+    const count = (fxQualityTier === 'low') ? 1 : (boostIntensity > 0.7 ? 3 : 2);
     const vertical = combatOrientation === 'up';
 
     for (let i = 0; i < count; i++) {
@@ -6575,6 +6791,13 @@ function shareScoreResult(entry, rank, statusText) {
 }
 
 function createExplosion(scene, x, y, quantity, options = {}) {
+    // Budget devices (Fire / A11 class): fewer particles per blast.
+    if (fxQualityTier === 'low') {
+        quantity = Math.max(4, Math.floor(quantity * 0.35));
+    } else if (mobilePerfMode) {
+        quantity = Math.max(5, Math.floor(quantity * 0.7));
+    }
+
     const palette = options.palette || 'orange';
     const textureKey = palette === 'cyan'
         ? 'sparkBlue'
@@ -7578,6 +7801,15 @@ window.__novawingDebug = {
         return Boolean(game && game.isBooted && game.scene && game.scene.scenes && game.scene.scenes[0]);
     },
     shouldShowTouchControls,
+    getMobileProfile() {
+        return {
+            mobile: isMobileOrTabletDevice(),
+            autoFire: Boolean(mobileAutoFire),
+            perfMode: Boolean(mobilePerfMode),
+            fxTier: fxQualityTier,
+            portrait: isPortraitViewport()
+        };
+    },
     getTouchState() {
         return {
             hasControls: Boolean(touchControls && touchControls.container && touchControls.container.visible),

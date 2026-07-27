@@ -9,6 +9,9 @@ enemy-strafer.png       Wide lateral craft, nose DOWN, side thrusters
 enemy-minedropper.png   Bulky dropper, nose DOWN (Y-flipped post-process)
 enemy-orbiter.png       Violet/cyan core orbiter (head-on)
 boss-vertical.png       Biomechanical final boss, maw DOWN, thrusters UP
+black-hole.png          EHT-style singularity (orange photon ring + cyan/violet arcs)
+black-hole-pixel.png    Arcade pixel alternate of the same concept
 
-All PNGs: gray background keyed to alpha, content-cropped.
-Style: Neo Geo / 16-bit chunky pixel, matches L1/L2 palette language.
+Ship/enemy PNGs: gray background keyed to alpha, content-cropped.
+Black hole: soft edge alpha; drawn with ADD blend + dark core underlay.
+Style: Neo Geo / 16-bit chunky pixel + sci-fi luminous BH art.

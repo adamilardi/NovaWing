@@ -39,11 +39,20 @@ async function waitForGame(page, timeout = 25000) {
 
 /**
  * Install encode + forward + rAF loop inside the page with policy weights.
+ * Exported for record-demos self-play (EXPERT=policy).
+ * policy.explore: if true, add action noise for RL exploration.
  */
-function installPolicyPilot(policy) {
+export function installPolicyPilot(policy) {
     // Inlined minimal encode/forward so inference runs at frame rate (no CDP lag).
     // Must stay behavior-compatible with scripts/rl/obs-encode.mjs + policy-infer.mjs.
     window.__novawingPolicy = policy;
+    const explore = Boolean(policy && policy.explore);
+    const exploreMove = Number.isFinite(policy && policy.exploreMoveStd)
+        ? policy.exploreMoveStd
+        : 0.18;
+    const exploreBoostP = Number.isFinite(policy && policy.exploreBoostP)
+        ? policy.exploreBoostP
+        : 0.05;
 
     const K_ENEMIES = 6, K_OBSTACLES = 4, K_BULLETS = 8, K_WALLS = 6, K_POWERUPS = 3, K_BANDS = 3;
     const OBS_SIZE = policy.obsSize;
@@ -162,6 +171,13 @@ function installPolicyPilot(policy) {
         if (v >= 0) { const z = Math.exp(-v); return 1 / (1 + z); }
         const z = Math.exp(v); return z / (1 + z);
     }
+    function gauss() {
+        // Box-Muller
+        let u = 0, v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
     function forward(obs) {
         let h = obs;
         const layers = policy.layers;
@@ -170,12 +186,20 @@ function installPolicyPilot(policy) {
             h = matvec(layer.w, layer.b, h);
             if (layer.act === 'relu') h = relu(h);
         }
-        return {
-            x: Math.tanh(h[0] || 0),
-            y: Math.tanh(h[1] || 0),
-            fire: sigmoid(h[2] || 0) >= 0.5,
-            boost: sigmoid(h[3] || 0) >= 0.5
-        };
+        let ax = Math.tanh(h[0] || 0);
+        let ay = Math.tanh(h[1] || 0);
+        let fire = sigmoid(h[2] || 0) >= 0.5;
+        let boost = sigmoid(h[3] || 0) >= 0.5;
+        if (explore) {
+            ax = Math.max(-1, Math.min(1, ax + gauss() * exploreMove));
+            ay = Math.max(-1, Math.min(1, ay + gauss() * exploreMove));
+            // Always fire during training rollouts (shmup default)
+            fire = true;
+            if (Math.random() < exploreBoostP) boost = !boost;
+        } else {
+            fire = true; // deterministic eval: always shoot
+        }
+        return { x: ax, y: ay, fire: fire, boost: boost };
     }
 
     function tick() {
@@ -229,11 +253,17 @@ async function main() {
         console.error(`Policy obsSize ${policy.obsSize} != encoder OBS_SIZE ${OBS_SIZE}`);
         process.exit(1);
     }
+    // Optional exploration for on-policy rollouts
+    if (process.env.EXPLORE === '1') {
+        policy.explore = true;
+        if (process.env.EXPLORE_MOVE_STD) policy.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
+        if (process.env.EXPLORE_BOOST_P) policy.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
+    }
 
     console.log('NovaWing RL policy pilot');
     console.log(`policy=${POLICY_PATH}`);
     console.log(`hidden=${JSON.stringify(policy.hidden)} obs=${policy.obsSize}`);
-    console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms`);
+    console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms explore=${Boolean(policy.explore)}`);
 
     // Node-side sanity check
     const dummy = new Float32Array(OBS_SIZE);
@@ -310,10 +340,12 @@ async function main() {
                 const s = status.snap;
                 const a = status.action || {};
                 const el = s.elapsedMs != null ? (s.elapsedMs / 1000).toFixed(1) : '?';
+                const seg = s.segment || '-';
+                const orient = s.combatOrientation || s.scrollMode || '-';
                 console.log(
-                    `[policy] t=${el}s L${s.level} score=${s.score} lives=${s.lives} ` +
-                    `phase=${s.phase} ax=${(a.x || 0).toFixed(2)} ay=${(a.y || 0).toFixed(2)} ` +
-                    `boost=${a.boost ? 1 : 0}`
+                    `[policy] t=${el}s L${s.level} ${s.levelName || ''} score=${s.score} lives=${s.lives} ` +
+                    `phase=${s.phase} seg=${seg} orient=${orient} ` +
+                    `ax=${(a.x || 0).toFixed(2)} ay=${(a.y || 0).toFixed(2)} boost=${a.boost ? 1 : 0}`
                 );
                 lastLog = now;
             }
@@ -359,7 +391,12 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+// Only auto-run when executed directly (not when imported for installPolicyPilot).
+const isMain = process.argv[1] &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+    main().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}
