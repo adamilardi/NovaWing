@@ -3,17 +3,20 @@
  *
  * HOW TO ADD A LEVEL
  * ------------------
- * 1. Append a new object to LEVEL_DEFS below (use defineLevel for defaults).
+ * 1. Append a new object to LEVEL_DEFS_SHIPPED below (use defineLevel for defaults).
  * 2. Optionally use pathHelpers() + buildPathEvents() for canyon corridors.
- * 3. TOTAL_LEVELS is derived from LEVEL_DEFS.length — no other constant to bump.
- * 4. Wave keys must match ENEMY_WAVE_PATTERNS in game.js (null = all patterns).
+ * 3. Prefer getTotalLevels() / getEffectiveLevelDefs() — do not freeze campaign length.
+ * 4. Wave keys must match ENEMY_WAVE_PATTERNS in game.js
+ *    (null = all patterns, [] = no patterns, non-empty = filter only).
  * 5. Powerups are scheduled by level progressMs (boost-warped time), not wall clock.
+ * 6. Segmented levels (L3+) use `segments[]`; debug inject via ?level3=1 before ship.
  *
  * Level shape (all optional fields have defaults via defineLevel):
  *   id, name, durationMs, worldHeight, cameraFollowY, startY, bossArenaY,
  *   powerups[{ progressMs, type, y?, x? }], wavePatternKeys[string]|null,
  *   hasPathWalls, pathEvents[{ progressMs, openBands:[[top,bot],...] }],
- *   paths{ name:[top,bot] }, bossHealth, introHint
+ *   paths{ name:[top,bot] }, bossHealth, introHint,
+ *   segments[], scrollMode, bossEncounters, blackHole
  */
 (function (root) {
     'use strict';
@@ -38,13 +41,18 @@
             startY: startY,
             bossArenaY: Number.isFinite(def.bossArenaY) ? def.bossArenaY : startY,
             powerups: Array.isArray(def.powerups) ? def.powerups : [],
-            // null / omitted => all wave patterns available in game.js
+            // null / omitted => all wave patterns; [] => none; non-empty => filter only
             wavePatternKeys: def.wavePatternKeys == null ? null : def.wavePatternKeys.slice(),
             hasPathWalls: Boolean(def.hasPathWalls),
             pathEvents: Array.isArray(def.pathEvents) ? def.pathEvents : null,
             paths: def.paths || null,
             bossHealth: Number.isFinite(def.bossHealth) ? def.bossHealth : DEFAULT_BOSS_HEALTH,
-            introHint: def.introHint || null
+            introHint: def.introHint || null,
+            // L3+ multi-segment levels (null = classic waves → boss flow)
+            segments: Array.isArray(def.segments) ? def.segments : null,
+            scrollMode: def.scrollMode === 'vertical' ? 'vertical' : 'horizontal',
+            bossEncounters: def.bossEncounters || null,
+            blackHole: def.blackHole || null
         };
     }
 
@@ -206,13 +214,156 @@
         ])
     });
 
-    // Registry — append new defineLevel(...) results here.
-    const LEVEL_DEFS = [LEVEL_1, LEVEL_2];
-    const TOTAL_LEVELS = LEVEL_DEFS.length;
+    // -------------------------------------------------------------------------
+    // Level 3 — SINGULARITY RUN (shipped PR6)
+    // intro boss escape → perspective flip → vertical gauntlet → BH final
+    // -------------------------------------------------------------------------
+    const LEVEL_3 = defineLevel({
+        id: 3,
+        name: 'SINGULARITY RUN',
+        durationMs: 90000,
+        worldHeight: GAME_HEIGHT,
+        cameraFollowY: false,
+        startY: 300,
+        bossArenaY: 300,
+        hasPathWalls: false,
+        introHint: 'BOSS CONTACT IMMINENT',
+        bossHealth: Math.round(DEFAULT_BOSS_HEALTH * 1.35),
+        wavePatternKeys: null,
+        powerups: [],
+        bossEncounters: {
+            intro: {
+                health: Math.round(DEFAULT_BOSS_HEALTH * 0.45),
+                maxPhase: 1,
+                escapeHpRatio: 0.55,
+                timeoutMs: 35000,
+                entry: 'horizontal',
+                arena: 'flat',
+                label: 'WARNING: BOSS APPROACHING'
+            },
+            final: {
+                health: Math.round(DEFAULT_BOSS_HEALTH * 1.35),
+                maxPhase: 3,
+                escapeHpRatio: null,
+                timeoutMs: null,
+                entry: 'warpCenter',
+                arena: 'blackHole',
+                label: 'WARNING: FINAL BOSS'
+            }
+        },
+        blackHole: {
+            x: 400,
+            y: 260,
+            pullStrength: 220,
+            safeRadius: 110,
+            dangerRadius: 48,
+            killRadius: 28,
+            maxPullRadius: 420,
+            dangerTickMs: 450,
+            previewPullScale: 0.25,
+            previewAnchor: { x: 400, y: 40 }
+        },
+        segments: [
+            {
+                id: 'introBoss',
+                bossEncounter: 'intro',
+                scrollMode: 'horizontal',
+                combatOrientation: 'right',
+                wavePatternKeys: [],
+                powerups: [],
+                next: 'transition'
+            },
+            {
+                id: 'transition',
+                durationMs: 3500,
+                scrollMode: 'horizontal',
+                combatOrientation: 'right',
+                wavePatternKeys: [],
+                powerups: [],
+                next: 'topdown'
+            },
+            {
+                id: 'topdown',
+                progressDriven: true,
+                durationMs: 90000,
+                scrollMode: 'vertical',
+                combatOrientation: 'up',
+                gamePhase: 'waves',
+                wavePatternKeys: [
+                    'verticalRegular',
+                    'verticalV',
+                    'riserColumns',
+                    'crossfireStrafe',
+                    'mineCurtain',
+                    'pincerDive',
+                    'orbiterRing',
+                    'mixedGauntlet'
+                ],
+                powerups: [
+                    { progressMs: 3000, type: 'weapon', x: 320 },
+                    { progressMs: 10000, type: 'shield', x: 480 },
+                    { progressMs: 18000, type: 'boost', x: 400 },
+                    { progressMs: 28000, type: 'repair', x: 280 },
+                    { progressMs: 38000, type: 'weapon', x: 520 },
+                    { progressMs: 38000, type: 'bomb', x: 360 },
+                    { progressMs: 52000, type: 'shield', x: 440 },
+                    { progressMs: 65000, type: 'repair', x: 400 },
+                    { progressMs: 78000, type: 'boost', x: 300 },
+                    { progressMs: 85000, type: 'bomb', x: 500 }
+                ],
+                next: 'finalBoss'
+            },
+            {
+                id: 'finalBoss',
+                bossEncounter: 'final',
+                scrollMode: 'vertical',
+                combatOrientation: 'up',
+                wavePatternKeys: [],
+                powerups: [],
+                next: null
+            }
+        ]
+    });
+
+    // Shipped campaign: L1 → L2 → L3 SINGULARITY RUN
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3];
+
+    /**
+     * Register or replace the WIP Level 3 definition. Not shipped until
+     * LEVEL_DEFS_SHIPPED includes it (PR6).
+     * @param {object|null} def
+     */
+    function setLevel3Def(def) {
+        // Mutate shared reference used by getEffectiveLevelDefs when debug flag is on.
+        if (!def) return;
+        Object.keys(LEVEL_3).forEach(function (k) { delete LEVEL_3[k]; });
+        Object.assign(LEVEL_3, def);
+    }
+
+    function wantsDebugLevel3() {
+        try {
+            if (typeof window === 'undefined' || !window.location) return false;
+            const q = new URLSearchParams(window.location.search || '');
+            return q.get('level3') === '1' || q.get('level') === '3';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getEffectiveLevelDefs() {
+        // PR6: LEVEL_3 is always in LEVEL_DEFS_SHIPPED.
+        // wantsDebugLevel3 kept for tools that force L3 entry; catalog is permanent.
+        return LEVEL_DEFS_SHIPPED;
+    }
+
+    function getTotalLevels() {
+        return getEffectiveLevelDefs().length;
+    }
 
     function getLevelDef(levelId) {
+        const defs = getEffectiveLevelDefs();
         const index = (levelId || 1) - 1;
-        return LEVEL_DEFS[index] || LEVEL_DEFS[0];
+        return defs[index] || defs[0];
     }
 
     function getLevelWorldHeight(levelId) {
@@ -232,27 +383,43 @@
         return Number.isFinite(def.startY) ? def.startY : 300;
     }
 
+    // Compatibility: LEVEL_DEFS is the shipped list; live campaign uses getters.
+    const LEVEL_DEFS = LEVEL_DEFS_SHIPPED;
+    const TOTAL_LEVELS = LEVEL_DEFS_SHIPPED.length;
+
     const api = {
         GAME_HEIGHT: GAME_HEIGHT,
         DEFAULT_DURATION_MS: DEFAULT_DURATION_MS,
         DEFAULT_BOSS_HEALTH: DEFAULT_BOSS_HEALTH,
         LEVEL_DEFS: LEVEL_DEFS,
+        LEVEL_DEFS_SHIPPED: LEVEL_DEFS_SHIPPED,
         TOTAL_LEVELS: TOTAL_LEVELS,
         defineLevel: defineLevel,
         pathHelpers: pathHelpers,
         buildPathEvents: buildPathEvents,
         getLevelDef: getLevelDef,
         getLevelWorldHeight: getLevelWorldHeight,
-        getLevelPathCenter: getLevelPathCenter
+        getLevelPathCenter: getLevelPathCenter,
+        getEffectiveLevelDefs: getEffectiveLevelDefs,
+        getTotalLevels: getTotalLevels,
+        wantsDebugLevel3: wantsDebugLevel3,
+        setLevel3Def: setLevel3Def,
+        getLevel3Def: function () { return LEVEL_3; }
     };
 
     root.NovaWingLevels = api;
 
     // Convenience globals used by game.js (same names as the old inlined API).
     root.LEVEL_DEFS = LEVEL_DEFS;
+    root.LEVEL_DEFS_SHIPPED = LEVEL_DEFS_SHIPPED;
+    // Deprecated frozen length — game logic must use getTotalLevels().
     root.TOTAL_LEVELS = TOTAL_LEVELS;
     root.getLevelDef = getLevelDef;
     root.getLevelWorldHeight = getLevelWorldHeight;
     root.getLevelPathCenter = getLevelPathCenter;
+    root.getEffectiveLevelDefs = getEffectiveLevelDefs;
+    root.getTotalLevels = getTotalLevels;
+    root.wantsDebugLevel3 = wantsDebugLevel3;
+    root.setLevel3Def = setLevel3Def;
     root.LEVEL_DURATION_MS = DEFAULT_DURATION_MS;
 })(typeof window !== 'undefined' ? window : globalThis);

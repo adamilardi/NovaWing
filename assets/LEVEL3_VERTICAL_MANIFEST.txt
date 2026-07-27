@@ -1,0 +1,13 @@
+NovaWing Level 3 vertical art (PR4b) — Grok Imagine
+Generated 2026-07-27 from existing horizontal sprites as style refs.
+
+player-vertical.png     Player fighter, nose UP, thrusters DOWN
+enemy-dart.png          Dive attacker, nose DOWN (from red enemy)
+enemy-riser.png         Climbing enemy, nose UP (from blue interceptor)
+enemy-strafer.png       Wide lateral craft, nose DOWN, side thrusters
+enemy-minedropper.png   Bulky dropper, nose DOWN (Y-flipped post-process)
+enemy-orbiter.png       Violet/cyan core orbiter (head-on)
+boss-vertical.png       Biomechanical final boss, maw DOWN, thrusters UP
+
+All PNGs: gray background keyed to alpha, content-cropped.
+Style: Neo Geo / 16-bit chunky pixel, matches L1/L2 palette language.

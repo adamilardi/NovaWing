@@ -41,10 +41,17 @@ export function installInPagePilot() {
 
     const HOME_X = 100;
     const BOSS_X = 140;
+    const VERT_HOME_X = 400;
+    const VERT_HOME_Y = 460;
+    const VERT_BOSS_Y = 480;
     const LANE_COUNT = 18;
 
     function clamp(v, min, max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    function isVertical(snap) {
+        return snap && (snap.scrollMode === 'vertical' || snap.combatOrientation === 'up');
     }
 
     function worldHeight(snap) {
@@ -53,6 +60,24 @@ export function installInPagePilot() {
 
     function playBounds(snap) {
         const wh = worldHeight(snap);
+        if (isVertical(snap)) {
+            if (snap.phase === 'boss' && snap.boss) {
+                return {
+                    minX: 70,
+                    maxX: 730,
+                    minY: 280,
+                    maxY: 540,
+                    wh: wh
+                };
+            }
+            return {
+                minX: 60,
+                maxX: 740,
+                minY: 220,
+                maxY: 540,
+                wh: wh
+            };
+        }
         if (snap.phase === 'boss' && snap.boss) {
             const arena = snap.boss.y;
             return {
@@ -389,8 +414,54 @@ export function installInPagePilot() {
     function pickTarget(snap) {
         const p = snap.player;
         const threats = allThreats(snap);
-        const ys = laneYs(snap);
         const bounds = playBounds(snap);
+
+        // --- Vertical / top-down (L3 after flip) ---
+        if (isVertical(snap)) {
+            const homeX = VERT_HOME_X;
+            const homeY = snap.phase === 'boss' ? VERT_BOSS_Y : VERT_HOME_Y;
+            const xs = [];
+            const ys = [];
+            for (let d = -220; d <= 220; d += 28) {
+                xs.push(clamp(homeX + d, bounds.minX, bounds.maxX));
+            }
+            xs.push(p.x, clamp(p.x - 40, bounds.minX, bounds.maxX), clamp(p.x + 40, bounds.minX, bounds.maxX));
+            ys.push(homeY, homeY - 30, homeY - 60, homeY + 20, p.y);
+            if (snap.phase === 'boss' && snap.boss) {
+                // Stay under boss; strafe on X with boss weave.
+                for (let d = -200; d <= 200; d += 25) {
+                    xs.push(clamp(snap.boss.x + d, bounds.minX, bounds.maxX));
+                }
+            }
+            const powerups = snap.powerups || [];
+            for (let i = 0; i < powerups.length; i++) {
+                const pu = powerups[i];
+                if (pu.y < p.y + 80 && pu.y > 40) {
+                    xs.push(clamp(pu.x, bounds.minX, bounds.maxX));
+                    ys.push(clamp(pu.y + 40, bounds.minY, bounds.maxY));
+                }
+            }
+            let best = { x: homeX, y: homeY, score: Infinity, minTtc: 0 };
+            for (let yi = 0; yi < ys.length; yi++) {
+                for (let xi = 0; xi < xs.length; xi++) {
+                    const y = clamp(ys[yi], bounds.minY, bounds.maxY);
+                    const x = clamp(xs[xi], bounds.minX, bounds.maxX);
+                    const result = scoreLane(y, x, snap, threats);
+                    // Prefer bottom-center; slight pull toward under-boss X.
+                    let total = result.score + Math.abs(y - homeY) * 0.08 + Math.abs(x - homeX) * 0.03;
+                    if (snap.phase === 'boss' && snap.boss) {
+                        total += Math.abs(x - snap.boss.x) * 0.02;
+                    }
+                    if (total < best.score) {
+                        best = { x: x, y: y, score: total, minTtc: result.minTtc };
+                    }
+                }
+            }
+            return best;
+        }
+
+        // --- Horizontal (L1/L2 / intro) ---
+        const ys = laneYs(snap);
         ys.push(p.y);
 
         if (snap.phase === 'boss' && snap.boss) {
@@ -472,13 +543,35 @@ export function installInPagePilot() {
         }
 
         const bulletsList = snap.enemyBullets || [];
+        const vertical = isVertical(snap);
         for (let i = 0; i < bulletsList.length; i++) {
             const b = bulletsList[i];
             if (b.isLaser) {
-                if (Math.abs(b.y - p.y) < 54) {
+                if (vertical) {
+                    // Vertical lasers are X strips.
+                    if (Math.abs(b.x - p.x) < 54) {
+                        minTtc = Math.min(minTtc, 0.04);
+                        dodgeDir = b.x >= p.x ? -1 : 1; // used as X dodge via state
+                        kind = 'laser';
+                    }
+                } else if (Math.abs(b.y - p.y) < 54) {
                     minTtc = Math.min(minTtc, 0.04);
                     dodgeDir = b.y >= p.y ? -1 : 1;
                     kind = 'laser';
+                }
+                continue;
+            }
+            if (vertical) {
+                const vy = b.vy || 380;
+                if (vy <= 20) continue;
+                if (b.y > p.y + 30 || b.y < p.y - 520) continue;
+                const tHit = (p.y - b.y) / vy;
+                if (tHit < 0 || tHit > 0.95) continue;
+                const predX = b.x + (b.vx || 0) * tHit;
+                if (Math.abs(predX - p.x) < 52 && tHit < minTtc) {
+                    minTtc = tHit;
+                    dodgeDir = predX >= p.x ? -1 : 1;
+                    kind = 'bullet';
                 }
                 continue;
             }
@@ -625,7 +718,19 @@ export function installInPagePilot() {
         else if (dy > 5) ay = 1;
 
         // Commit to a dodge direction briefly to avoid thrashing.
-        if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+        if (isVertical(snap)) {
+            // In vertical mode dodgeDir is primarily an X-axis escape.
+            if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+                if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
+                    state.holdDodgeDir = here.dodgeDir;
+                    state.holdDodgeUntil = now + (here.kind === 'laser' ? 240 : 160);
+                }
+                ax = state.holdDodgeDir;
+                if (here.ttc < 0.28 && p.y < 500) ay = 1; // drop back
+            } else if (ttc < 0.24 && Math.abs(dx) > 2) {
+                ax = dx < 0 ? -1 : 1;
+            }
+        } else if (here.ttc < 0.5 && here.dodgeDir !== 0) {
             if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
                 state.holdDodgeDir = here.dodgeDir;
                 state.holdDodgeUntil = now + (here.kind === 'laser' ? 240 : 160);
@@ -641,7 +746,33 @@ export function installInPagePilot() {
             if (p.x > 82) ax = -1;
         }
 
-        if (snap.phase === 'boss' && snap.boss) {
+        if (snap.phase === 'boss' && snap.boss && isVertical(snap)) {
+            const b = snap.boss;
+            const hp = Number.isFinite(b.health) ? b.health : 240;
+            const pressured = here.ttc < 0.7 || here.bullets >= 2;
+            const preferX = clamp(
+                b.x + state.bossOrbitSign * (lowLives || hp < 100 ? 90 : 40),
+                bounds.minX + 12,
+                bounds.maxX - 12
+            );
+            if (now > state.bossWeaveUntil) {
+                state.bossOrbitSign *= -1;
+                state.bossWeaveUntil = now + (pressured ? 360 : 520);
+            }
+            if (p.x <= bounds.minX + 30) state.bossOrbitSign = 1;
+            if (p.x >= bounds.maxX - 30) state.bossOrbitSign = -1;
+
+            const errX = preferX - p.x;
+            if (Math.abs(errX) > 10) ax = errX > 0 ? 1 : -1;
+            else ax = 0;
+            // Hold low for DPS window; climb slightly when safe.
+            const preferY = VERT_BOSS_Y;
+            const errY = preferY - p.y;
+            if (Math.abs(errY) > 12) ay = errY > 0 ? 1 : -1;
+            else ay = 0;
+            if (here.ttc < 0.4 && here.dodgeDir !== 0) ax = here.dodgeDir;
+            if (here.ttc < 0.28) ay = 1;
+        } else if (snap.phase === 'boss' && snap.boss) {
             const b = snap.boss;
             const hp = Number.isFinite(b.health) ? b.health : 240;
             const pressured = here.ttc < 0.7 || here.bullets >= 2;

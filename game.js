@@ -36,13 +36,22 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-const GAME_VERSION = '1.0.0';
-// Level catalog lives in levels.js (loaded before this file). Adding a level
-// is: append defineLevel({...}) to LEVEL_DEFS there — TOTAL_LEVELS follows.
+const GAME_VERSION = '1.1.0';
+// Level catalog lives in levels.js (loaded before this file). Campaign length is
+// live via getTotalLevels() — do not freeze TOTAL_LEVELS for victory/clamps.
 const LEVEL_DURATION_MS = (typeof window !== 'undefined' && window.NovaWingLevels
     ? window.NovaWingLevels.DEFAULT_DURATION_MS
     : 60000);
+// Deprecated snapshot of shipped length only; use totalLevels() for logic.
 const TOTAL_LEVELS = (typeof window !== 'undefined' && window.TOTAL_LEVELS) || 1;
+
+function totalLevels() {
+    if (typeof getTotalLevels === 'function') return getTotalLevels();
+    if (typeof window !== 'undefined' && typeof window.getTotalLevels === 'function') {
+        return window.getTotalLevels();
+    }
+    return typeof TOTAL_LEVELS === 'number' ? TOTAL_LEVELS : 1;
+}
 const WALL_SLICE_WIDTH = 96;
 const WALL_SCROLL_SPEED = -128;
 const WALL_MIN_BLOCK_HEIGHT = 18;
@@ -156,6 +165,8 @@ const GAMEPLAY_KEY_CODES = [
 ];
 const BAKED_SPRITE_ASSETS = {
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
+    // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
+    bossVertical: { path: 'assets/boss-vertical.png', sourceKey: 'bossVerticalSource' },
     powerupWeapon: { path: 'assets/powerup-weapon.png', sourceKey: 'powerupWeaponSource' },
     powerupShield: { path: 'assets/powerup-shield.png', sourceKey: 'powerupShieldSource' },
     powerupRepair: { path: 'assets/powerup-repair.png', sourceKey: 'powerupRepairSource' },
@@ -260,8 +271,38 @@ const ENEMY_WAVE_PATTERNS = [
     { key: 'swarm', spawn: spawnSwarmWave },
     { key: 'sandwich', spawn: spawnSandwichWave },
     { key: 'splitterPair', spawn: spawnSplitterPairWave },
+    // L3 top-down (PR4+PR5)
+    { key: 'verticalRegular', spawn: spawnVerticalRegularWave },
+    { key: 'verticalV', spawn: spawnVerticalVWave },
+    { key: 'riserColumns', spawn: spawnRiserColumnsWave },
+    { key: 'crossfireStrafe', spawn: spawnCrossfireStrafeWave },
+    { key: 'mineCurtain', spawn: spawnMineCurtainWave },
+    { key: 'pincerDive', spawn: spawnPincerDiveWave },
+    { key: 'orbiterRing', spawn: spawnOrbiterRingWave },
+    { key: 'mixedGauntlet', spawn: spawnMixedGauntletWave },
     { key: 'splitterAmbush', spawn: spawnSplitterAmbushWave }
 ];
+
+// Black hole defaults (PR6) — levelDef.blackHole may override.
+const BLACK_HOLE_DEFAULTS = {
+    x: 400,
+    y: 260,
+    pullStrength: 220,
+    safeRadius: 110,
+    dangerRadius: 48,
+    killRadius: 28,
+    maxPullRadius: 420,
+    dangerTickMs: 450,
+    previewPullScale: 0.25,
+    previewAnchor: { x: 400, y: 40 }
+};
+const HAZARD_RING = {
+    periodMs: 6000,
+    telegraphMs: 900,
+    lethalMs: 400,
+    lethalWidth: 22,
+    modePrimary: 'collapse'
+};
 const MAX_LIVES = 5;
 const POWERUP_SCORE_BONUS = 250;
 const POWERUP_TYPES = {
@@ -309,6 +350,14 @@ const SPRITES = {
         displayWidth: PLAYER_DISPLAY_WIDTH,
         body: { w: 0.42, h: 0.40, ox: 0.30, oy: 0.30 }
     },
+    // L3 top-down player (nose up, thrusters down) — PR4b Imagine art.
+    playerVertical: {
+        sourceKey: 'playerVerticalSource',
+        path: 'assets/player-vertical.png',
+        hasAlpha: true,
+        displayWidth: 56,
+        body: { w: 0.48, h: 0.55, ox: 0.26, oy: 0.18 }
+    },
     enemy: {
         sourceKey: 'enemySource',
         path: 'assets/enemy.png',
@@ -322,6 +371,42 @@ const SPRITES = {
         crop: { x: 78, y: 44, width: 690, height: 226 },
         displayWidth: 112,
         body: { w: 0.60, h: 0.40, ox: 0.20, oy: 0.30 }
+    },
+    // L3 vertical enemy roster (hasAlpha PNGs from Imagine).
+    enemyDart: {
+        sourceKey: 'enemyDartSource',
+        path: 'assets/enemy-dart.png',
+        hasAlpha: true,
+        displayWidth: 52,
+        body: { w: 0.55, h: 0.58, ox: 0.22, oy: 0.20 }
+    },
+    enemyRiser: {
+        sourceKey: 'enemyRiserSource',
+        path: 'assets/enemy-riser.png',
+        hasAlpha: true,
+        displayWidth: 50,
+        body: { w: 0.55, h: 0.58, ox: 0.22, oy: 0.20 }
+    },
+    enemyStrafer: {
+        sourceKey: 'enemyStraferSource',
+        path: 'assets/enemy-strafer.png',
+        hasAlpha: true,
+        displayWidth: 88,
+        body: { w: 0.62, h: 0.48, ox: 0.19, oy: 0.26 }
+    },
+    enemyMineDropper: {
+        sourceKey: 'enemyMineDropperSource',
+        path: 'assets/enemy-minedropper.png',
+        hasAlpha: true,
+        displayWidth: 72,
+        body: { w: 0.58, h: 0.52, ox: 0.21, oy: 0.24 }
+    },
+    enemyOrbiter: {
+        sourceKey: 'enemyOrbiterSource',
+        path: 'assets/enemy-orbiter.png',
+        hasAlpha: true,
+        displayWidth: 70,
+        body: { w: 0.60, h: 0.55, ox: 0.20, oy: 0.22 }
     },
     splitter: {
         sourceKey: 'splitterSource',
@@ -341,9 +426,25 @@ const SPRITES = {
     bossShip: {
         // Thrusters are on the right; solid body is left/center.
         body: { w: 0.52, h: 0.44, ox: 0.08, oy: 0.28 }
+    },
+    bossVertical: {
+        // Nose down, thrusters up — hull in lower/center of frame.
+        body: { w: 0.48, h: 0.55, ox: 0.26, oy: 0.22 }
     }
 };
-const SPRITE_KEYS = ['player', 'enemy', 'enemy2', 'splitter', 'splitterDrone'];
+const SPRITE_KEYS = [
+    'player',
+    'playerVertical',
+    'enemy',
+    'enemy2',
+    'enemyDart',
+    'enemyRiser',
+    'enemyStrafer',
+    'enemyMineDropper',
+    'enemyOrbiter',
+    'splitter',
+    'splitterDrone'
+];
 
 let player;
 let cursors;
@@ -410,6 +511,24 @@ let levelEnded = false;
 let victoryPending = false;
 let playerInvulnerableUntil = 0;
 let gamePhase = 'waves';
+// Orientation surface (PR1): L1/L2 stay horizontal/right; L3 top-down sets vertical/up.
+let scrollMode = 'horizontal'; // 'horizontal' | 'vertical'
+let combatOrientation = 'right'; // 'right' | 'up'
+// Segment machine (PR2): null for classic L1/L2 waves→boss; L3 uses segment ids.
+let levelSegment = null;
+let bossMaxHealth = BOSS_MAX_HEALTH;
+let bossEncounterKey = null; // null | 'intro' | 'final' | 'standard'
+let bossEscapeTimeoutAt = 0;
+let blackHoleActive = false;
+let blackHolePreview = false;
+let blackHoleConfig = null;
+let hazardRingState = null;
+let blackHoleGfx = null;
+let hazardRingGfx = null;
+let blackHoleDust = null;
+let blackHoleLastDangerAt = 0;
+let fxQualityTier = 'high';
+let fxQualityCheckAt = 0;
 let currentLevel = 1;
 let nextPathEventIndex = 0;
 let currentOpenBands = null;
@@ -928,6 +1047,19 @@ function create() {
     levelEnded = false;
     playerInvulnerableUntil = 0;
     gamePhase = 'waves';
+    scrollMode = 'horizontal';
+    combatOrientation = 'right';
+    levelSegment = null;
+    bossMaxHealth = BOSS_MAX_HEALTH;
+    bossEncounterKey = null;
+    bossEscapeTimeoutAt = 0;
+    blackHoleActive = false;
+    blackHolePreview = false;
+    blackHoleConfig = null;
+    hazardRingState = null;
+    blackHoleLastDangerAt = 0;
+    destroyBlackHoleVisuals();
+    fxQualityTier = 'high';
     boss = null;
     bossHealth = 0;
     bossNextVolleyAt = 0;
@@ -1117,29 +1249,43 @@ function create() {
     updateMuteText();
     updateLevelText();
 
-    // Spawn authored enemy and obstacle waves.
+    // Spawn authored enemy and obstacle waves (segmented levels own scheduling).
     this.obstacleSpawnEvent = null;
     this.powerupSpawnEvent = null;
     this.firstPowerupEvent = null;
     if (startDef.hasPathWalls) {
         seedLevelPathWalls(this);
     }
-    scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
     {
         const levelStartDef = getLevelDef(currentLevel);
         const startLabel = 'LEVEL ' + currentLevel + ': ' + levelStartDef.name;
         showFloatingText(this, 400, 120, startLabel, '#66f6ff', { screenSpace: true });
-        if (currentLevel >= 2) {
+        if (levelStartDef.introHint) {
+            showFloatingText(this, 400, 160, levelStartDef.introHint, '#ffcc55', { screenSpace: true });
+        } else if (currentLevel >= 2) {
             showFloatingText(this, 400, 160, 'FLY UP / DOWN TO REVEAL PATHS', '#ffcc55', { screenSpace: true });
+        }
+        if (isSegmentedLevel(currentLevel)) {
+            this.time.delayedCall(250, () => {
+                if (levelEnded || victoryPending) return;
+                levelTransitioning = false;
+                const first = levelStartDef.segments[0];
+                if (first && first.id) {
+                    advanceLevelSegment(this, first.id, 'create');
+                }
+            });
+        } else {
+            scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
         }
     }
 
-    // Debug: press L to jump to Level 2 (canyon paths).
+    // Debug: press L to cycle levels (respects live getTotalLevels / ?level3=1).
     if (this.input.keyboard) {
         this.input.keyboard.on('keydown-L', () => {
             if (levelEnded || victoryPending || levelTransitioning) return;
-            if (currentLevel >= 2) return;
-            debugSkipToLevel.call(this, 2);
+            const max = totalLevels();
+            const next = currentLevel >= max ? 1 : currentLevel + 1;
+            debugSkipToLevel.call(this, next);
         });
     }
 
@@ -1205,25 +1351,60 @@ function update(time, delta) {
 
     updateLevelCamera(this, frameDelta);
 
+    // Black-hole preview during late topdown (PR6).
+    if (levelSegment === 'topdown' && gamePhase === 'waves' && !levelTransitioning) {
+        const ld = getLevelDef(currentLevel);
+        if (ld && ld.blackHole && levelProgressMs >= 60000) {
+            if (!blackHolePreview) {
+                blackHolePreview = true;
+                blackHoleConfig = Object.assign({}, BLACK_HOLE_DEFAULTS, ld.blackHole);
+                ensureBlackHoleVisuals(this);
+            }
+        }
+    }
+
     if (gamePhase === 'waves' && !levelTransitioning) {
-        const levelDef = getLevelDef(currentLevel);
-        const durationMs = levelDef.durationMs || LEVEL_DURATION_MS;
-        const progressMultiplier = Phaser.Math.Linear(1, BOOST_LEVEL_PROGRESS_MULTIPLIER, boostIntensity);
-        levelProgressMs = Math.min(
-            durationMs,
-            levelProgressMs + frameDelta * progressMultiplier
-        );
-        spawnScheduledPowerups.call(this);
-        spawnScheduledPathWalls.call(this);
-        updatePathDeadEndWarnings.call(this, frameDelta);
-        const remainingMs = Math.max(0, durationMs - levelProgressMs);
-        if (remainingMs <= 0) {
-            startBossFight.call(this);
+        const segmented = isSegmentedLevel();
+        // Classic L1/L2 always progress; segmented levels only while isProgressDrivenSegment().
+        const progressDriven = !segmented || isProgressDrivenSegment();
+        if (progressDriven) {
+            const durationMs = getActiveDurationMs();
+            const progressMultiplier = Phaser.Math.Linear(1, BOOST_LEVEL_PROGRESS_MULTIPLIER, boostIntensity);
+            levelProgressMs = Math.min(
+                durationMs,
+                levelProgressMs + frameDelta * progressMultiplier
+            );
+            spawnScheduledPowerups.call(this);
+            spawnScheduledPathWalls.call(this);
+            updatePathDeadEndWarnings.call(this, frameDelta);
+            const remainingMs = Math.max(0, durationMs - levelProgressMs);
+            if (remainingMs <= 0) {
+                if (segmented) {
+                    const seg = getLevelSegmentDef();
+                    const nextId = seg && seg.next;
+                    if (nextId) {
+                        advanceLevelSegment(this, nextId, 'progressComplete');
+                    } else {
+                        startBossFight.call(this);
+                    }
+                } else {
+                    startBossFight.call(this);
+                }
+            }
         }
     } else if (gamePhase === 'boss') {
         clearPathDeadEndWarnings(this);
         updateBossFight.call(this, time);
+        // Intro boss escape timeout (L3); no-op when bossEscapeTimeoutAt is 0.
+        if (bossEscapeTimeoutAt > 0 && time >= bossEscapeTimeoutAt && boss && boss.active) {
+            bossEscapes.call(this, 'timeout');
+        }
     }
+
+    // Black-hole gravity AFTER input velocity so pull sticks this frame (PR6).
+    applyBlackHoleForces(this, frameDelta, time);
+    updateHazardRings(this, time);
+    drawBlackHoleVisuals(this, time);
 
     // Solid canyon walls: separate the ship out every frame (overlap alone lets you clip).
     resolvePlayerWallCollisions.call(this);
@@ -1236,34 +1417,41 @@ function update(time, delta) {
     // Parallax starfield + drifting nebula
     drawBackgroundLayers(this, frameDelta, time);
 
-    // Cleanup
-    const worldHeight = getLevelWorldHeight(currentLevel);
+    // FX quality tier (cheap FPS gate)
+    if (time >= fxQualityCheckAt) {
+        fxQualityCheckAt = time + 2000;
+        const fps = this.game && this.game.loop ? this.game.loop.actualFps : 60;
+        if (fps < 50) fxQualityTier = 'low';
+        else if (fps > 57) fxQualityTier = 'high';
+    }
+
+    // Cleanup (orientation-aware; pads tuned to match pre-PR1 horizontal culls).
     bullets.getChildren().forEach(b => {
-        if (b.active && (b.x > 830 || b.y < -30 || b.y > worldHeight + 30)) releaseSprite(b);
+        if (b.active && isOffscreen(b, 30)) releaseSprite(b);
     });
 
     enemies.getChildren().forEach(e => {
         if (!e.active) return;
         updateEnemyMovement(e);
         maybeFireEnemyShot.call(this, e, time);
-        if (e.x < -70) releaseSprite(e);
+        if (isOffscreen(e, 40)) releaseSprite(e);
     });
 
     enemyBullets.getChildren().forEach(b => {
-        if (b.active && (b.x < -40 || b.y < -40 || b.y > worldHeight + 40)) releaseSprite(b);
+        if (b.active && isOffscreen(b, 10)) releaseSprite(b);
     });
 
     obstacles.getChildren().forEach(o => {
         if (!o.active) return;
         updateScrollVelocity(o);
-        if (o.x < -90) releaseSprite(o);
+        if (isOffscreen(o, 60)) releaseSprite(o);
     });
 
     if (walls) {
         walls.getChildren().forEach(w => {
             if (!w.active) return;
             updateScrollVelocity(w);
-            if (w.x < -120) releaseSprite(w);
+            if (isOffscreen(w, 90)) releaseSprite(w);
         });
     }
 
@@ -1273,7 +1461,7 @@ function update(time, delta) {
         if (p.aura && p.aura.active) {
             p.aura.setPosition(p.x, p.y);
         }
-        if (p.x < -70) releasePowerup(this, p);
+        if (isOffscreen(p, 40)) releasePowerup(this, p);
     });
 }
 
@@ -1359,6 +1547,16 @@ function hitBoss(bullet, bossSprite) {
     this.time.delayedCall(45, () => {
         if (bossSprite.active) bossSprite.clearTint();
     });
+
+    // Intro encounter: escape at HP threshold instead of dying.
+    const escapeRatio = bossSprite.escapeHpRatio;
+    if (Number.isFinite(escapeRatio) && bossEncounterKey === 'intro') {
+        const maxH = bossMaxHealth || BOSS_MAX_HEALTH;
+        if (bossHealth / maxH <= escapeRatio) {
+            bossEscapes.call(this, 'hpThreshold');
+            return;
+        }
+    }
 
     if (bossHealth <= 0) {
         defeatBoss.call(this, bossSprite);
@@ -1467,7 +1665,7 @@ function hitObstacleWithBullet(bullet, obstacle) {
     releaseSprite(bullet);
     createExplosion(this, hitX, hitY, 8);
     sfx.spark(hitX);
-    obstacle.baseVelocityX = -185;
+    applyApproachSpeed(obstacle, -185);
     updateScrollVelocity(obstacle);
 }
 
@@ -1726,28 +1924,40 @@ function damagePlayer() {
 }
 
 function fireBullet(time) {
-    // Spawn bullet from the front of the scaled ship
-    const bulletX = player.x + (player.displayWidth * 0.5);
+    const muzzle = getPlayerMuzzleAnchor();
+    const fired = [];
 
-    const fired = [
-        launchBullet(bulletX, player.y, 690, 0, weaponLevel >= 3 ? 'heavyBullet' : 'bullet')
-    ];
-
-    if (weaponLevel >= 2) {
-        fired.push(launchBullet(bulletX - 6, player.y - 16, 650, 0, 'bullet'));
-        fired.push(launchBullet(bulletX - 6, player.y + 16, 650, 0, 'bullet'));
-    }
-
-    if (weaponLevel >= 3) {
-        fired.push(launchBullet(bulletX - 10, player.y - 6, 630, -150, 'bullet'));
-        fired.push(launchBullet(bulletX - 10, player.y + 6, 630, 150, 'bullet'));
+    if (combatOrientation === 'up') {
+        // Vertical table (L3 top-down): fire toward top of screen (−Y).
+        fired.push(launchBullet(muzzle.x, muzzle.y, 0, -690, weaponLevel >= 3 ? 'heavyBullet' : 'bullet'));
+        if (weaponLevel >= 2) {
+            fired.push(launchBullet(muzzle.x - 16, muzzle.y + 6, 0, -650, 'bullet'));
+            fired.push(launchBullet(muzzle.x + 16, muzzle.y + 6, 0, -650, 'bullet'));
+        }
+        if (weaponLevel >= 3) {
+            fired.push(launchBullet(muzzle.x - 6, muzzle.y + 10, -150, -630, 'bullet'));
+            fired.push(launchBullet(muzzle.x + 6, muzzle.y + 10, 150, -630, 'bullet'));
+        }
+    } else {
+        // Horizontal (L1/L2): fire +X from the nose.
+        const bulletX = muzzle.x;
+        fired.push(launchBullet(bulletX, muzzle.y, 690, 0, weaponLevel >= 3 ? 'heavyBullet' : 'bullet'));
+        if (weaponLevel >= 2) {
+            fired.push(launchBullet(bulletX - 6, muzzle.y - 16, 650, 0, 'bullet'));
+            fired.push(launchBullet(bulletX - 6, muzzle.y + 16, 650, 0, 'bullet'));
+        }
+        if (weaponLevel >= 3) {
+            fired.push(launchBullet(bulletX - 10, muzzle.y - 6, 630, -150, 'bullet'));
+            fired.push(launchBullet(bulletX - 10, muzzle.y + 6, 630, 150, 'bullet'));
+        }
     }
 
     const firedCount = fired.filter(Boolean).length;
     if (firedCount > 0) {
         shotsFired += firedCount;
-        sfx.shoot(weaponLevel, bulletX);
-        createMuzzleFlash(this, bulletX + 8, player.y, weaponLevel);
+        sfx.shoot(weaponLevel, muzzle.x);
+        const flash = getPlayerNoseFlashAnchor(muzzle);
+        createMuzzleFlash(this, flash.x, flash.y, weaponLevel);
         lastFired = time + (weaponLevel >= 3 ? 150 : 125);
     }
 }
@@ -1769,30 +1979,95 @@ function launchBullet(x, y, velocityX, velocityY, textureKey) {
 
 function scheduleNextEnemyWave(scene, delayMs) {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
+    if (!getLevelWavePatterns().length) return; // [] / unknown keys → no waves
 
     scene.enemySpawnEvent = scene.time.delayedCall(delayMs, () => {
         if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
 
         spawnEnemyWave.call(scene);
-        scheduleNextEnemyWave(scene, Phaser.Math.Between(WAVE_INTERVAL_MIN_MS, WAVE_INTERVAL_MAX_MS));
+        if (getLevelWavePatterns().length) {
+            scheduleNextEnemyWave(scene, Phaser.Math.Between(WAVE_INTERVAL_MIN_MS, WAVE_INTERVAL_MAX_MS));
+        }
     });
 }
 
 function spawnEnemyWave() {
     const levelPatterns = getLevelWavePatterns();
+    if (!levelPatterns.length) return;
     const availablePatterns = levelPatterns.filter(pattern => pattern.key !== lastWavePatternKey);
     const pattern = Phaser.Utils.Array.GetRandom(availablePatterns.length ? availablePatterns : levelPatterns);
+    if (!pattern || typeof pattern.spawn !== 'function') return;
     lastWavePatternKey = pattern.key;
     pattern.spawn(this);
 }
 
-function getLevelWavePatterns() {
-    const levelDef = getLevelDef(currentLevel);
-    if (!levelDef.wavePatternKeys || !levelDef.wavePatternKeys.length) {
-        return ENEMY_WAVE_PATTERNS;
+function getLevelSegmentDef() {
+    const def = getLevelDef(currentLevel);
+    if (!def || !def.segments || !levelSegment) return null;
+    for (let i = 0; i < def.segments.length; i++) {
+        if (def.segments[i] && def.segments[i].id === levelSegment) return def.segments[i];
     }
-    const filtered = ENEMY_WAVE_PATTERNS.filter(pattern => levelDef.wavePatternKeys.includes(pattern.key));
-    return filtered.length ? filtered : ENEMY_WAVE_PATTERNS;
+    return null;
+}
+
+function isSegmentedLevel(levelId) {
+    const id = levelId == null ? currentLevel : levelId;
+    const def = getLevelDef(id);
+    return Boolean(def && Array.isArray(def.segments) && def.segments.length > 0);
+}
+
+function isProgressDrivenSegment() {
+    const seg = getLevelSegmentDef();
+    return Boolean(seg && (
+        seg.progressDriven === true
+        || seg.id === 'topdown'
+        || seg.id === 'gauntletHorizontal'
+    ));
+}
+
+function getActiveDurationMs() {
+    const seg = getLevelSegmentDef();
+    if (seg && Number.isFinite(seg.durationMs)) return seg.durationMs;
+    const levelDef = getLevelDef(currentLevel);
+    return (levelDef && levelDef.durationMs) || LEVEL_DURATION_MS;
+}
+
+function getActivePowerupPlan() {
+    const seg = getLevelSegmentDef();
+    if (seg && Array.isArray(seg.powerups)) return seg.powerups;
+    const levelDef = getLevelDef(currentLevel);
+    return (levelDef && levelDef.powerups) || [];
+}
+
+/**
+ * Wave key resolution (K12):
+ * - null/undefined → all patterns (L1)
+ * - [] → none
+ * - [keys...] → filter only (never fall back to all)
+ */
+function getActiveWavePatternKeys() {
+    const seg = getLevelSegmentDef();
+    if (seg && Object.prototype.hasOwnProperty.call(seg, 'wavePatternKeys')) {
+        return seg.wavePatternKeys;
+    }
+    const levelDef = getLevelDef(currentLevel);
+    return levelDef ? levelDef.wavePatternKeys : null;
+}
+
+function getLevelWavePatterns() {
+    const keys = getActiveWavePatternKeys();
+    if (keys == null) return ENEMY_WAVE_PATTERNS;
+    if (!keys.length) return [];
+    const filtered = ENEMY_WAVE_PATTERNS.filter(pattern => keys.includes(pattern.key));
+    if (typeof console !== 'undefined' && filtered.length < keys.length) {
+        const known = new Set(ENEMY_WAVE_PATTERNS.map(p => p.key));
+        keys.forEach(k => {
+            if (!known.has(k)) {
+                console.warn('[NovaWing] unknown wavePatternKey (not registered yet):', k);
+            }
+        });
+    }
+    return filtered;
 }
 
 function scheduleWavePart(scene, delayMs, callback) {
@@ -2092,6 +2367,172 @@ function spawnSplitterAmbushWave(scene) {
     });
 }
 
+/**
+ * L3 top-down wave (PR4): WAVE_LANES as X columns; dive from y < 0.
+ */
+function spawnVerticalRegularWave(scene) {
+    const count = Phaser.Math.Between(3, 5);
+    const used = {};
+    for (let i = 0; i < count; i++) {
+        let laneIndex = Phaser.Math.Between(0, WAVE_LANES.length - 1);
+        for (let tries = 0; tries < 6 && used[laneIndex]; tries++) {
+            laneIndex = Phaser.Math.Between(0, WAVE_LANES.length - 1);
+        }
+        used[laneIndex] = true;
+        const laneX = WAVE_LANES[laneIndex];
+        const isDart = Math.random() < 0.35;
+        scheduleWavePart(scene, i * 140, () => {
+            spawnEnemy.call(scene, {
+                x: laneX + Phaser.Math.Between(-12, 12),
+                y: -60 - i * 18,
+                type: isDart ? 'dart' : 'regular',
+                speed: isDart ? -245 : -155,
+                canShoot: i === 0 || Math.random() < 0.45,
+                nextShotDelay: 700 + i * 120,
+                tracksPlayer: isDart,
+                skipPathClamp: true
+            });
+        });
+    }
+}
+
+function spawnVerticalVWave(scene) {
+    const tipX = 400;
+    const steps = [
+        { dx: 0, delay: 0, canShoot: true },
+        { dx: -60, delay: 120, canShoot: false },
+        { dx: 60, delay: 120, canShoot: false },
+        { dx: -120, delay: 240, canShoot: false },
+        { dx: 120, delay: 240, canShoot: false }
+    ];
+    steps.forEach(step => {
+        scheduleWavePart(scene, step.delay, () => {
+            spawnEnemy.call(scene, {
+                x: tipX + step.dx,
+                y: -60,
+                type: 'dart',
+                speed: -160,
+                canShoot: step.canShoot,
+                tracksPlayer: step.canShoot,
+                nextShotDelay: 900,
+                skipPathClamp: true
+            });
+        });
+    });
+}
+
+function spawnRiserColumnsWave(scene) {
+    const cols = [200, 400, 600];
+    cols.forEach((colX, ci) => {
+        for (let row = 0; row < 3; row++) {
+            scheduleWavePart(scene, ci * 80 + row * 200, () => {
+                spawnEnemy.call(scene, {
+                    x: colX + Phaser.Math.Between(-10, 10),
+                    y: 660 + row * 30,
+                    type: 'riser',
+                    speed: -180,
+                    canShoot: row === 1,
+                    nextShotDelay: 600,
+                    skipPathClamp: true
+                });
+            });
+        }
+    });
+}
+
+function spawnCrossfireStrafeWave(scene) {
+    spawnEnemy.call(scene, {
+        x: 80, y: -40, type: 'strafer', speed: -90,
+        canShoot: true, nextShotDelay: 500, skipPathClamp: true
+    });
+    spawnEnemy.call(scene, {
+        x: 720, y: -40, type: 'strafer', speed: -90,
+        canShoot: true, nextShotDelay: 650, skipPathClamp: true
+    });
+    [340, 400, 460].forEach((x, i) => {
+        scheduleWavePart(scene, 200 + i * 100, () => {
+            spawnEnemy.call(scene, {
+                x: x, y: -50, type: 'dart', speed: -200,
+                canShoot: i === 1, tracksPlayer: true,
+                nextShotDelay: 700, skipPathClamp: true
+            });
+        });
+    });
+}
+
+function spawnMineCurtainWave(scene) {
+    spawnEnemy.call(scene, {
+        x: 400, y: -50, type: 'mineDropper', speed: -70,
+        canShoot: false, skipPathClamp: true
+    });
+    const gap = Phaser.Math.Between(0, 4);
+    for (let slot = 0; slot < 5; slot++) {
+        if (slot === gap) continue;
+        const mx = 100 + slot * 150;
+        scheduleWavePart(scene, slot * 40, () => {
+            spawnObstacle.call(scene, {
+                x: mx,
+                y: -20,
+                variantKey: 'mine',
+                speed: -95,
+                scale: 0.9,
+                skipPathClamp: true
+            });
+        });
+    }
+}
+
+function spawnPincerDiveWave(scene) {
+    for (let i = 0; i < 3; i++) {
+        scheduleWavePart(scene, i * 100, () => {
+            const e = spawnEnemy.call(scene, {
+                x: 100 + i * 40, y: -50, type: 'dart', speed: -190,
+                canShoot: i === 1, tracksPlayer: false,
+                nextShotDelay: 800, skipPathClamp: true
+            });
+            if (e) e.convergeVx = 40;
+        });
+        scheduleWavePart(scene, i * 100, () => {
+            const e = spawnEnemy.call(scene, {
+                x: 600 + i * 40, y: -50, type: 'dart', speed: -190,
+                canShoot: i === 1, tracksPlayer: false,
+                nextShotDelay: 800, skipPathClamp: true
+            });
+            if (e) e.convergeVx = -40;
+        });
+    }
+}
+
+function spawnOrbiterRingWave(scene) {
+    const cx = 400;
+    const cy = 180;
+    const radius = 140;
+    for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2;
+        scheduleWavePart(scene, i * 80, () => {
+            spawnEnemy.call(scene, {
+                x: cx + Math.cos(angle) * radius,
+                y: cy + Math.sin(angle) * radius,
+                type: 'orbiter',
+                speed: -20,
+                canShoot: true,
+                nextShotDelay: 900,
+                skipPathClamp: true,
+                orbitAngle: angle,
+                orbitRadius: radius,
+                orbitCenterX: cx,
+                orbitCenterY: cy
+            });
+        });
+    }
+}
+
+function spawnMixedGauntletWave(scene) {
+    spawnVerticalVWave(scene);
+    scheduleWavePart(scene, 2000, () => spawnRiserColumnsWave(scene));
+    scheduleWavePart(scene, 4500, () => spawnCrossfireStrafeWave(scene));
+}
+
 function spawnSplitterDrones(x, y) {
     if (levelEnded) return;
 
@@ -2139,18 +2580,32 @@ function spawnSplitterDrones(x, y) {
 function spawnEnemy(options = {}) {
     if (levelEnded || levelTransitioning || (gamePhase !== 'waves' && !options.allowDuringBoss)) return null;
 
-    const rawY = Number.isFinite(options.y) ? options.y : Phaser.Math.Between(100, 500);
+    // Default spawn uses spawnAhead so vertical mode can flip the edge without forking every wave.
+    const ahead = spawnAhead({
+        x: options.x,
+        y: options.y,
+        lane: options.lane,
+        laneIndex: options.laneIndex,
+        defaultX: 820,
+        defaultYRange: [100, 500]
+    });
+    const rawY = ahead.y;
     const y = options.skipPathClamp ? rawY : clampYToOpenBands(rawY);
-    const x = Number.isFinite(options.x) ? options.x : 820;
+    const x = ahead.x;
     const type = options.type || (Math.random() < 0.3 ? 'interceptor' : 'regular');
     const isInterceptor = type === 'interceptor';
     const isSplitter = type === 'splitter';
     const isSplitterDrone = type === 'splitterDrone';
+    const useVerticalArt = isVerticalScroll()
+        && !isSplitter
+        && !isSplitterDrone
+        && (this.textures ? this.textures.exists('enemyDart') : true);
     const key = options.key || (
         isSplitterDrone ? 'splitterDrone'
             : isSplitter ? 'splitter'
-                : isInterceptor ? 'enemy2'
-                    : 'enemy'
+                : useVerticalArt
+                    ? resolveVerticalEnemyTexture(type, options)
+                    : (isInterceptor ? 'enemy2' : 'enemy')
     );
 
     const enemy = enemies.get(x, y, key);
@@ -2170,11 +2625,12 @@ function spawnEnemy(options = {}) {
     enemy.killScore = REGULAR_KILL_SCORE;
     enemy.boostRefill = BOOST_REFILL_ON_KILL;
     enemy.driftVelocityY = 0;
-    enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : REGULAR_ENEMY_SPEED;
+    applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : REGULAR_ENEMY_SPEED);
     enemy.tracksPlayer = options.tracksPlayer === undefined ? false : Boolean(options.tracksPlayer);
     enemy.shotSpeed = ENEMY_SHOT_SPEED;
     enemy.shotAimScale = 1.1;
     enemy.shotMaxDy = 150;
+    enemy.shotMaxDx = 150;
     enemy.shotCooldownMin = 1400;
     enemy.shotCooldownMax = 2800;
     enemy.health = Number.isFinite(options.health) ? options.health : REGULAR_ENEMY_HEALTH;
@@ -2186,13 +2642,15 @@ function spawnEnemy(options = {}) {
     );
     // Existing red/blue art faces left; drone concept art faces right.
     enemy.setFlipX(isSplitterDrone);
+    applyEnemyOrientation(enemy);
 
     if (isInterceptor) {
-        enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : INTERCEPTOR_ENEMY_SPEED;
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : INTERCEPTOR_ENEMY_SPEED);
         enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
         enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
         enemy.shotAimScale = 1.45;
         enemy.shotMaxDy = 230;
+        enemy.shotMaxDx = 230;
         enemy.shotCooldownMin = 850;
         enemy.shotCooldownMax = 1650;
         enemy.health = Number.isFinite(options.health) ? options.health : INTERCEPTOR_ENEMY_HEALTH;
@@ -2205,7 +2663,7 @@ function spawnEnemy(options = {}) {
     }
 
     if (isSplitter) {
-        enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : SPLITTER_PARENT_SPEED;
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : SPLITTER_PARENT_SPEED);
         enemy.tracksPlayer = false;
         enemy.health = Number.isFinite(options.health) ? options.health : SPLITTER_PARENT_HEALTH;
         enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
@@ -2214,6 +2672,7 @@ function spawnEnemy(options = {}) {
         enemy.shotCooldownMax = SPLITTER_MISSILE_COOLDOWN_MAX;
         enemy.shotAimScale = 1.2;
         enemy.shotMaxDy = 200;
+        enemy.shotMaxDx = 200;
         enemy.shotSpeed = SPLITTER_MISSILE_SPEED;
         enemy.splitsOnDeath = true;
         enemy.killScore = SPLITTER_PARENT_SCORE;
@@ -2226,7 +2685,7 @@ function spawnEnemy(options = {}) {
     }
 
     if (isSplitterDrone) {
-        enemy.baseVelocityX = Number.isFinite(options.speed) ? options.speed : SPLITTER_DRONE_SPEED;
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : SPLITTER_DRONE_SPEED);
         enemy.tracksPlayer = false;
         enemy.health = Number.isFinite(options.health) ? options.health : SPLITTER_DRONE_HEALTH;
         enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : false;
@@ -2236,6 +2695,83 @@ function spawnEnemy(options = {}) {
         enemy.nextShotAt = Infinity;
     }
 
+    // --- L3 vertical roster (PR5) ---
+    if (type === 'dart') {
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -245);
+        enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
+        enemy.health = Number.isFinite(options.health) ? options.health : 2;
+        enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
+        enemy.shotAimScale = 1.35;
+        enemy.shotMaxDx = 200;
+        enemy.shotCooldownMin = 900;
+        enemy.shotCooldownMax = 1600;
+        enemy.killScore = 160;
+        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
+    }
+
+    if (type === 'riser') {
+        const mag = Math.abs(Number.isFinite(options.speed) ? options.speed : 180);
+        enemy.baseVelocityX = 0;
+        enemy.baseVelocityY = -mag; // fly upward from below
+        enemy.tracksPlayer = false;
+        enemy.health = Number.isFinite(options.health) ? options.health : 2;
+        enemy.shotSpeed = ENEMY_SHOT_SPEED;
+        enemy.shotAimScale = 1.0;
+        enemy.shotMaxDx = 120;
+        enemy.shotCooldownMin = 1100;
+        enemy.shotCooldownMax = 1800;
+        enemy.killScore = 150;
+        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
+    }
+
+    if (type === 'strafer') {
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -90);
+        enemy.tracksPlayer = false;
+        enemy.health = Number.isFinite(options.health) ? options.health : 3;
+        enemy.strafeAmplitude = 120;
+        enemy.strafePhase = Math.random() * Math.PI * 2;
+        enemy.homeX = x;
+        enemy.shotCooldownMin = 700;
+        enemy.shotCooldownMax = 1200;
+        enemy.shotMaxDx = 80;
+        enemy.killScore = 180;
+        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
+    }
+
+    if (type === 'mineDropper') {
+        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -70);
+        enemy.tracksPlayer = false;
+        enemy.health = Number.isFinite(options.health) ? options.health : 4;
+        enemy.canShoot = false;
+        enemy.nextMineAt = this.time.now + 500;
+        enemy.mineIntervalMs = 900;
+        enemy.killScore = 220;
+        enemy.boostRefill = BOOST_REFILL_ON_KILL + 2;
+    }
+
+    if (type === 'orbiter') {
+        enemy.baseVelocityX = 0;
+        enemy.baseVelocityY = 20; // slow drift down while orbiting
+        enemy.tracksPlayer = false;
+        enemy.health = Number.isFinite(options.health) ? options.health : 5;
+        enemy.orbitAngle = Number.isFinite(options.orbitAngle) ? options.orbitAngle : 0;
+        enemy.orbitRadius = Number.isFinite(options.orbitRadius) ? options.orbitRadius : 120;
+        enemy.orbitCenterX = Number.isFinite(options.orbitCenterX) ? options.orbitCenterX : 400;
+        enemy.orbitCenterY = Number.isFinite(options.orbitCenterY) ? options.orbitCenterY : 200;
+        enemy.orbitOmega = 1.2; // rad/s
+        enemy.orbitRadiusTarget = Math.max(70, enemy.orbitRadius - 50);
+        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
+        enemy.usesRadialShot = true;
+        enemy.shotCooldownMin = 1300;
+        enemy.shotCooldownMax = 1600;
+        enemy.killScore = 250;
+        enemy.boostRefill = BOOST_REFILL_ON_KILL + 4;
+    }
+
+    if (Number.isFinite(options.convergeVx)) {
+        enemy.convergeVx = options.convergeVx;
+    }
+
     updateScrollVelocity(enemy);
     return enemy;
 }
@@ -2243,9 +2779,15 @@ function spawnEnemy(options = {}) {
 function spawnObstacle(options = {}) {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return null;
 
-    const rawY = Number.isFinite(options.y) ? options.y : Phaser.Math.Between(95, 505);
+    const ahead = spawnAhead({
+        x: options.x,
+        y: options.y,
+        defaultX: 860,
+        defaultYRange: [95, 505]
+    });
+    const rawY = ahead.y;
     const y = options.skipPathClamp ? rawY : clampYToOpenBands(rawY);
-    const x = Number.isFinite(options.x) ? options.x : 860;
+    const x = ahead.x;
     const variant = getObstacleVariant(options.variantKey) || Phaser.Utils.Array.GetRandom(OBSTACLE_VARIANTS);
     const obstacle = obstacles.get(x, y, variant.key);
     if (!obstacle) return null;
@@ -2256,9 +2798,10 @@ function spawnObstacle(options = {}) {
         ? options.scale
         : Phaser.Math.FloatBetween(variant.scale[0], variant.scale[1]);
     obstacle.setScale(scale);
-    obstacle.baseVelocityX = Number.isFinite(options.speed)
+    const speed = Number.isFinite(options.speed)
         ? options.speed
         : Phaser.Math.Between(variant.speed[0], variant.speed[1]);
+    applyApproachSpeed(obstacle, speed);
     updateScrollVelocity(obstacle);
     obstacle.setAngularVelocity(Phaser.Math.Between(variant.spin[0], variant.spin[1]));
     obstacle.body.setSize(variant.body[0], variant.body[1], true);
@@ -2273,7 +2816,7 @@ function getObstacleVariant(variantKey) {
 function spawnScheduledPowerups() {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
 
-    const powerupsPlan = getLevelDef(currentLevel).powerups || [];
+    const powerupsPlan = getActivePowerupPlan();
     while (
         nextPowerupIndex < powerupsPlan.length &&
         levelProgressMs >= powerupsPlan[nextPowerupIndex].progressMs
@@ -2874,16 +3417,28 @@ function spawnPowerup(plan = {}) {
 
     const typeKey = plan.type || 'weapon';
     const type = POWERUP_TYPES[typeKey] || POWERUP_TYPES.weapon;
-    const rawY = Number.isFinite(plan.y) ? plan.y : pickOpenBandY();
-    const y = clampYToOpenBands(rawY, 22);
-    const x = Number.isFinite(plan.x) ? plan.x : 850;
+    let x;
+    let y;
+    if (isVerticalScroll()) {
+        const ahead = spawnAhead({
+            x: plan.x,
+            y: Number.isFinite(plan.y) ? plan.y : -40,
+            defaultX: 400
+        });
+        x = ahead.x;
+        y = ahead.y;
+    } else {
+        const rawY = Number.isFinite(plan.y) ? plan.y : pickOpenBandY();
+        y = clampYToOpenBands(rawY, 22);
+        x = Number.isFinite(plan.x) ? plan.x : 850;
+    }
     const powerup = powerups.get(x, y, type.texture);
     if (!powerup) return;
 
     powerup.setTexture(type.texture);
     powerup.powerupType = type.key;
     activateSprite(powerup, x, y);
-    powerup.baseVelocityX = -95;
+    applyApproachSpeed(powerup, -95);
     updateScrollVelocity(powerup);
     powerup.setAngularVelocity(80);
     powerup.setDepth(3);
@@ -2936,8 +3491,32 @@ function spawnPowerup(plan = {}) {
     });
 }
 
-function startBossFight() {
-    if (gamePhase !== 'waves' || levelTransitioning) return;
+function resolveBossEncounterProfile(encounterKey) {
+    const levelDef = getLevelDef(currentLevel);
+    const key = encounterKey || 'standard';
+    if (levelDef && levelDef.bossEncounters && levelDef.bossEncounters[key]) {
+        return Object.assign({ key: key }, levelDef.bossEncounters[key]);
+    }
+    // Classic L1/L2 (and missing profiles): full fight from levelDef.bossHealth.
+    return {
+        key: key,
+        health: (levelDef && levelDef.bossHealth) || BOSS_MAX_HEALTH,
+        maxPhase: 3,
+        escapeHpRatio: null,
+        escapeTimeoutMs: null,
+        entry: 'horizontal',
+        arena: 'flat',
+        label: null
+    };
+}
+
+function startBossFight(encounterKey) {
+    // Segmented intro/final may enter from non-waves; classic path requires waves.
+    if (levelTransitioning && !isSegmentedLevel()) return;
+    if (gamePhase === 'boss' && boss && boss.active) return;
+    if (gamePhase !== 'waves' && gamePhase !== 'boss' && !isSegmentedLevel()) return;
+    if (gamePhase !== 'waves' && !encounterKey) return;
+
     gamePhase = 'boss';
     currentOpenBands = null;
     previousOpenBands = null;
@@ -2955,50 +3534,113 @@ function startBossFight() {
     deactivateGroup(enemyBullets);
 
     const levelDef = getLevelDef(currentLevel);
+    const profile = resolveBossEncounterProfile(encounterKey || 'standard');
+    bossEncounterKey = profile.key;
+    bossMaxHealth = Number.isFinite(profile.health)
+        ? profile.health
+        : ((levelDef && levelDef.bossHealth) || BOSS_MAX_HEALTH);
+    bossEscapeTimeoutAt = 0;
+    const escapeTimeout = Number.isFinite(profile.escapeTimeoutMs)
+        ? profile.escapeTimeoutMs
+        : profile.timeoutMs;
+    if (Number.isFinite(escapeTimeout) && escapeTimeout > 0) {
+        bossEscapeTimeoutAt = this.time.now + escapeTimeout;
+    }
+
     // Prefer authored bossArenaY (falls back to startY via defineLevel).
     const bossArenaY = Number.isFinite(levelDef.bossArenaY)
         ? levelDef.bossArenaY
         : (Number.isFinite(levelDef.startY) ? levelDef.startY : 300);
+    const verticalBoss = combatOrientation === 'up' || profile.entry === 'warpCenter';
     if (player && player.active) {
-        player.setPosition(120, bossArenaY);
-        player.setVelocity(0, 0);
+        if (verticalBoss) {
+            player.setPosition(400, 480);
+            player.setVelocity(0, 0);
+            applyPlayerOrientation(player, 'up');
+        } else {
+            player.setPosition(120, bossArenaY);
+            player.setVelocity(0, 0);
+            applyPlayerOrientation(player, 'right');
+        }
     }
     // Flatten camera to a single screen around the arena for the boss.
+    const arenaCenterY = verticalBoss ? 300 : bossArenaY;
     this.physics.world.setBounds(
         0,
-        Math.max(0, bossArenaY - GAME_HEIGHT * 0.5),
+        Math.max(0, arenaCenterY - GAME_HEIGHT * 0.5),
         GAME_WIDTH,
         GAME_HEIGHT
     );
     this.cameras.main.setBounds(
         0,
-        Math.max(0, bossArenaY - GAME_HEIGHT * 0.5),
+        Math.max(0, arenaCenterY - GAME_HEIGHT * 0.5),
         GAME_WIDTH,
         GAME_HEIGHT
     );
-    this.cameras.main.setScroll(0, Math.max(0, bossArenaY - GAME_HEIGHT * 0.5));
+    this.cameras.main.setScroll(0, Math.max(0, arenaCenterY - GAME_HEIGHT * 0.5));
 
-    const warningLabel = currentLevel >= TOTAL_LEVELS
-        ? 'WARNING: FINAL BOSS'
-        : 'WARNING: BOSS APPROACHING';
+    const warningLabel = profile.label
+        || (currentLevel >= totalLevels()
+            ? 'WARNING: FINAL BOSS'
+            : 'WARNING: BOSS APPROACHING');
     showFloatingText(this, 400, 130, warningLabel, '#ff6677', { screenSpace: true });
     flashVignette(this, 0xff3355, 0.45);
     sfx.warning();
     sfx.startMusic('boss');
-    bossHealth = levelDef.bossHealth || BOSS_MAX_HEALTH;
+    bossHealth = bossMaxHealth;
     bossPhase = 1;
     bossNextVolleyAt = this.time.now + 1400;
     bossNextDroneAt = Infinity;
     bossNextLaserAt = Infinity;
-    boss = bosses.create(920, bossArenaY, 'bossShip');
-    boss.arenaY = bossArenaY;
-    boss.setDepth(3);
-    boss.setVelocityX(-80);
+
     // Concept B biomechanical art is wider; keep a strong on-screen presence.
-    const targetWidth = 340;
+    const hasBossVertical = this.textures && this.textures.exists('bossVertical');
+    const targetWidth = verticalBoss ? (hasBossVertical ? 220 : 280) : 340;
+    if (verticalBoss) {
+        // Park above player; prefer dedicated vertical boss art (PR4b).
+        const bossKey = hasBossVertical ? 'bossVertical' : 'bossShip';
+        boss = bosses.create(400, -40, bossKey);
+        boss.arenaY = 130;
+        boss.verticalMode = true;
+        boss.entry = profile.entry || 'warpCenter';
+        boss.setDepth(3);
+        boss.setVelocity(0, 90);
+        boss.setAngle(hasBossVertical ? 0 : 90);
+        boss.setAlpha(0.2);
+        this.tweens.add({
+            targets: boss,
+            alpha: 1,
+            duration: 400,
+            ease: 'Sine.easeOut'
+        });
+    } else {
+        boss = bosses.create(920, bossArenaY, 'bossShip');
+        boss.arenaY = bossArenaY;
+        boss.verticalMode = false;
+        boss.entry = profile.entry || 'horizontal';
+        boss.setDepth(3);
+        boss.setVelocityX(-80);
+        boss.setAngle(0);
+    }
+    boss.maxPhase = Number.isFinite(profile.maxPhase) ? profile.maxPhase : 3;
+    boss.escapeHpRatio = Number.isFinite(profile.escapeHpRatio) ? profile.escapeHpRatio : null;
     const aspect = boss.height > 0 ? boss.width / boss.height : 1.9;
     boss.setDisplaySize(targetWidth, Math.round(targetWidth / aspect));
-    applySpriteBody(boss, SPRITES.bossShip.body);
+    if (verticalBoss && hasBossVertical) {
+        applySpriteBody(boss, SPRITES.bossVertical.body);
+    } else {
+        applySpriteBody(boss, SPRITES.bossShip.body);
+        if (verticalBoss && boss.body) {
+            // Placeholder rotated boss: swap AABB axes.
+            const bw = boss.body.width;
+            const bh = boss.body.height;
+            boss.body.setSize(bh, bw);
+            boss.body.setOffset(
+                Math.max(0, (boss.width - bh) * 0.5),
+                Math.max(0, (boss.height - bw) * 0.25)
+            );
+        }
+    }
 
     if (bossHealthBar) {
         bossHealthBar.destroy();
@@ -3027,6 +3669,40 @@ function updateBossFight(time) {
     const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : (player ? player.y : 300);
     if (!Number.isFinite(boss.arenaY)) boss.arenaY = boss.y;
 
+    if (boss.verticalMode) {
+        if (boss.y < (boss.arenaY || 130) - 4) {
+            boss.setVelocity(0, 110);
+        } else if (blackHoleActive && blackHoleConfig) {
+            // PR6: orbit the singularity.
+            if (!Number.isFinite(boss.orbitAngle)) boss.orbitAngle = -Math.PI / 2;
+            if (!Number.isFinite(boss.orbitRadius)) boss.orbitRadius = 150;
+            const dt = 1 / 60;
+            const omega = bossPhase >= 3 ? 0.75 : 0.55;
+            boss.orbitAngle += omega * dt;
+            const r = boss.orbitRadius + Math.sin(time * 0.002) * 18;
+            const bhx = blackHoleConfig.x;
+            const bhy = blackHoleConfig.y;
+            const tx = bhx + Math.cos(boss.orbitAngle) * r;
+            const ty = bhy + Math.sin(boss.orbitAngle) * r;
+            boss.setVelocity((tx - boss.x) * 6, (ty - boss.y) * 6);
+        } else {
+            boss.setVelocity(0, 0);
+            boss.y = boss.arenaY || 130;
+            boss.x = 400 + Math.sin(time * 0.0016) * 160;
+        }
+        const inPosition = boss.y >= (boss.arenaY || 130) - 8 || blackHoleActive;
+        if (time >= bossNextVolleyAt && inPosition) {
+            fireBossVolley.call(this, time);
+        }
+        if (bossPhase >= 2 && time >= bossNextDroneAt && inPosition) {
+            spawnBossDroneAdd.call(this, time);
+        }
+        if (bossPhase >= 3 && time >= bossNextLaserAt && inPosition) {
+            fireBossLaserLane.call(this, time);
+        }
+        return;
+    }
+
     if (boss.x > 655) {
         boss.setVelocityX(-80);
     } else {
@@ -3053,6 +3729,44 @@ function fireBossVolley(time) {
     const volleyDelay = BOSS_VOLLEY_DELAYS[bossPhase] || BOSS_VOLLEY_DELAYS[1];
     const missileSpeed = BOSS_PHASE_MISSILE_SPEED[bossPhase] || BOSS_MISSILE_SPEED;
     bossNextVolleyAt = time + Phaser.Math.Between(volleyDelay.min, volleyDelay.max);
+
+    if (boss.verticalMode) {
+        // Fire downward (positive Y); aim on player X.
+        const speedMag = Math.abs(missileSpeed);
+        const launchers = [
+            { x: boss.x - 48, y: boss.y + 70 },
+            { x: boss.x, y: boss.y + 80 },
+            { x: boss.x + 48, y: boss.y + 70 }
+        ];
+        if (bossPhase >= 3) {
+            launchers.push(
+                { x: boss.x - 90, y: boss.y + 60 },
+                { x: boss.x + 90, y: boss.y + 60 }
+            );
+        }
+        launchers.forEach((launcher, index) => {
+            const missile = enemyBullets.get(launcher.x, launcher.y, 'missile');
+            if (!missile) return;
+            const playerVelocityX = player && player.body ? player.body.velocity.x : 0;
+            const dx = Phaser.Math.Clamp(
+                (player.x - launcher.x) * 1.05 + playerVelocityX * 0.16,
+                -240,
+                240
+            ) + (index - 1) * 28;
+            missile.setTexture('missile');
+            activateSprite(missile, launcher.x, launcher.y);
+            missile.isBossLaser = false;
+            missile.nextHitEffectAt = null;
+            missile.setVelocity(dx, speedMag);
+            missile.setAngle(90 + dx * 0.05);
+            missile.setDepth(4);
+            missile.body.setSize(missile.width * 0.55, missile.height * 0.55);
+            missile.body.setOffset(missile.width * 0.08, missile.height * 0.22);
+        });
+        sfx.missile(boss ? boss.x : 400);
+        return;
+    }
+
     const launchers = [
         { x: boss.x - 122, y: boss.y - 42 },
         { x: boss.x - 136, y: boss.y },
@@ -3119,11 +3833,13 @@ function updateBossPhase() {
 }
 
 function getBossPhase() {
-    const maxHealth = (getLevelDef(currentLevel).bossHealth || BOSS_MAX_HEALTH);
+    const maxHealth = bossMaxHealth || BOSS_MAX_HEALTH;
     const healthRatio = bossHealth / maxHealth;
-    if (healthRatio <= BOSS_PHASE_3_HEALTH_RATIO) return 3;
-    if (healthRatio <= BOSS_PHASE_2_HEALTH_RATIO) return 2;
-    return 1;
+    let phase = 1;
+    if (healthRatio <= BOSS_PHASE_3_HEALTH_RATIO) phase = 3;
+    else if (healthRatio <= BOSS_PHASE_2_HEALTH_RATIO) phase = 2;
+    const maxPhase = (boss && Number.isFinite(boss.maxPhase)) ? boss.maxPhase : 3;
+    return Math.min(phase, maxPhase);
 }
 
 function spawnBossDroneAdd(time) {
@@ -3132,6 +3848,34 @@ function spawnBossDroneAdd(time) {
     const droneDelay = BOSS_DRONE_DELAYS[bossPhase] || BOSS_DRONE_DELAYS[2];
     bossNextDroneAt = time + Phaser.Math.Between(droneDelay.min, droneDelay.max);
     const useInterceptor = bossPhase >= 3 && Math.random() < 0.55;
+
+    if (boss.verticalMode) {
+        const droneX = Phaser.Math.Clamp(
+            boss.x + Phaser.Math.Between(-180, 180),
+            80,
+            720
+        );
+        const drone = spawnEnemy.call(this, {
+            allowDuringBoss: true,
+            x: droneX,
+            y: -50,
+            type: useInterceptor ? 'interceptor' : 'regular',
+            speed: useInterceptor ? -235 : -190,
+            tracksPlayer: useInterceptor,
+            health: useInterceptor ? 2 : 1,
+            canShoot: true,
+            nextShotDelay: Phaser.Math.Between(650, 1100),
+            skipPathClamp: true
+        });
+        if (drone) {
+            drone.setTint(0xffcc55);
+            this.time.delayedCall(120, () => {
+                if (drone.active) drone.clearTint();
+            });
+        }
+        return;
+    }
+
     const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : boss.y;
     const droneY = Phaser.Math.Clamp(
         boss.y + Phaser.Math.Between(-150, 150),
@@ -3183,6 +3927,53 @@ function fireBossLaserLane(time) {
     if (!boss || !boss.active) return;
 
     bossNextLaserAt = time + Phaser.Math.Between(BOSS_LASER_DELAY_MIN_MS, BOSS_LASER_DELAY_MAX_MS);
+
+    // Vertical mode (K15): constant-X strips (vertical lanes on screen).
+    if (boss.verticalMode) {
+        const laneX = Phaser.Math.Clamp(player ? player.x : boss.x, 100, 700);
+        const warning = this.add.rectangle(laneX, 300, 36, 620, 0xff3355, 0.16);
+        warning.setStrokeStyle(2, 0xfff0aa, 0.95);
+        warning.setDepth(6);
+        warning.setScrollFactor(0);
+
+        sfx.laserWarn(laneX);
+        this.tweens.add({
+            targets: warning,
+            alpha: 0.78,
+            duration: 110,
+            yoyo: true,
+            repeat: Math.max(1, Math.floor(BOSS_LASER_WARNING_MS / 220)),
+            ease: 'Sine.easeInOut'
+        });
+
+        this.time.delayedCall(BOSS_LASER_WARNING_MS, () => {
+            if (warning.active) warning.destroy();
+            if (!boss || !boss.active || victoryPending || levelEnded) return;
+
+            const laser = enemyBullets.get(laneX, 300, 'bossLaser');
+            if (!laser) return;
+
+            laser.setTexture('bossLaser');
+            activateSprite(laser, laneX, 300);
+            laser.isBossLaser = true;
+            laser.nextHitEffectAt = 0;
+            laser.setVelocity(0, 0);
+            laser.setAngle(90);
+            laser.setDepth(5);
+            laser.setAlpha(0.95);
+            // Rotated laser texture → tall vertical body.
+            laser.setDisplaySize(40, 620);
+            laser.body.setSize(28, 580, true);
+            sfx.laserFire(laneX);
+            flashVignette(this, 0xff3355, 0.22);
+
+            this.time.delayedCall(BOSS_LASER_ACTIVE_MS, () => {
+                if (laser.active && laser.isBossLaser) releaseSprite(laser);
+            });
+        });
+        return;
+    }
+
     const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : 300;
     const laneY = Phaser.Math.Clamp(player ? player.y : boss.y, arenaY - 220, arenaY + 220);
     const warning = this.add.rectangle(400, laneY, 820, 30, 0xff3355, 0.16);
@@ -3226,18 +4017,62 @@ function fireBossLaserLane(time) {
 
 function updateBossHealthBar() {
     if (!bossHealthFill) return;
-    const maxHealth = getLevelDef(currentLevel).bossHealth || BOSS_MAX_HEALTH;
+    const maxHealth = bossMaxHealth || BOSS_MAX_HEALTH;
     const color = bossPhase >= 3 ? 0xff6677 : (bossPhase >= 2 ? 0xffcc55 : 0xff3355);
     bossHealthFill.setFillStyle(color, 1);
     bossHealthFill.setDisplaySize(326 * Phaser.Math.Clamp(bossHealth / maxHealth, 0, 1), 10);
 }
 
+/**
+ * Intro-boss escape (L3): does not award kill / victory; advances segment.
+ * Safe no-op if no next segment.
+ */
+function bossEscapes(reason) {
+    if (!boss || !boss.active || victoryPending || levelEnded) return;
+    if (bossEncounterKey !== 'intro') return;
+
+    bossEscapeTimeoutAt = 0;
+    const bossX = boss.x;
+    const bossY = boss.y;
+    const seg = getLevelSegmentDef();
+    const nextId = (seg && seg.next) || 'transition';
+
+    deactivateGroup(enemyBullets);
+    deactivateGroup(enemies);
+    if (bossHealthBar) {
+        bossHealthBar.destroy();
+        bossHealthBar = null;
+    }
+    if (bossHealthFill) {
+        bossHealthFill.destroy();
+        bossHealthFill = null;
+    }
+    createExplosion(this, bossX + 40, bossY, 40, { palette: 'cyan', ring: true });
+    flashVignette(this, 0x8866ff, 0.4);
+    showFloatingText(this, 400, 140, 'TARGET ESCAPING — PURSUE', '#ffcc55', { screenSpace: true });
+    if (sfx && sfx.warning) sfx.warning();
+
+    if (boss.active) boss.destroy();
+    boss = null;
+    bossHealth = 0;
+    bossEncounterKey = null;
+    gamePhase = 'waves';
+
+    advanceLevelSegment(this, nextId, reason || 'escape');
+}
+
 function defeatBoss(bossSprite) {
     if (victoryPending || levelTransitioning) return;
 
+    // Intro encounters never die — escape instead (even on overkill).
+    if (bossEncounterKey === 'intro' || (bossSprite && bossSprite.escapeHpRatio != null && bossEncounterKey === 'intro')) {
+        bossEscapes.call(this, 'overkill');
+        return;
+    }
+
     const bossX = bossSprite.x;
     const bossY = bossSprite.y;
-    const isFinalLevel = currentLevel >= TOTAL_LEVELS;
+    const isFinalLevel = currentLevel >= totalLevels();
 
     deactivateGroup(enemyBullets);
     deactivateGroup(enemies);
@@ -3295,14 +4130,14 @@ function defeatBoss(bossSprite) {
 
 function beginNextLevel() {
     if (levelEnded || victoryPending) return;
-    if (currentLevel >= TOTAL_LEVELS) return;
+    if (currentLevel >= totalLevels()) return;
     startLevel.call(this, currentLevel + 1, { fromClear: true });
 }
 
 function debugSkipToLevel(levelId) {
     if (levelEnded || victoryPending) return;
-    const target = Phaser.Math.Clamp(levelId, 1, TOTAL_LEVELS);
-    if (target === currentLevel && gamePhase === 'waves' && !levelTransitioning) return;
+    const target = Phaser.Math.Clamp(levelId, 1, totalLevels());
+    if (target === currentLevel && gamePhase === 'waves' && !levelTransitioning && !levelSegment) return;
     startLevel.call(this, target, { fromClear: false, debugSkip: true });
 }
 
@@ -3310,7 +4145,7 @@ function startLevel(levelId, options = {}) {
     if (levelEnded || victoryPending) return;
 
     levelTransitioning = true;
-    currentLevel = Phaser.Math.Clamp(levelId, 1, TOTAL_LEVELS);
+    currentLevel = Phaser.Math.Clamp(levelId, 1, totalLevels());
     const levelDef = getLevelDef(currentLevel);
 
     if (this.enemySpawnEvent) this.enemySpawnEvent.remove(false);
@@ -3341,6 +4176,18 @@ function startLevel(levelId, options = {}) {
     if (bosses) deactivateGroup(bosses);
 
     gamePhase = 'waves';
+    levelSegment = null;
+    scrollMode = (levelDef && levelDef.scrollMode === 'vertical') ? 'vertical' : 'horizontal';
+    combatOrientation = 'right';
+    bossMaxHealth = BOSS_MAX_HEALTH;
+    bossEncounterKey = null;
+    bossEscapeTimeoutAt = 0;
+    blackHoleActive = false;
+    blackHolePreview = false;
+    blackHoleConfig = null;
+    hazardRingState = null;
+    blackHoleLastDangerAt = 0;
+    destroyBlackHoleVisuals();
     levelProgressMs = 0;
     nextPowerupIndex = 0;
     nextPathEventIndex = 0;
@@ -3362,6 +4209,7 @@ function startLevel(levelId, options = {}) {
         player.setPosition(120, startY);
         player.setVelocity(0, 0);
         player.clearTint();
+        applyPlayerOrientation(player, 'right');
         playPlayerAnimation(player, PLAYER_ANIMATION_KEYS.flight);
     }
     applyLevelWorldBounds(this, currentLevel);
@@ -3386,16 +4234,465 @@ function startLevel(levelId, options = {}) {
 
     this.time.delayedCall(options.fromClear ? 700 : 250, () => {
         if (levelEnded || victoryPending) return;
+
+        if (isSegmentedLevel()) {
+            const first = levelDef.segments[0];
+            levelTransitioning = false;
+            if (first && first.id) {
+                advanceLevelSegment(this, first.id, 'startLevel');
+            }
+            return;
+        }
+
+        gamePhase = 'waves';
+        levelSegment = null;
         levelTransitioning = false;
         scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
     });
+}
+
+/**
+ * Advance to a named segment on a segmented level (L3+).
+ * Enter handlers own scheduling / boss / orientation.
+ */
+function advanceLevelSegment(scene, nextId, reason) {
+    if (!nextId || levelEnded || victoryPending) return;
+    const levelDef = getLevelDef(currentLevel);
+    if (!levelDef || !Array.isArray(levelDef.segments)) return;
+
+    let segDef = null;
+    for (let i = 0; i < levelDef.segments.length; i++) {
+        if (levelDef.segments[i] && levelDef.segments[i].id === nextId) {
+            segDef = levelDef.segments[i];
+            break;
+        }
+    }
+    if (!segDef) {
+        if (typeof console !== 'undefined') {
+            console.warn('[NovaWing] unknown segment id:', nextId, 'reason:', reason);
+        }
+        return;
+    }
+
+    levelSegment = nextId;
+    if (segDef.scrollMode === 'vertical' || segDef.scrollMode === 'horizontal') {
+        scrollMode = segDef.scrollMode;
+    }
+    if (segDef.combatOrientation === 'up' || segDef.combatOrientation === 'right') {
+        combatOrientation = segDef.combatOrientation;
+    }
+
+    // Clear wave spawn timer between segments.
+    if (scene.enemySpawnEvent) {
+        scene.enemySpawnEvent.remove(false);
+        scene.enemySpawnEvent = null;
+    }
+
+    switch (nextId) {
+        case 'introBoss':
+            enterIntroBoss(scene, segDef);
+            break;
+        case 'gauntletHorizontal':
+        case 'topdown':
+            enterProgressWaves(scene, segDef);
+            break;
+        case 'transition':
+            enterTransition(scene, segDef);
+            break;
+        case 'finalBoss':
+            enterFinalBoss(scene, segDef);
+            break;
+        default:
+            // Generic progress-driven waves if authored with gamePhase waves.
+            if (segDef.gamePhase === 'boss' || segDef.bossEncounter) {
+                enterIntroBoss(scene, segDef);
+            } else {
+                enterProgressWaves(scene, segDef);
+            }
+            break;
+    }
+}
+
+function enterIntroBoss(scene, segDef) {
+    levelTransitioning = false;
+    gamePhase = 'waves'; // startBossFight expects waves unless already boss
+    const encounter = (segDef && segDef.bossEncounter) || 'intro';
+    if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
+    if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
+    sfx.startMusic('boss');
+    startBossFight.call(scene, encounter);
+}
+
+function enterProgressWaves(scene, segDef) {
+    levelTransitioning = false;
+    gamePhase = 'waves';
+    levelProgressMs = 0;
+    nextPowerupIndex = 0;
+    lastWavePatternKey = null;
+    if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
+    if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
+
+    if (player && player.active && combatOrientation === 'up') {
+        player.setPosition(400, 460);
+        player.setVelocity(0, 0);
+        applyPlayerOrientation(player, 'up');
+    } else if (player && player.active) {
+        applyPlayerOrientation(player, 'right');
+    }
+
+    applyLevelWorldBounds(scene, currentLevel);
+    sfx.startMusic('waves');
+    scheduleNextEnemyWave(scene, FIRST_WAVE_DELAY_MS);
+}
+
+/**
+ * Perspective flip cinematic (PR4): ~3.5s shear → nose-up vertical flight.
+ */
+function enterTransition(scene, segDef) {
+    levelTransitioning = true;
+    gamePhase = 'waves';
+    scrollMode = 'horizontal';
+    combatOrientation = 'right';
+
+    if (scene.enemySpawnEvent) {
+        scene.enemySpawnEvent.remove(false);
+        scene.enemySpawnEvent = null;
+    }
+    // Intro boss must not linger into the flip / top-down gauntlet.
+    if (boss) {
+        if (boss.active) boss.destroy();
+        boss = null;
+    }
+    bossHealth = 0;
+    bossEncounterKey = null;
+    bossEscapeTimeoutAt = 0;
+    if (bossHealthBar) {
+        bossHealthBar.destroy();
+        bossHealthBar = null;
+    }
+    if (bossHealthFill) {
+        bossHealthFill.destroy();
+        bossHealthFill = null;
+    }
+    if (bosses) deactivateGroup(bosses);
+
+    deactivateGroup(enemies);
+    deactivateGroup(obstacles);
+    deactivateGroup(enemyBullets);
+    deactivateGroup(bullets);
+    deactivateGroup(powerups, child => releasePowerup(scene, child));
+    if (walls) deactivateGroup(walls);
+
+    if (player && player.active) {
+        player.setVelocity(0, 0);
+    }
+    playerInvulnerableUntil = scene.time.now + 4500;
+
+    showFloatingText(scene, 400, 140, 'REALITY SHEAR', '#cc88ff', { screenSpace: true });
+    flashVignette(scene, 0x8866ff, 0.55);
+    if (sfx && sfx.warning) sfx.warning();
+    if (scene.cameras && scene.cameras.main) {
+        scene.cameras.main.shake(280, 0.006);
+    }
+
+    const cam = scene.cameras.main;
+    const duration = (segDef && Number.isFinite(segDef.durationMs)) ? segDef.durationMs : 3500;
+    const nextId = (segDef && segDef.next) || 'topdown';
+
+    // 400–1600: zoom in + slight rotate
+    scene.tweens.add({
+        targets: cam,
+        zoom: 1.22,
+        rotation: 0.12,
+        duration: 1200,
+        delay: 400,
+        ease: 'Sine.easeInOut'
+    });
+
+    // 1200: move player to bottom-center home and reorient nose-up
+    scene.time.delayedCall(1200, () => {
+        if (!player || !player.active || levelEnded) return;
+        scene.tweens.add({
+            targets: player,
+            x: 400,
+            y: 460,
+            duration: 700,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+                if (player && player.active) applyPlayerOrientation(player, 'up');
+            }
+        });
+        // Start reorient mid-tween for readability
+        scene.time.delayedCall(350, () => {
+            if (player && player.active) applyPlayerOrientation(player, 'up');
+        });
+    });
+
+    // 1600–2800: settle camera
+    scene.tweens.add({
+        targets: cam,
+        zoom: 1,
+        rotation: 0,
+        duration: 1200,
+        delay: 1600,
+        ease: 'Sine.easeOut'
+    });
+
+    // 2800: lock vertical mode
+    scene.time.delayedCall(Math.min(2800, duration - 400), () => {
+        scrollMode = 'vertical';
+        combatOrientation = 'up';
+        if (player && player.active) applyPlayerOrientation(player, 'up');
+    });
+
+    // 3200–3500: engage text → topdown
+    scene.time.delayedCall(Math.max(duration - 300, 3000), () => {
+        if (levelEnded || victoryPending) return;
+        showFloatingText(scene, 400, 160, 'VERTICAL FLIGHT ENGAGED', '#66f6ff', { screenSpace: true });
+    });
+
+    scene.time.delayedCall(duration, () => {
+        if (levelEnded || victoryPending) return;
+        if (cam) {
+            cam.setZoom(1);
+            cam.setRotation(0);
+        }
+        scrollMode = 'vertical';
+        combatOrientation = 'up';
+        levelTransitioning = false;
+        playerInvulnerableUntil = Math.max(playerInvulnerableUntil, scene.time.now + 800);
+        advanceLevelSegment(scene, nextId, 'transitionComplete');
+    });
+}
+
+function enterFinalBoss(scene, segDef) {
+    levelTransitioning = false;
+    gamePhase = 'waves';
+    const encounter = (segDef && segDef.bossEncounter) || 'final';
+    if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
+    if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
+
+    // Always clear preview on final enter; enable full BH only when gated.
+    blackHolePreview = false;
+    const levelDef = getLevelDef(currentLevel);
+    const profile = resolveBossEncounterProfile(encounter);
+    const wantsBh = profile.arena === 'blackHole' && levelDef && levelDef.blackHole;
+    if (wantsBh) {
+        blackHoleActive = true;
+        blackHoleConfig = Object.assign({}, BLACK_HOLE_DEFAULTS, levelDef.blackHole);
+        ensureBlackHoleVisuals(scene);
+        hazardRingState = {
+            phase: 'idle',
+            mode: HAZARD_RING.modePrimary,
+            radius: 280,
+            targetRadius: 90,
+            telegraphEndsAt: 0,
+            lethalEndsAt: 0,
+            cooldownEndsAt: scene.time.now + 2500
+        };
+    } else {
+        blackHoleActive = false;
+        blackHoleConfig = null;
+        hazardRingState = null;
+        destroyBlackHoleVisuals();
+    }
+
+    sfx.startMusic('boss');
+    startBossFight.call(scene, encounter);
+}
+
+// ---------------------------------------------------------------------------
+// Black hole (PR6)
+// ---------------------------------------------------------------------------
+
+function resolveBlackHoleConfig() {
+    if (blackHoleConfig) return blackHoleConfig;
+    return Object.assign({}, BLACK_HOLE_DEFAULTS);
+}
+
+function ensureBlackHoleVisuals(scene) {
+    if (!scene || !scene.add) return;
+    if (!blackHoleGfx) {
+        blackHoleGfx = scene.add.graphics();
+        blackHoleGfx.setDepth(1);
+        blackHoleGfx.setScrollFactor(0);
+    }
+    if (!hazardRingGfx) {
+        hazardRingGfx = scene.add.graphics();
+        hazardRingGfx.setDepth(2);
+        hazardRingGfx.setScrollFactor(0);
+    }
+}
+
+function destroyBlackHoleVisuals() {
+    if (blackHoleGfx) {
+        blackHoleGfx.destroy();
+        blackHoleGfx = null;
+    }
+    if (hazardRingGfx) {
+        hazardRingGfx.destroy();
+        hazardRingGfx = null;
+    }
+    if (blackHoleDust) {
+        blackHoleDust.destroy();
+        blackHoleDust = null;
+    }
+}
+
+function applyBlackHoleForces(scene, frameDelta, time) {
+    if (!player || !player.active || (!blackHoleActive && !blackHolePreview)) return;
+    const cfg = resolveBlackHoleConfig();
+    const anchor = blackHolePreview && !blackHoleActive
+        ? (cfg.previewAnchor || { x: 400, y: 40 })
+        : { x: cfg.x, y: cfg.y };
+    const scale = blackHolePreview && !blackHoleActive ? (cfg.previewPullScale || 0.25) : 1;
+    const dx = anchor.x - player.x;
+    const dy = anchor.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    const maxR = cfg.maxPullRadius || 420;
+    if (dist < maxR) {
+        const t = 1 - dist / maxR;
+        const force = (cfg.pullStrength || 220) * t * t * scale;
+        const dt = (frameDelta || 16.67) / 1000;
+        const vx = player.body.velocity.x + (dx / dist) * force * dt;
+        const vy = player.body.velocity.y + (dy / dist) * force * dt;
+        player.setVelocity(vx, vy);
+    }
+
+    if (!blackHoleActive) return;
+
+    if (dist < (cfg.killRadius || 28)) {
+        if (time < playerInvulnerableUntil) return;
+        const nx = (player.x - anchor.x) / dist;
+        const ny = (player.y - anchor.y) / dist;
+        const spit = cfg.safeRadius || 110;
+        player.setPosition(anchor.x + nx * spit, anchor.y + ny * spit);
+        player.setVelocity(nx * 200, ny * 200);
+        damagePlayer.call(scene);
+        flashVignette(scene, 0x6622aa, 0.45);
+        showFloatingText(scene, 400, 200, 'EVENT HORIZON', '#cc88ff', { screenSpace: true });
+        return;
+    }
+
+    if (dist < (cfg.dangerRadius || 48)) {
+        if (time >= blackHoleLastDangerAt + (cfg.dangerTickMs || 450)) {
+            blackHoleLastDangerAt = time;
+            if (time >= playerInvulnerableUntil) {
+                damagePlayer.call(scene);
+            }
+        }
+    }
+}
+
+function updateHazardRings(scene, time) {
+    if (!blackHoleActive || !hazardRingState || !blackHoleConfig) return;
+    if (bossPhase < 2) return;
+    const st = hazardRingState;
+    const cfg = resolveBlackHoleConfig();
+    const period = bossPhase >= 3 ? 4500 : HAZARD_RING.periodMs;
+
+    if (st.phase === 'idle') {
+        if (time < st.cooldownEndsAt) return;
+        st.phase = 'telegraph';
+        st.telegraphEndsAt = time + HAZARD_RING.telegraphMs;
+        if (st.mode === 'collapse') {
+            st.radius = 280;
+            st.targetRadius = 90;
+        } else {
+            st.radius = 90;
+            st.targetRadius = 280;
+        }
+        ensureBlackHoleVisuals(scene);
+        if (sfx && sfx.laserWarn) sfx.laserWarn(cfg.x);
+        return;
+    }
+
+    if (st.phase === 'telegraph') {
+        const t = 1 - Math.max(0, (st.telegraphEndsAt - time) / HAZARD_RING.telegraphMs);
+        st.radius = Phaser.Math.Linear(
+            st.mode === 'collapse' ? 280 : 90,
+            st.targetRadius,
+            Phaser.Math.Clamp(t, 0, 1)
+        );
+        if (time >= st.telegraphEndsAt) {
+            st.phase = 'lethal';
+            st.lethalEndsAt = time + HAZARD_RING.lethalMs;
+        }
+        return;
+    }
+
+    if (st.phase === 'lethal') {
+        if (player && player.active) {
+            const dx = player.x - cfg.x;
+            const dy = player.y - cfg.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (Math.abs(dist - st.radius) < HAZARD_RING.lethalWidth * 0.5) {
+                if (time >= playerInvulnerableUntil) {
+                    damagePlayer.call(scene);
+                }
+            }
+        }
+        if (time >= st.lethalEndsAt) {
+            st.phase = 'cooldown';
+            st.cooldownEndsAt = time + period;
+            st.mode = st.mode === 'collapse' ? 'expand' : 'collapse';
+        }
+        return;
+    }
+
+    if (st.phase === 'cooldown' && time >= st.cooldownEndsAt) {
+        st.phase = 'idle';
+    }
+}
+
+function drawBlackHoleVisuals(scene, time) {
+    if (!blackHoleActive && !blackHolePreview) {
+        if (blackHoleGfx) blackHoleGfx.clear();
+        if (hazardRingGfx) hazardRingGfx.clear();
+        return;
+    }
+    ensureBlackHoleVisuals(scene);
+    const cfg = resolveBlackHoleConfig();
+    const anchor = blackHolePreview && !blackHoleActive
+        ? (cfg.previewAnchor || { x: 400, y: 40 })
+        : { x: cfg.x, y: cfg.y };
+    const pulse = 0.85 + Math.sin((time || 0) * 0.004) * 0.15;
+
+    blackHoleGfx.clear();
+    // Accretion disc
+    const coreR = blackHoleActive ? 22 : 10;
+    blackHoleGfx.fillStyle(0x000000, 0.95);
+    blackHoleGfx.fillCircle(anchor.x, anchor.y, coreR);
+    blackHoleGfx.lineStyle(3, 0xaa44ff, 0.55 * pulse);
+    blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 10);
+    blackHoleGfx.lineStyle(2, 0x66ccff, 0.35 * pulse);
+    blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 22);
+    if (blackHoleActive && fxQualityTier !== 'low') {
+        blackHoleGfx.lineStyle(1, 0xff66aa, 0.25);
+        blackHoleGfx.strokeCircle(anchor.x, anchor.y, coreR + 40 + Math.sin(time * 0.003) * 6);
+    }
+
+    if (hazardRingGfx) {
+        hazardRingGfx.clear();
+        if (blackHoleActive && hazardRingState && (hazardRingState.phase === 'telegraph' || hazardRingState.phase === 'lethal')) {
+            const lethal = hazardRingState.phase === 'lethal';
+            const col = lethal ? 0xff3355 : 0xffcc55;
+            const alpha = lethal ? 0.85 : 0.45 + Math.sin(time * 0.02) * 0.25;
+            hazardRingGfx.lineStyle(lethal ? 4 : 2, col, alpha);
+            hazardRingGfx.strokeCircle(cfg.x, cfg.y, hazardRingState.radius);
+            if (lethal && fxQualityTier !== 'low') {
+                hazardRingGfx.lineStyle(1, 0xffffff, 0.4);
+                hazardRingGfx.strokeCircle(cfg.x, cfg.y, hazardRingState.radius);
+            }
+        }
+    }
 }
 
 function getDebugStartLevel() {
     try {
         const params = new URLSearchParams(window.location.search || '');
         const raw = Number(params.get('level'));
-        if (Number.isFinite(raw) && raw >= 1 && raw <= TOTAL_LEVELS) {
+        if (Number.isFinite(raw) && raw >= 1 && raw <= totalLevels()) {
             return Math.floor(raw);
         }
     } catch (error) {
@@ -3422,7 +4719,7 @@ function updateLevelText() {
 
 function maybeFireEnemyShot(enemy, time) {
     if (!enemy.active || !enemy.canShoot || time < enemy.nextShotAt) return;
-    if (enemy.x > 780 || enemy.x < 180) return;
+    if (!enemyInFireRange(enemy) && !enemy.usesRadialShot) return;
 
     enemy.nextShotAt = time + Phaser.Math.Between(
         enemy.shotCooldownMin || 1400,
@@ -3434,17 +4731,36 @@ function maybeFireEnemyShot(enemy, time) {
         return;
     }
 
-    const shot = enemyBullets.get(enemy.x - enemy.displayWidth * 0.46, enemy.y);
+    // Orbiter: 4-way radial burst
+    if (enemy.usesRadialShot) {
+        const speed = 280;
+        const dirs = [
+            { vx: speed, vy: 0 },
+            { vx: -speed, vy: 0 },
+            { vx: 0, vy: speed },
+            { vx: 0, vy: -speed }
+        ];
+        dirs.forEach(d => {
+            const shot = enemyBullets.get(enemy.x, enemy.y);
+            if (!shot) return;
+            shot.setTexture('enemyBullet');
+            activateSprite(shot, enemy.x, enemy.y);
+            shot.setVelocity(d.vx, d.vy);
+            shot.setAngle(0);
+            shot.setDepth(2);
+            shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
+        });
+        sfx.enemyShoot(enemy.x);
+        return;
+    }
+
+    const fire = getEnemyFireVector(enemy);
+    const shot = enemyBullets.get(fire.x, fire.y);
     if (!shot) return;
 
-    const dy = Phaser.Math.Clamp(
-        (player.y - enemy.y) * (enemy.shotAimScale || 1.1),
-        -(enemy.shotMaxDy || 150),
-        enemy.shotMaxDy || 150
-    );
     shot.setTexture('enemyBullet');
-    activateSprite(shot, enemy.x - enemy.displayWidth * 0.46, enemy.y);
-    shot.setVelocity(enemy.shotSpeed || ENEMY_SHOT_SPEED, dy);
+    activateSprite(shot, fire.x, fire.y);
+    shot.setVelocity(fire.vx, fire.vy);
     shot.setAngle(0);
     shot.setDepth(2);
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
@@ -3454,24 +4770,23 @@ function maybeFireEnemyShot(enemy, time) {
 function fireEnemyMissile(enemy) {
     if (!enemy || !enemy.active || !player) return;
 
-    const launchX = enemy.x - enemy.displayWidth * 0.42;
-    const launchY = enemy.y;
+    // Reuse fire vector for launch + aim; missiles keep lead on the perpendicular axis.
+    const fire = getEnemyFireVector(enemy, {
+        muzzleScale: 0.42,
+        leadPerpendicular: true,
+        speed: enemy.shotSpeed || SPLITTER_MISSILE_SPEED
+    });
+    const launchX = fire.x;
+    const launchY = fire.y;
     const missile = enemyBullets.get(launchX, launchY, 'missile');
     if (!missile) return;
-
-    const playerVelocityY = player.body ? player.body.velocity.y : 0;
-    const dy = Phaser.Math.Clamp(
-        (player.y - launchY) * (enemy.shotAimScale || 1.2) + playerVelocityY * 0.12,
-        -(enemy.shotMaxDy || 200),
-        enemy.shotMaxDy || 200
-    );
 
     missile.setTexture('missile');
     activateSprite(missile, launchX, launchY);
     missile.isBossLaser = false;
     missile.nextHitEffectAt = null;
-    missile.setVelocity(enemy.shotSpeed || SPLITTER_MISSILE_SPEED, dy);
-    missile.setAngle(dy * 0.08);
+    missile.setVelocity(fire.vx, fire.vy);
+    missile.setAngle(scrollMode === 'vertical' ? fire.vx * 0.08 : fire.vy * 0.08);
     missile.setDepth(4);
     // Tight body on the warhead, not the full exhaust trail.
     missile.body.setSize(missile.width * 0.55, missile.height * 0.55);
@@ -3524,19 +4839,258 @@ function getWeaponName() {
     return names[weaponLevel - 1];
 }
 
+// ---------------------------------------------------------------------------
+// Orientation surface (PR1) — horizontal L1/L2 + vertical L3 top-down
+// ---------------------------------------------------------------------------
+
+function isVerticalScroll() {
+    return scrollMode === 'vertical';
+}
+
+function isOffscreen(sprite, pad) {
+    if (!sprite) return true;
+    const edge = Number.isFinite(pad) ? pad : 40;
+    const wh = getLevelWorldHeight(currentLevel);
+    if (isVerticalScroll()) {
+        return sprite.y > wh + edge
+            || sprite.y < -edge - 80
+            || sprite.x < -edge
+            || sprite.x > GAME_WIDTH + edge;
+    }
+    // Horizontal: primary exit is left edge; also cull far right / vertical bleed.
+    return sprite.x < -edge - 30
+        || sprite.x > GAME_WIDTH + edge + 30
+        || sprite.y < -edge
+        || sprite.y > wh + edge;
+}
+
+/**
+ * Convert a signed legacy speed (negative = left) or magnitude into axis velocity.
+ * Positive approach magnitude closes distance from "ahead" of the player.
+ */
+function getApproachVelocity(speed) {
+    const mag = Math.abs(Number.isFinite(speed) ? speed : REGULAR_ENEMY_SPEED);
+    if (isVerticalScroll()) {
+        // From above, flying down toward the player.
+        return { vx: 0, vy: mag };
+    }
+    return { vx: -mag, vy: 0 };
+}
+
+function applyApproachSpeed(sprite, speed) {
+    if (!sprite) return;
+    const v = getApproachVelocity(speed);
+    sprite.baseVelocityX = v.vx;
+    sprite.baseVelocityY = v.vy;
+}
+
+/**
+ * Spawn position on the "ahead" edge of the scroll axis.
+ * Horizontal defaults match pre-PR1 (x≈820/860, random Y).
+ */
+function spawnAhead(options) {
+    const opts = options || {};
+    if (isVerticalScroll()) {
+        const lane = Number.isFinite(opts.lane) ? opts.lane : 0.5;
+        return {
+            x: Number.isFinite(opts.x)
+                ? opts.x
+                : Phaser.Math.Linear(80, 720, Phaser.Math.Clamp(lane, 0, 1)),
+            y: Number.isFinite(opts.y) ? opts.y : -60
+        };
+    }
+    let y;
+    if (Number.isFinite(opts.y)) {
+        y = opts.y;
+    } else if (Number.isFinite(opts.defaultY)) {
+        y = opts.defaultY;
+    } else if (opts.defaultYRange && opts.defaultYRange.length === 2) {
+        y = Phaser.Math.Between(opts.defaultYRange[0], opts.defaultYRange[1]);
+    } else if (Number.isFinite(opts.laneIndex)) {
+        y = getWaveLaneY(opts.laneIndex);
+    } else {
+        y = Phaser.Math.Between(100, 500);
+    }
+    return {
+        x: Number.isFinite(opts.x) ? opts.x : (Number.isFinite(opts.defaultX) ? opts.defaultX : 820),
+        y: y
+    };
+}
+
+function enemyInFireRange(enemy) {
+    if (!enemy) return false;
+    if (isVerticalScroll()) {
+        // Risers fire while climbing through the field; orbiters while on ring.
+        if (enemy.enemyType === 'riser') return enemy.y > 80 && enemy.y < 560;
+        if (enemy.enemyType === 'orbiter') return true;
+        return enemy.y > 40 && enemy.y < 520;
+    }
+    return enemy.x <= 780 && enemy.x >= 180;
+}
+
+/**
+ * Aimed enemy shot along the approach axis with perpendicular lead.
+ * @param {object} enemy
+ * @param {{ muzzleScale?: number, leadPerpendicular?: boolean, speed?: number }} [options]
+ */
+function getEnemyFireVector(enemy, options) {
+    const opts = options || {};
+    const muzzleScale = Number.isFinite(opts.muzzleScale) ? opts.muzzleScale : 0.46;
+    const speed = Number.isFinite(opts.speed)
+        ? opts.speed
+        : (enemy.shotSpeed || ENEMY_SHOT_SPEED);
+    const speedMag = Math.abs(speed);
+    const aimScale = enemy.shotAimScale || 1.1;
+
+    if (isVerticalScroll()) {
+        const maxDx = enemy.shotMaxDx || enemy.shotMaxDy || 150;
+        let dx = Phaser.Math.Clamp(
+            (player.x - enemy.x) * aimScale,
+            -maxDx,
+            maxDx
+        );
+        if (opts.leadPerpendicular && player.body) {
+            dx = Phaser.Math.Clamp(
+                dx + player.body.velocity.x * 0.12,
+                -maxDx,
+                maxDx
+            );
+        }
+        return {
+            x: enemy.x,
+            y: enemy.y + enemy.displayHeight * muzzleScale,
+            vx: dx,
+            // Positive Y = toward player below (approach from ahead).
+            vy: speedMag
+        };
+    }
+
+    const maxDy = enemy.shotMaxDy || 150;
+    let dy = Phaser.Math.Clamp(
+        (player.y - enemy.y) * aimScale,
+        -maxDy,
+        maxDy
+    );
+    if (opts.leadPerpendicular && player.body) {
+        dy = Phaser.Math.Clamp(
+            dy + player.body.velocity.y * 0.12,
+            -maxDy,
+            maxDy
+        );
+    }
+    // Preserve signed shotSpeed (negative = left) for horizontal identity.
+    const vx = Number.isFinite(opts.speed) ? opts.speed : (enemy.shotSpeed || ENEMY_SHOT_SPEED);
+    return {
+        x: enemy.x - enemy.displayWidth * muzzleScale,
+        y: enemy.y,
+        vx: vx,
+        vy: dy
+    };
+}
+
+function getPlayerMuzzleAnchor() {
+    if (!player) return { x: 0, y: 0 };
+    if (combatOrientation === 'up') {
+        return {
+            x: player.x,
+            y: player.y - player.displayHeight * 0.45
+        };
+    }
+    return {
+        x: player.x + player.displayWidth * 0.5,
+        y: player.y
+    };
+}
+
+function getPlayerNoseFlashAnchor(muzzle) {
+    if (combatOrientation === 'up') {
+        return { x: muzzle.x, y: muzzle.y - 8 };
+    }
+    return { x: muzzle.x + 8, y: muzzle.y };
+}
+
+function getAftAnchor() {
+    if (!player) return { x: 0, y: 0 };
+    if (combatOrientation === 'up') {
+        return {
+            x: player.x,
+            y: player.y + player.displayHeight * 0.42
+        };
+    }
+    return {
+        x: player.x - player.displayWidth * 0.46,
+        y: player.y
+    };
+}
+
 function updateScrollVelocity(sprite) {
-    if (!sprite || !sprite.active || !Number.isFinite(sprite.baseVelocityX)) return;
+    if (!sprite || !sprite.active) return;
+
+    const hasX = Number.isFinite(sprite.baseVelocityX);
+    const hasY = Number.isFinite(sprite.baseVelocityY);
+    if (!hasX && !hasY) return;
 
     // Canyon walls must scroll at the same boost rate as path events, or gaps open.
     const boostCap = sprite.isWall
         ? BOOST_LEVEL_PROGRESS_MULTIPLIER
         : BOOST_WORLD_SPEED_MULTIPLIER;
     const multiplier = Phaser.Math.Linear(1, boostCap, boostIntensity);
-    sprite.setVelocityX(sprite.baseVelocityX * multiplier);
+    if (hasX) sprite.setVelocityX(sprite.baseVelocityX * multiplier);
+    if (hasY) sprite.setVelocityY(sprite.baseVelocityY * multiplier);
 }
 
 function updateEnemyMovement(enemy) {
+    if (!enemy || !enemy.active || !enemy.body) return;
+
+    // --- L3 vertical special movers (override scroll for custom paths) ---
+    if (enemy.enemyType === 'orbiter') {
+        const dt = 1 / 60;
+        enemy.orbitAngle = (enemy.orbitAngle || 0) + (enemy.orbitOmega || 1.2) * dt;
+        if (Number.isFinite(enemy.orbitRadiusTarget) && enemy.orbitRadius > enemy.orbitRadiusTarget) {
+            enemy.orbitRadius -= 12 * dt; // shrink ring over ~4s
+        }
+        const cx = Number.isFinite(enemy.orbitCenterX) ? enemy.orbitCenterX : 400;
+        const cy = Number.isFinite(enemy.orbitCenterY) ? enemy.orbitCenterY : 200;
+        const r = enemy.orbitRadius || 120;
+        const tx = cx + Math.cos(enemy.orbitAngle) * r;
+        const ty = cy + Math.sin(enemy.orbitAngle) * r + (enemy.baseVelocityY || 0) * dt * 8;
+        enemy.setVelocity((tx - enemy.x) * 8, (ty - enemy.y) * 8);
+        return;
+    }
+
+    if (enemy.enemyType === 'strafer') {
+        updateScrollVelocity(enemy);
+        const amp = enemy.strafeAmplitude || 120;
+        enemy.strafePhase = (enemy.strafePhase || 0) + 0.045;
+        const home = Number.isFinite(enemy.homeX) ? enemy.homeX : enemy.x;
+        const targetX = home + Math.sin(enemy.strafePhase) * amp;
+        enemy.setVelocityX((targetX - enemy.x) * 6);
+        return;
+    }
+
+    if (enemy.enemyType === 'mineDropper') {
+        updateScrollVelocity(enemy);
+        const scene = enemy.scene;
+        if (scene && scene.time && scene.time.now >= (enemy.nextMineAt || 0)) {
+            enemy.nextMineAt = scene.time.now + (enemy.mineIntervalMs || 900);
+            spawnObstacle.call(scene, {
+                x: enemy.x,
+                y: enemy.y + 20,
+                variantKey: 'mine',
+                speed: isVerticalScroll() ? -40 : -100,
+                scale: 0.85,
+                skipPathClamp: true,
+                allowDuringBoss: false
+            });
+        }
+        return;
+    }
+
     updateScrollVelocity(enemy);
+
+    if (Number.isFinite(enemy.convergeVx) && enemy.body) {
+        enemy.setVelocityX(enemy.convergeVx + (enemy.body.velocity.x || 0) * 0.05);
+    }
 
     if (enemy.enemyType === 'splitterDrone' && enemy.body) {
         let drift = Number.isFinite(enemy.driftVelocityY) ? enemy.driftVelocityY : 0;
@@ -3558,7 +5112,20 @@ function updateEnemyMovement(enemy) {
     }
 
     if (!enemy.tracksPlayer || !player || !player.active || !enemy.body) {
-        if (enemy.body) enemy.setVelocityY(0);
+        // Horizontal non-trackers: zero Y so approach stays pure +X scroll.
+        // Vertical non-trackers: keep baseVelocityY from updateScrollVelocity.
+        if (enemy.body && !isVerticalScroll()) enemy.setVelocityY(0);
+        return;
+    }
+
+    if (isVerticalScroll()) {
+        // Track on X while approach velocity remains on Y.
+        const targetVelocityX = Phaser.Math.Clamp(
+            (player.x - enemy.x) * INTERCEPTOR_TRACK_RESPONSE,
+            -INTERCEPTOR_TRACK_SPEED,
+            INTERCEPTOR_TRACK_SPEED
+        );
+        enemy.setVelocityX(targetVelocityX);
         return;
     }
 
@@ -4071,10 +5638,12 @@ function releaseSprite(sprite) {
     sprite.clearTint();
     sprite.setAlpha(1);
     sprite.baseVelocityX = null;
+    sprite.baseVelocityY = null;
     sprite.tracksPlayer = false;
     sprite.shotSpeed = null;
     sprite.shotAimScale = null;
     sprite.shotMaxDy = null;
+    sprite.shotMaxDx = null;
     sprite.shotCooldownMin = null;
     sprite.shotCooldownMax = null;
     sprite.health = null;
@@ -4153,13 +5722,14 @@ function updateBoostUi() {
 }
 
 function createBoostTrail(scene) {
-    const baseX = player.x - player.displayWidth * 0.46;
+    const aft = getAftAnchor();
     const count = boostIntensity > 0.7 ? 3 : 2;
+    const vertical = combatOrientation === 'up';
 
     for (let i = 0; i < count; i++) {
         const trail = scene.add.sprite(
-            baseX - i * 6,
-            player.y + Phaser.Math.Between(-14, 14),
+            vertical ? aft.x + Phaser.Math.Between(-14, 14) : aft.x - i * 6,
+            vertical ? aft.y + i * 6 : aft.y + Phaser.Math.Between(-14, 14),
             i === 0 ? 'boostSpark' : 'sparkBlue'
         );
         trail.setDepth(1);
@@ -4169,8 +5739,12 @@ function createBoostTrail(scene) {
 
         scene.tweens.add({
             targets: trail,
-            x: trail.x - Phaser.Math.Between(50, 78),
-            y: trail.y + Phaser.Math.Between(-10, 10),
+            x: vertical
+                ? trail.x + Phaser.Math.Between(-10, 10)
+                : trail.x - Phaser.Math.Between(50, 78),
+            y: vertical
+                ? trail.y + Phaser.Math.Between(50, 78)
+                : trail.y + Phaser.Math.Between(-10, 10),
             alpha: 0,
             scaleX: 0.12,
             scaleY: 0.2,
@@ -4181,7 +5755,11 @@ function createBoostTrail(scene) {
     }
 
     if (boostIntensity > 0.55 && Math.random() < 0.45) {
-        const glow = scene.add.image(baseX - 8, player.y, 'glowOrb');
+        const glow = scene.add.image(
+            vertical ? aft.x : aft.x - 8,
+            vertical ? aft.y + 8 : aft.y,
+            'glowOrb'
+        );
         glow.setDepth(1);
         glow.setTint(0x66f6ff);
         glow.setBlendMode(Phaser.BlendModes.ADD);
@@ -4189,7 +5767,8 @@ function createBoostTrail(scene) {
         glow.setScale(0.55);
         scene.tweens.add({
             targets: glow,
-            x: glow.x - 40,
+            x: vertical ? glow.x : glow.x - 40,
+            y: vertical ? glow.y + 40 : glow.y,
             alpha: 0,
             scale: 0.15,
             duration: 240,
@@ -4278,16 +5857,27 @@ function drawBackgroundLayers(scene, frameDelta, time) {
     starLayers.forEach((layer, layerIndex) => {
         layer.gfx.clear();
         const speed = layer.speed * boostMul * frameDelta;
+        const vertical = isVerticalScroll();
         layer.stars.forEach((star, i) => {
-            star.x -= speed * (1 + (i % 3) * 0.08);
-            if (star.x < -10) star.x = 810;
+            if (vertical) {
+                // Fly "up" → stars stream downward.
+                star.y += speed * (1 + (i % 3) * 0.08);
+                if (star.y > 610) star.y = -10;
+            } else {
+                star.x -= speed * (1 + (i % 3) * 0.08);
+                if (star.x < -10) star.x = 810;
+            }
             const twinkle = 0.55 + Math.sin(time * 0.004 + star.twinkle * 12 + layerIndex) * 0.45;
             layer.gfx.fillStyle(layer.color, layer.alpha * twinkle);
             const size = layer.size * (layerIndex === 3 && (i % 5 === 0) ? 1.4 : 1);
             layer.gfx.fillRect(star.x, star.y, size, size);
             if (layerIndex >= 2 && i % 7 === 0) {
                 layer.gfx.fillStyle(layer.color, layer.alpha * twinkle * 0.35);
-                layer.gfx.fillRect(star.x - 1, star.y, size + 3, 1);
+                if (vertical) {
+                    layer.gfx.fillRect(star.x, star.y - 1, 1, size + 3);
+                } else {
+                    layer.gfx.fillRect(star.x - 1, star.y, size + 3, 1);
+                }
             }
         });
     });
@@ -5073,6 +6663,9 @@ function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
 function updatePlayerAnimation(scene, time) {
     if (!player || !player.active) return;
 
+    // Vertical mode uses a static upright texture (no horizontal flight sheet).
+    if (combatOrientation === 'up') return;
+
     if (playerAnimationOverride) {
         if (time < playerAnimationOverrideUntil) return;
         playerAnimationOverride = null;
@@ -5217,6 +6810,86 @@ function applySpriteBody(sprite, bodyConfig) {
 
 function applyPlayerShipSize(sprite) {
     applyShipSize(sprite, SPRITES.player.displayWidth, SPRITES.player.body);
+}
+
+/**
+ * Vertical orientation (PR4b): prefer dedicated upright textures; fallback rotate.
+ * @param {Phaser.Physics.Arcade.Sprite} sprite
+ * @param {'right'|'up'} orientation
+ */
+function applyPlayerOrientation(sprite, orientation) {
+    if (!sprite) return;
+    const scene = sprite.scene;
+    const hasVerticalArt = scene && scene.textures && scene.textures.exists('playerVertical');
+
+    if (orientation === 'up') {
+        if (hasVerticalArt) {
+            if (sprite.anims) sprite.anims.stop();
+            sprite.setTexture('playerVertical');
+            sprite.setFlipX(false);
+            sprite.setRotation(0);
+            sprite.setAngle(0);
+            const def = SPRITES.playerVertical;
+            applyShipSize(sprite, def.displayWidth, def.body);
+        } else {
+            // Fallback placeholder: rotate horizontal frames −90°.
+            sprite.setFlipX(true);
+            sprite.setRotation(-Math.PI / 2);
+            applyPlayerShipSize(sprite);
+            if (sprite.body) {
+                const w = sprite.body.width;
+                const h = sprite.body.height;
+                sprite.body.setSize(h, w);
+                sprite.body.setOffset(
+                    Math.max(0, (sprite.width - h) * 0.5),
+                    Math.max(0, (sprite.height - w) * 0.35)
+                );
+            }
+        }
+    } else {
+        sprite.setFlipX(true);
+        sprite.setRotation(0);
+        sprite.setAngle(0);
+        applyPlayerShipSize(sprite);
+        playPlayerAnimation(sprite, PLAYER_ANIMATION_KEYS.flight);
+    }
+}
+
+/**
+ * Vertical enemies use dedicated nose-up/down art (no rotation).
+ * Horizontal enemies keep classic left-facing art.
+ */
+function applyEnemyOrientation(enemy) {
+    if (!enemy) return;
+    const verticalKeys = {
+        enemyDart: true,
+        enemyRiser: true,
+        enemyStrafer: true,
+        enemyMineDropper: true,
+        enemyOrbiter: true
+    };
+    if (verticalKeys[enemy.texture && enemy.texture.key]) {
+        enemy.setFlipX(false);
+        enemy.setAngle(0);
+        enemy.setRotation(0);
+        return;
+    }
+    if (isVerticalScroll()) {
+        enemy.setFlipX(false);
+        enemy.setAngle(90); // left-facing art → nose down
+    } else {
+        enemy.setAngle(0);
+    }
+}
+
+/** Pick L3 vertical texture key for a combat type. */
+function resolveVerticalEnemyTexture(type, options) {
+    if (type === 'riser' || options.verticalRole === 'riser') return 'enemyRiser';
+    if (type === 'strafer' || options.verticalRole === 'strafer') return 'enemyStrafer';
+    if (type === 'mineDropper' || options.verticalRole === 'mineDropper') return 'enemyMineDropper';
+    if (type === 'orbiter' || options.verticalRole === 'orbiter') return 'enemyOrbiter';
+    if (type === 'dart' || type === 'interceptor' || type === 'regular') return 'enemyDart';
+    return 'enemyDart';
 }
 
 function createSfx() {
@@ -5665,16 +7338,23 @@ function getBotSnapshot() {
         ready: Boolean(player && player.active),
         time: game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0].time.now : 0,
         phase: gamePhase,
+        segment: levelSegment,
+        scrollMode: scrollMode,
+        combatOrientation: combatOrientation,
+        blackHole: {
+            active: Boolean(blackHoleActive),
+            preview: Boolean(blackHolePreview),
+            config: blackHoleConfig
+        },
         levelEnded: Boolean(levelEnded),
         levelTransitioning: Boolean(levelTransitioning),
         victoryPending: Boolean(victoryPending),
         playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,
         level: typeof currentLevel === 'number' ? currentLevel : 1,
-        totalLevels: typeof TOTAL_LEVELS === 'number' ? TOTAL_LEVELS : 1,
+        totalLevels: totalLevels(),
         levelName: levelDef && levelDef.name ? levelDef.name : null,
         levelProgressMs: typeof levelProgressMs === 'number' ? levelProgressMs : 0,
-        levelDurationMs: (levelDef && levelDef.durationMs) ||
-            (typeof LEVEL_DURATION_MS === 'number' ? LEVEL_DURATION_MS : 60000),
+        levelDurationMs: getActiveDurationMs(),
         elapsedMs: (typeof levelStartTime === 'number' && game && game.scene && game.scene.scenes[0])
             ? Math.max(0, game.scene.scenes[0].time.now - levelStartTime)
             : 0,
@@ -5706,7 +7386,7 @@ function getBotSnapshot() {
                 x: b.x,
                 y: b.y,
                 vx: b.vx || enemy.baseVelocityX || 0,
-                vy: b.vy,
+                vy: b.vy || enemy.baseVelocityY || 0,
                 w: b.w,
                 h: b.h,
                 type: enemy.enemyType || 'regular',
@@ -5719,7 +7399,7 @@ function getBotSnapshot() {
                 x: b.x,
                 y: b.y,
                 vx: b.vx || obstacle.baseVelocityX || 0,
-                vy: b.vy,
+                vy: b.vy || obstacle.baseVelocityY || 0,
                 w: b.w,
                 h: b.h
             };
@@ -5762,7 +7442,9 @@ function getBotSnapshot() {
                 x: b.x,
                 y: b.y,
                 health: bossHealth,
+                maxHealth: bossMaxHealth,
                 phase: bossPhase,
+                encounter: bossEncounterKey,
                 w: b.w,
                 h: b.h
             };
@@ -5803,6 +7485,22 @@ window.__novawingDebug = {
     setBotInput,
     clearBotInput() {
         botInput = null;
+    },
+    getSegment() {
+        return levelSegment;
+    },
+    getScrollMode() {
+        return scrollMode;
+    },
+    getCombatOrientation() {
+        return combatOrientation;
+    },
+    getTotalLevels: totalLevels,
+    setSegment(id) {
+        const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
+        if (!scene || !id) return false;
+        advanceLevelSegment(scene, id, 'debug');
+        return true;
     },
     getMovementAxes,
     isFireHeld,
