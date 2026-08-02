@@ -308,7 +308,9 @@ const BLACK_HOLE_DEFAULTS = {
     maxPullRadius: 420,
     dangerTickMs: 450,
     previewPullScale: 0.25,
-    previewAnchor: { x: 400, y: 40 }
+    previewAnchor: { x: 400, y: 40 },
+    // Late topdown preview pull (ms into progress-driven segment).
+    previewAtMs: 60000
 };
 const HAZARD_RING = {
     periodMs: 6000,
@@ -543,6 +545,8 @@ let blackHoleSprite = null;
 let hazardRingGfx = null;
 let blackHoleDust = null;
 let blackHoleLastDangerAt = 0;
+// Bumped on each segment enter so delayed transition tweens/timers can no-op if stale.
+let segmentEnterGen = 0;
 let fxQualityTier = 'high';
 let fxQualityCheckAt = 0;
 let currentLevel = 1;
@@ -1431,10 +1435,12 @@ function update(time, delta) {
     // Black-hole preview during late topdown (PR6).
     if (levelSegment === 'topdown' && gamePhase === 'waves' && !levelTransitioning) {
         const ld = getLevelDef(currentLevel);
-        if (ld && ld.blackHole && levelProgressMs >= 60000) {
-            if (!blackHolePreview) {
+        if (ld && ld.blackHole) {
+            const bhCfg = Object.assign({}, BLACK_HOLE_DEFAULTS, ld.blackHole);
+            const previewAt = Number.isFinite(bhCfg.previewAtMs) ? bhCfg.previewAtMs : 60000;
+            if (levelProgressMs >= previewAt && !blackHolePreview) {
                 blackHolePreview = true;
-                blackHoleConfig = Object.assign({}, BLACK_HOLE_DEFAULTS, ld.blackHole);
+                blackHoleConfig = bhCfg;
                 ensureBlackHoleVisuals(this);
             }
         }
@@ -1471,7 +1477,7 @@ function update(time, delta) {
         }
     } else if (gamePhase === 'boss') {
         clearPathDeadEndWarnings(this);
-        updateBossFight.call(this, time);
+        updateBossFight.call(this, time, frameDelta);
         // Intro boss escape timeout (L3); no-op when bossEscapeTimeoutAt is 0.
         if (bossEscapeTimeoutAt > 0 && time >= bossEscapeTimeoutAt && boss && boss.active) {
             bossEscapes.call(this, 'timeout');
@@ -1510,7 +1516,7 @@ function update(time, delta) {
 
     enemies.getChildren().forEach(e => {
         if (!e.active) return;
-        updateEnemyMovement(e);
+        updateEnemyMovement(e, frameDelta);
         maybeFireEnemyShot.call(this, e, time);
         if (isOffscreen(e, 40)) releaseSprite(e);
     });
@@ -1626,19 +1632,35 @@ function hitBoss(bullet, bossSprite) {
         if (bossSprite.active) bossSprite.clearTint();
     });
 
-    // Intro encounter: escape at HP threshold instead of dying.
-    const escapeRatio = bossSprite.escapeHpRatio;
-    if (Number.isFinite(escapeRatio) && bossEncounterKey === 'intro') {
-        const maxH = bossMaxHealth || BOSS_MAX_HEALTH;
-        if (bossHealth / maxH <= escapeRatio) {
-            bossEscapes.call(this, 'hpThreshold');
-            return;
+    maybeResolveBossAfterDamage(this, bossSprite, 'bullet');
+}
+
+/**
+ * Shared post-damage resolution for all boss damage sources (bullets, bombs, …).
+ * Intro encounter escapes at escapeHpRatio; otherwise defeat at 0 HP.
+ * @returns {boolean} true if the fight ended this call
+ */
+function maybeResolveBossAfterDamage(scene, bossSprite, reason) {
+    if (!bossSprite || victoryPending || levelEnded) return false;
+
+    if (bossEncounterKey === 'intro') {
+        const escapeRatio = Number.isFinite(bossSprite.escapeHpRatio)
+            ? bossSprite.escapeHpRatio
+            : null;
+        if (Number.isFinite(escapeRatio)) {
+            const maxH = bossMaxHealth || BOSS_MAX_HEALTH;
+            if (maxH > 0 && bossHealth / maxH <= escapeRatio) {
+                bossEscapes.call(scene, reason || 'hpThreshold');
+                return true;
+            }
         }
     }
 
     if (bossHealth <= 0) {
-        defeatBoss.call(this, bossSprite);
+        defeatBoss.call(scene, bossSprite);
+        return true;
     }
+    return false;
 }
 
 function hitPlayer(player, enemy) {
@@ -1901,16 +1923,16 @@ function detonateScreenBomb(scene, originX, originY) {
     if (boss && boss.active && gamePhase === 'boss') {
         const bombDamage = 28;
         bossHealth = Math.max(0, bossHealth - bombDamage);
-        updateBossPhase.call(scene);
+        if (bossHealth > 0) {
+            updateBossPhase.call(scene);
+        }
         updateBossHealthBar();
         createExplosion(scene, boss.x - 40, boss.y, 40, { palette: 'cyan', ring: true });
         boss.setTint(0xffffff);
         scene.time.delayedCall(80, () => {
             if (boss && boss.active) boss.clearTint();
         });
-        if (bossHealth <= 0) {
-            defeatBoss.call(scene, boss);
-        }
+        maybeResolveBossAfterDamage(scene, boss, 'bomb');
     }
 
     updateScoreText();
@@ -3777,13 +3799,14 @@ function startBossFight(encounterKey) {
     updateBossHealthBar();
 }
 
-function updateBossFight(time) {
+function updateBossFight(time, frameDelta) {
     if (!boss || !boss.active) return;
 
     updateBossPhase.call(this);
 
     const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : (player ? player.y : 300);
     if (!Number.isFinite(boss.arenaY)) boss.arenaY = boss.y;
+    const dt = Phaser.Math.Clamp((Number.isFinite(frameDelta) ? frameDelta : 16.67) / 1000, 0.008, 0.05);
 
     if (boss.verticalMode) {
         if (boss.y < (boss.arenaY || 130) - 4) {
@@ -3792,7 +3815,6 @@ function updateBossFight(time) {
             // PR6: orbit the singularity.
             if (!Number.isFinite(boss.orbitAngle)) boss.orbitAngle = -Math.PI / 2;
             if (!Number.isFinite(boss.orbitRadius)) boss.orbitRadius = 150;
-            const dt = 1 / 60;
             const omega = bossPhase >= 3 ? 0.75 : 0.55;
             boss.orbitAngle += omega * dt;
             const r = boss.orbitRadius + Math.sin(time * 0.002) * 18;
@@ -4298,12 +4320,7 @@ function startLevel(levelId, options = {}) {
     bossMaxHealth = BOSS_MAX_HEALTH;
     bossEncounterKey = null;
     bossEscapeTimeoutAt = 0;
-    blackHoleActive = false;
-    blackHolePreview = false;
-    blackHoleConfig = null;
-    hazardRingState = null;
-    blackHoleLastDangerAt = 0;
-    destroyBlackHoleVisuals();
+    clearBlackHoleState();
     levelProgressMs = 0;
     nextPowerupIndex = 0;
     nextPathEventIndex = 0;
@@ -4371,6 +4388,15 @@ function startLevel(levelId, options = {}) {
  * Advance to a named segment on a segmented level (L3+).
  * Enter handlers own scheduling / boss / orientation.
  */
+function clearBlackHoleState() {
+    blackHoleActive = false;
+    blackHolePreview = false;
+    blackHoleConfig = null;
+    hazardRingState = null;
+    blackHoleLastDangerAt = 0;
+    destroyBlackHoleVisuals();
+}
+
 function advanceLevelSegment(scene, nextId, reason) {
     if (!nextId || levelEnded || victoryPending) return;
     const levelDef = getLevelDef(currentLevel);
@@ -4390,6 +4416,8 @@ function advanceLevelSegment(scene, nextId, reason) {
         return;
     }
 
+    // Invalidate pending transition cinematic timers from a prior segment enter.
+    segmentEnterGen += 1;
     levelSegment = nextId;
     if (segDef.scrollMode === 'vertical' || segDef.scrollMode === 'horizontal') {
         scrollMode = segDef.scrollMode;
@@ -4465,6 +4493,8 @@ function enterProgressWaves(scene, segDef) {
         bossHealthFill = null;
     }
     if (bosses) deactivateGroup(bosses);
+    // Debug setSegment(finalBoss→topdown) must not keep arena gravity.
+    clearBlackHoleState();
 
     if (player && player.active && combatOrientation === 'up') {
         player.setPosition(400, 460);
@@ -4487,6 +4517,8 @@ function enterTransition(scene, segDef) {
     gamePhase = 'waves';
     scrollMode = 'horizontal';
     combatOrientation = 'right';
+    // Capture gen so stacked debug re-enters / setSegment jumps invalidate timers.
+    const enterGen = segmentEnterGen;
 
     if (scene.enemySpawnEvent) {
         scene.enemySpawnEvent.remove(false);
@@ -4522,6 +4554,8 @@ function enterTransition(scene, segDef) {
     }
     playerInvulnerableUntil = scene.time.now + 4500;
 
+    // Design K13: transition is stinger-only (no boss loop under the flip).
+    if (sfx && sfx.stopMusic) sfx.stopMusic();
     showFloatingText(scene, 400, 140, 'REALITY SHEAR', '#cc88ff', { screenSpace: true });
     flashVignette(scene, 0x8866ff, 0.55);
     if (sfx && sfx.warning) sfx.warning();
@@ -4532,6 +4566,13 @@ function enterTransition(scene, segDef) {
     const cam = scene.cameras.main;
     const duration = (segDef && Number.isFinite(segDef.durationMs)) ? segDef.durationMs : 3500;
     const nextId = (segDef && segDef.next) || 'topdown';
+
+    function transitionStillActive() {
+        return enterGen === segmentEnterGen
+            && levelSegment === 'transition'
+            && !levelEnded
+            && !victoryPending;
+    }
 
     // 400–1600: zoom in + slight rotate
     scene.tweens.add({
@@ -4545,7 +4586,7 @@ function enterTransition(scene, segDef) {
 
     // 1200: move player to bottom-center home and reorient nose-up
     scene.time.delayedCall(1200, () => {
-        if (!player || !player.active || levelEnded) return;
+        if (!transitionStillActive() || !player || !player.active) return;
         scene.tweens.add({
             targets: player,
             x: 400,
@@ -4553,12 +4594,16 @@ function enterTransition(scene, segDef) {
             duration: 700,
             ease: 'Sine.easeInOut',
             onComplete: () => {
-                if (player && player.active) applyPlayerOrientation(player, 'up');
+                if (transitionStillActive() && player && player.active) {
+                    applyPlayerOrientation(player, 'up');
+                }
             }
         });
         // Start reorient mid-tween for readability
         scene.time.delayedCall(350, () => {
-            if (player && player.active) applyPlayerOrientation(player, 'up');
+            if (transitionStillActive() && player && player.active) {
+                applyPlayerOrientation(player, 'up');
+            }
         });
     });
 
@@ -4574,6 +4619,7 @@ function enterTransition(scene, segDef) {
 
     // 2800: lock vertical mode
     scene.time.delayedCall(Math.min(2800, duration - 400), () => {
+        if (!transitionStillActive()) return;
         scrollMode = 'vertical';
         combatOrientation = 'up';
         if (player && player.active) applyPlayerOrientation(player, 'up');
@@ -4581,12 +4627,12 @@ function enterTransition(scene, segDef) {
 
     // 3200–3500: engage text → topdown
     scene.time.delayedCall(Math.max(duration - 300, 3000), () => {
-        if (levelEnded || victoryPending) return;
+        if (!transitionStillActive()) return;
         showFloatingText(scene, 400, 160, 'VERTICAL FLIGHT ENGAGED', '#66f6ff', { screenSpace: true });
     });
 
     scene.time.delayedCall(duration, () => {
-        if (levelEnded || victoryPending) return;
+        if (!transitionStillActive()) return;
         if (cam) {
             cam.setZoom(1);
             cam.setRotation(0);
@@ -4625,10 +4671,7 @@ function enterFinalBoss(scene, segDef) {
             cooldownEndsAt: scene.time.now + 2500
         };
     } else {
-        blackHoleActive = false;
-        blackHoleConfig = null;
-        hazardRingState = null;
-        destroyBlackHoleVisuals();
+        clearBlackHoleState();
     }
 
     sfx.startMusic('boss');
@@ -4708,15 +4751,17 @@ function applyBlackHoleForces(scene, frameDelta, time) {
     if (!blackHoleActive) return;
 
     if (dist < (cfg.killRadius || 28)) {
-        if (time < playerInvulnerableUntil) return;
+        // Always spit out of the event horizon (K17); only gate damage on i-frames.
         const nx = (player.x - anchor.x) / dist;
         const ny = (player.y - anchor.y) / dist;
         const spit = cfg.safeRadius || 110;
         player.setPosition(anchor.x + nx * spit, anchor.y + ny * spit);
         player.setVelocity(nx * 200, ny * 200);
-        damagePlayer.call(scene);
-        flashVignette(scene, 0x6622aa, 0.45);
-        showFloatingText(scene, 400, 200, 'EVENT HORIZON', '#cc88ff', { screenSpace: true });
+        if (time >= playerInvulnerableUntil) {
+            damagePlayer.call(scene);
+            flashVignette(scene, 0x6622aa, 0.45);
+            showFloatingText(scene, 400, 200, 'EVENT HORIZON', '#cc88ff', { screenSpace: true });
+        }
         return;
     }
 
@@ -5123,12 +5168,13 @@ function getEnemyFireVector(enemy, options) {
                 maxDx
             );
         }
+        // Fire toward the player on the approach axis (risers climb from below → shoot up).
+        const vySign = (player && player.y < enemy.y - 4) ? -1 : 1;
         return {
             x: enemy.x,
-            y: enemy.y + enemy.displayHeight * muzzleScale,
+            y: enemy.y + enemy.displayHeight * muzzleScale * vySign,
             vx: dx,
-            // Positive Y = toward player below (approach from ahead).
-            vy: speedMag
+            vy: speedMag * vySign
         };
     }
 
@@ -5206,12 +5252,13 @@ function updateScrollVelocity(sprite) {
     if (hasY) sprite.setVelocityY(sprite.baseVelocityY * multiplier);
 }
 
-function updateEnemyMovement(enemy) {
+function updateEnemyMovement(enemy, frameDelta) {
     if (!enemy || !enemy.active || !enemy.body) return;
+
+    const dt = Phaser.Math.Clamp((Number.isFinite(frameDelta) ? frameDelta : 16.67) / 1000, 0.008, 0.05);
 
     // --- L3 vertical special movers (override scroll for custom paths) ---
     if (enemy.enemyType === 'orbiter') {
-        const dt = 1 / 60;
         enemy.orbitAngle = (enemy.orbitAngle || 0) + (enemy.orbitOmega || 1.2) * dt;
         if (Number.isFinite(enemy.orbitRadiusTarget) && enemy.orbitRadius > enemy.orbitRadiusTarget) {
             enemy.orbitRadius -= 12 * dt; // shrink ring over ~4s
@@ -7484,9 +7531,23 @@ window.__novawingDebug = {
         return combatOrientation;
     },
     getTotalLevels: totalLevels,
+    /**
+     * Debug jump to a named L3 segment. Invalidates transition timers and
+     * resets camera zoom/rotation so mid-cinematic jumps do not leave half state.
+     * Prefer jumping from a stable segment; mid-transition jumps force-clear the flip.
+     */
     setSegment(id) {
         const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
         if (!scene || !id) return false;
+        if (levelTransitioning || levelSegment === 'transition') {
+            levelTransitioning = false;
+            if (scene.cameras && scene.cameras.main) {
+                scene.cameras.main.setZoom(1);
+                scene.cameras.main.setRotation(0);
+            }
+        }
+        // Bump gen before advance so any in-flight transition delayedCalls no-op.
+        segmentEnterGen += 1;
         advanceLevelSegment(scene, id, 'debug');
         return true;
     },

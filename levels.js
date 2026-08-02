@@ -269,7 +269,9 @@
             maxPullRadius: 420,
             dangerTickMs: 450,
             previewPullScale: 0.25,
-            previewAnchor: { x: 400, y: 40 }
+            previewAnchor: { x: 400, y: 40 },
+            // When topdown progress reaches this, start BH preview pull.
+            previewAtMs: 60000
         },
         segments: [
             {

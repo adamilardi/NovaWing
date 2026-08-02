@@ -197,13 +197,31 @@ export function installInPagePilot() {
             out.push(Object.assign({}, obstacles[i], { kind: 'obstacle' }));
         }
         const bullets = snap.enemyBullets || [];
+        const vertical = isVertical(snap);
         for (let i = 0; i < bullets.length; i++) {
             const b = bullets[i];
-            out.push(Object.assign({}, b, {
-                kind: b.isLaser ? 'laser' : 'bullet',
-                w: b.isLaser ? 800 : (b.w || 16),
-                h: b.isLaser ? Math.max(30, b.h || 24) : (b.h || 12)
-            }));
+            if (b.isLaser) {
+                // Horizontal bosses: full-width Y lanes. Vertical L3: tall X strips.
+                if (vertical) {
+                    out.push(Object.assign({}, b, {
+                        kind: 'laser',
+                        w: Math.max(20, b.w || 28),
+                        h: Math.max(200, b.h || 580)
+                    }));
+                } else {
+                    out.push(Object.assign({}, b, {
+                        kind: 'laser',
+                        w: 800,
+                        h: Math.max(30, b.h || 24)
+                    }));
+                }
+            } else {
+                out.push(Object.assign({}, b, {
+                    kind: 'bullet',
+                    w: b.w || 16,
+                    h: b.h || 12
+                }));
+            }
         }
         const walls = snap.walls || [];
         for (let i = 0; i < walls.length; i++) {
@@ -254,10 +272,23 @@ export function installInPagePilot() {
             score += Math.abs(y - nearestOpenBandY(y, snap)) * 3;
         }
 
+        const vertical = isVertical(snap);
         for (let i = 0; i < threats.length; i++) {
             const t = threats[i];
-            if (t.x < x - 50 && (t.vx || 0) <= 0 && t.kind !== 'laser' && t.kind !== 'wall') continue;
-            if (t.x > x + 700 && t.kind !== 'wall') continue;
+            if (vertical) {
+                // Top-down: threats approach mainly on +Y (from above) / nearby X.
+                if (t.kind !== 'laser' && t.kind !== 'wall' && t.kind !== 'boss') {
+                    // Already below ship and not closing upward.
+                    if (t.y > y + 40 && (t.vy || 0) >= -10) continue;
+                    // Far above playfield.
+                    if (t.y < y - 720) continue;
+                    // Far lateral with little X velocity.
+                    if (Math.abs((t.x || 0) - x) > 280 && Math.abs(t.vx || 0) < 40) continue;
+                }
+            } else {
+                if (t.x < x - 50 && (t.vx || 0) <= 0 && t.kind !== 'laser' && t.kind !== 'wall') continue;
+                if (t.x > x + 700 && t.kind !== 'wall') continue;
+            }
 
             const expanded = Object.assign({}, t);
             if (t.kind === 'enemy' && t.type === 'interceptor') expanded.h = (t.h || 36) + 48;
