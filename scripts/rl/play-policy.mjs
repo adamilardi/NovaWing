@@ -1,19 +1,18 @@
 /**
- * Run a trained BC policy against the live game (Python → JSON weights).
+ * Run a trained BC/PPO policy against the live game (Python → JSON weights).
  *
  *   npm run rl:play
  *   POLICY=rl/weights/bc-policy.json LEVEL=1 npm run rl:play
+ *   EVAL_OUT=rl/weights/last-eval.json npm run rl:eval
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import {
-    OBS_SIZE,
-    encodeObservation,
-    decodeAction
-} from './obs-encode.mjs';
+import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
+import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
+import { defaultLaunchOptions } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -22,12 +21,9 @@ const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 const HEADLESS = process.env.HEADLESS === '0' ? false
     : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
-const TICK_MS = Number(process.env.TICK_MS || 16);
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
-// When LEVEL is set, win = clear that stage (advance past it), not full campaign victory.
 const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
-const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
-    '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
+const EVAL_OUT = process.env.EVAL_OUT || path.join(ROOT, 'rl', 'weights', 'last-eval.json');
 
 function isLevelOrCampaignWin(snap, outcome) {
     if (outcome === 'win' || (snap && snap.victoryPending)) return true;
@@ -47,251 +43,26 @@ async function waitForGame(page, timeout = 25000) {
 
 /**
  * Install encode + forward + rAF loop inside the page with policy weights.
+ * Runtime (NovaWingRL) must already be present via addInitScript(runtime-pure.js).
  * Exported for record-demos self-play (EXPERT=policy).
- * policy.explore: if true, add action noise for RL exploration.
  */
 export function installPolicyPilot(policy) {
-    // Inlined minimal encode/forward so inference runs at frame rate (no CDP lag).
-    // Must stay behavior-compatible with scripts/rl/obs-encode.mjs + policy-infer.mjs.
-    window.__novawingPolicy = policy;
-    const explore = Boolean(policy && policy.explore);
-    const exploreMove = Number.isFinite(policy && policy.exploreMoveStd)
-        ? policy.exploreMoveStd
-        : 0.18;
-    const exploreBoostP = Number.isFinite(policy && policy.exploreBoostP)
-        ? policy.exploreBoostP
-        : 0.05;
+    if (!window.NovaWingRL || typeof window.NovaWingRL.installPolicyPilot !== 'function') {
+        throw new Error('NovaWingRL runtime not loaded — addInitScript(runtime-pure.js) first');
+    }
+    return window.NovaWingRL.installPolicyPilot(policy);
+}
 
-    // Inlined OBS v2 encoder — must match scripts/rl/obs-encode.mjs layout.
-    const K_ENEMIES = 6, K_OBSTACLES = 4, K_BULLETS = 8, K_WALLS = 6, K_POWERUPS = 3, K_BANDS = 3;
-    const OBS_SIZE = policy.obsSize;
-    const ENEMY_TYPE_ID = {
-        regular: 0.2, interceptor: 0.5, splitter: 0.8, splitterDrone: 0.65, bossDrone: 0.9,
-        dart: 0.35, riser: 0.4, strafer: 0.45, mineDropper: 0.55, orbiter: 0.7
-    };
-    const POWERUP_TYPE_ID = { weapon: 0.2, boost: 0.35, shield: 0.5, repair: 0.65, bomb: 0.8 };
-
-    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-    function nrm(v, scale) {
-        if (!Number.isFinite(v) || !scale) return 0;
-        return clamp(v / scale, -2, 2);
+/**
+ * Ensure runtime is available on a page (idempotent).
+ */
+export async function ensureRuntime(page) {
+    await page.addInitScript({ path: RUNTIME_PURE_PATH });
+    // If page already loaded, inject now
+    const has = await page.evaluate(() => Boolean(window.NovaWingRL)).catch(() => false);
+    if (!has) {
+        await page.addScriptTag({ path: RUNTIME_PURE_PATH });
     }
-    function sortByDist(entities, px, py) {
-        return (entities || []).map(function (e) {
-            const dx = (e.x || 0) - px;
-            const dy = (e.y || 0) - py;
-            return { e: e, dx: dx, dy: dy, d2: dx * dx + dy * dy };
-        }).sort(function (a, b) { return a.d2 - b.d2; });
-    }
-    function encounterId(enc) {
-        if (enc === 'intro') return 0.5;
-        if (enc === 'final' || enc === 'standard') return 1.0;
-        return 0;
-    }
-
-    function encode(snap) {
-        const out = new Float32Array(OBS_SIZE);
-        if (!snap || !snap.player) return out;
-        const p = snap.player;
-        const wh = (snap.world && snap.world.height) || 600;
-        const now = snap.time || 0;
-        const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil ? 1 : 0;
-        const dur = snap.levelDurationMs || 60000;
-        const progress = dur > 0 ? clamp((snap.levelProgressMs || 0) / dur, 0, 1) : 0;
-        const seg = snap.segment || null;
-        let o = 0;
-        out[o++] = nrm(p.x, 800);
-        out[o++] = nrm(p.y, wh);
-        out[o++] = nrm(p.vx, 500);
-        out[o++] = nrm(p.vy, 500);
-        out[o++] = clamp((snap.lives || 0) / 5, 0, 1);
-        out[o++] = clamp((snap.weaponLevel || 1) / 3, 0, 1);
-        out[o++] = snap.hasShield ? 1 : 0;
-        out[o++] = clamp((snap.boostEnergy || 0) / 100, 0, 1);
-        out[o++] = snap.boostLocked ? 1 : 0;
-        out[o++] = invuln;
-        out[o++] = progress;
-        out[o++] = snap.phase === 'waves' ? 1 : 0;
-        out[o++] = snap.phase === 'boss' ? 1 : 0;
-        out[o++] = clamp((snap.level || 1) / 3, 0, 1);
-        out[o++] = snap.scrollMode === 'vertical' ? 1 : 0;
-        out[o++] = snap.combatOrientation === 'up' ? 1 : 0;
-        out[o++] = seg === 'introBoss' ? 1 : 0;
-        out[o++] = seg === 'transition' ? 1 : 0;
-        out[o++] = seg === 'topdown' ? 1 : 0;
-        out[o++] = seg === 'finalBoss' ? 1 : 0;
-
-        function fill(ranked, k, dims, write) {
-            for (let i = 0; i < k; i++) {
-                if (i < ranked.length) write(ranked[i]);
-                else for (let d = 0; d < dims; d++) out[o++] = 0;
-            }
-        }
-        const px = p.x, py = p.y;
-        fill(sortByDist(snap.enemies, px, py), K_ENEMIES, 6, function (r) {
-            out[o++] = nrm(r.dx, 400); out[o++] = nrm(r.dy, 300);
-            out[o++] = nrm(r.e.vx, 400); out[o++] = nrm(r.e.vy, 300);
-            out[o++] = ENEMY_TYPE_ID[r.e.type] != null ? ENEMY_TYPE_ID[r.e.type] : 0.2;
-            out[o++] = clamp((r.e.health || 1) / 12, 0, 1);
-        });
-        fill(sortByDist(snap.obstacles, px, py), K_OBSTACLES, 5, function (r) {
-            out[o++] = nrm(r.dx, 400); out[o++] = nrm(r.dy, 300);
-            out[o++] = nrm(r.e.vx, 200); out[o++] = nrm(r.e.vy, 200);
-            out[o++] = nrm(Math.max(r.e.w || 40, r.e.h || 40), 80);
-        });
-        fill(sortByDist(snap.enemyBullets, px, py), K_BULLETS, 5, function (r) {
-            out[o++] = nrm(r.dx, 400); out[o++] = nrm(r.dy, 300);
-            out[o++] = nrm(r.e.vx, 500); out[o++] = nrm(r.e.vy, 400);
-            out[o++] = r.e.isLaser ? 1 : 0;
-        });
-        fill(sortByDist(snap.walls, px, py), K_WALLS, 5, function (r) {
-            out[o++] = nrm(r.dx, 400); out[o++] = nrm(r.dy, 400);
-            out[o++] = nrm(r.e.vx, 200);
-            out[o++] = nrm(r.e.w || 96, 200);
-            out[o++] = nrm(r.e.h || 80, 400);
-        });
-        fill(sortByDist(snap.powerups, px, py), K_POWERUPS, 4, function (r) {
-            out[o++] = nrm(r.dx, 400); out[o++] = nrm(r.dy, 300);
-            out[o++] = POWERUP_TYPE_ID[r.e.type] != null ? POWERUP_TYPE_ID[r.e.type] : 0.2;
-            out[o++] = nrm(Math.sqrt(r.d2), 500);
-        });
-        const bands = snap.openBands || [];
-        for (let i = 0; i < K_BANDS; i++) {
-            if (i < bands.length) {
-                out[o++] = clamp(bands[i][0] / wh, 0, 1);
-                out[o++] = clamp(bands[i][1] / wh, 0, 1);
-            } else { out[o++] = 0; out[o++] = 0; }
-        }
-        const b = snap.boss;
-        if (b && snap.phase === 'boss') {
-            out[o++] = 1;
-            out[o++] = nrm((b.x || 0) - px, 500);
-            out[o++] = nrm((b.y || 0) - py, wh);
-            out[o++] = clamp((b.health || 0) / Math.max(1, b.maxHealth || 280), 0, 1);
-            out[o++] = clamp((b.phase || 1) / 3, 0, 1);
-            out[o++] = encounterId(b.encounter);
-        } else {
-            out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0;
-        }
-        // Black hole block (v2)
-        const bh = snap.blackHole || {};
-        const cfg = bh.config || {};
-        const active = Boolean(bh.active);
-        const preview = Boolean(bh.preview);
-        if (!active && !preview) {
-            out[o++] = 0; out[o++] = 0; out[o++] = 0;
-            out[o++] = 0; out[o++] = 0; out[o++] = 0;
-        } else {
-            const anchor = active
-                ? { x: cfg.x != null ? cfg.x : 400, y: cfg.y != null ? cfg.y : 260 }
-                : (cfg.previewAnchor || { x: 400, y: 40 });
-            const dx = (anchor.x || 0) - px;
-            const dy = (anchor.y || 0) - py;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const dangerR = cfg.dangerRadius != null ? cfg.dangerRadius : 48;
-            const killR = cfg.killRadius != null ? cfg.killRadius : 28;
-            out[o++] = active ? 1 : 0;
-            out[o++] = preview && !active ? 1 : 0;
-            out[o++] = nrm(dx, 400);
-            out[o++] = nrm(dy, 400);
-            out[o++] = nrm(dist, 400);
-            let hazard = 0;
-            if (dist < killR) hazard = 1;
-            else if (dist < dangerR) hazard = 0.65;
-            else if (dist < dangerR * 2) hazard = 0.25;
-            out[o++] = hazard;
-        }
-        return out;
-    }
-
-    function matvec(w, bias, x) {
-        const out = new Float32Array(bias.length);
-        for (let i = 0; i < bias.length; i++) {
-            let s = bias[i];
-            const row = w[i];
-            for (let j = 0; j < x.length; j++) s += row[j] * x[j];
-            out[i] = s;
-        }
-        return out;
-    }
-    function relu(x) {
-        const out = new Float32Array(x.length);
-        for (let i = 0; i < x.length; i++) out[i] = x[i] > 0 ? x[i] : 0;
-        return out;
-    }
-    function sigmoid(v) {
-        if (v >= 0) { const z = Math.exp(-v); return 1 / (1 + z); }
-        const z = Math.exp(v); return z / (1 + z);
-    }
-    function gauss() {
-        // Box-Muller
-        let u = 0, v = 0;
-        while (u === 0) u = Math.random();
-        while (v === 0) v = Math.random();
-        return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-    }
-    function forward(obs) {
-        let h = obs;
-        const layers = policy.layers;
-        for (let li = 0; li < layers.length; li++) {
-            const layer = layers[li];
-            h = matvec(layer.w, layer.b, h);
-            if (layer.act === 'relu') h = relu(h);
-        }
-        let ax = Math.tanh(h[0] || 0);
-        let ay = Math.tanh(h[1] || 0);
-        let fire = sigmoid(h[2] || 0) >= 0.5;
-        let boost = sigmoid(h[3] || 0) >= 0.5;
-        if (explore) {
-            ax = Math.max(-1, Math.min(1, ax + gauss() * exploreMove));
-            ay = Math.max(-1, Math.min(1, ay + gauss() * exploreMove));
-            // Always fire during training rollouts (shmup default)
-            fire = true;
-            if (Math.random() < exploreBoostP) boost = !boost;
-        } else {
-            fire = true; // deterministic eval: always shoot
-        }
-        return { x: ax, y: ay, fire: fire, boost: boost };
-    }
-
-    function tick() {
-        try {
-            if (!window.__novawingDebug || !window.__novawingDebug.getBotSnapshot) return;
-            const snap = window.__novawingDebug.getBotSnapshot();
-            window.__novawingPolicyLastSnap = snap;
-            if (!snap || !snap.ready || !snap.player) return;
-            if (snap.levelEnded || snap.victoryPending) {
-                window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
-                window.__novawingPolicyOutcome = snap.victoryPending ? 'win' : 'lose';
-                return;
-            }
-            if (snap.levelTransitioning) {
-                window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: true, boost: false });
-                return;
-            }
-            const obs = encode(snap);
-            const action = forward(obs);
-            window.__novawingPolicyLastAction = action;
-            window.__novawingDebug.setBotInput(action);
-        } catch (err) {
-            window.__novawingPolicyError = String(err && err.message ? err.message : err);
-        }
-    }
-    function loop() {
-        tick();
-        window.__novawingPolicyRaf = requestAnimationFrame(loop);
-    }
-    window.__novawingPolicyOutcome = null;
-    window.__novawingPolicyError = null;
-    window.__novawingPolicyStop = function () {
-        if (window.__novawingPolicyRaf) cancelAnimationFrame(window.__novawingPolicyRaf);
-        window.__novawingPolicyRaf = null;
-        if (window.__novawingDebug && window.__novawingDebug.clearBotInput) {
-            window.__novawingDebug.clearBotInput();
-        }
-    };
-    window.__novawingPolicyRaf = requestAnimationFrame(loop);
-    return true;
 }
 
 async function main() {
@@ -305,7 +76,6 @@ async function main() {
         console.error(`Policy obsSize ${policy.obsSize} != encoder OBS_SIZE ${OBS_SIZE}`);
         process.exit(1);
     }
-    // Optional exploration for on-policy rollouts
     if (process.env.EXPLORE === '1') {
         policy.explore = true;
         if (process.env.EXPLORE_MOVE_STD) policy.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
@@ -317,28 +87,22 @@ async function main() {
     console.log(`hidden=${JSON.stringify(policy.hidden)} obs=${policy.obsSize}`);
     console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms explore=${Boolean(policy.explore)}`);
 
-    // Node-side sanity check
     const dummy = new Float32Array(OBS_SIZE);
     const y = forwardPolicy(policy, dummy);
-    console.log(`forward(zeros) -> ax=${y[0].toFixed(3)} ay=${y[1].toFixed(3)} fire=${y[2].toFixed(3)} boost=${y[3].toFixed(3)}`);
+    // touch encode so tree-shaking never drops it; also sanity
+    encodeObservation({ player: { x: 0, y: 0 }, ready: true });
+    console.log(
+        `forward(zeros) -> ax=${y[0].toFixed(3)} ay=${y[1].toFixed(3)} ` +
+        `fire=${y[2].toFixed(3)} boost=${y[3].toFixed(3)}`
+    );
 
-    const launchOptions = {
-        headless: HEADLESS,
-        args: [
-            '--use-gl=swiftshader',
-            '--ignore-gpu-blocklist',
-            '--no-sandbox',
-            '--autoplay-policy=no-user-gesture-required'
-        ]
-    };
-    if (fs.existsSync(CACHED_CHROME)) launchOptions.executablePath = CACHED_CHROME;
-
-    const browser = await chromium.launch(launchOptions);
+    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
         deviceScaleFactor: 1
     });
     const page = await context.newPage();
+    await page.addInitScript({ path: RUNTIME_PURE_PATH });
     page.on('dialog', async (dialog) => {
         if (dialog.type() === 'prompt') await dialog.accept('RLPilot');
         else await dialog.accept();
@@ -354,6 +118,12 @@ async function main() {
         const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
         if (!resp || !resp.ok()) throw new Error(`load failed: ${resp && resp.status()}`);
         await waitForGame(page);
+        // Runtime may not attach via addInitScript on all Playwright versions if
+        // navigated before — ensure present.
+        const hasRt = await page.evaluate(() => Boolean(window.NovaWingRL));
+        if (!hasRt) {
+            await page.addScriptTag({ path: RUNTIME_PURE_PATH });
+        }
         await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
         await page.waitForTimeout(150);
 
@@ -420,7 +190,6 @@ async function main() {
             level: finalSnap ? finalSnap.level : null,
             peakLevel,
             startLevel: START_LEVEL,
-            // Level-scoped clear vs full campaign
             winKind: won
                 ? (finalSnap && finalSnap.victoryPending ? 'campaign' : 'level')
                 : null,
@@ -430,7 +199,6 @@ async function main() {
             combatOrientation: finalSnap ? finalSnap.combatOrientation : null,
             elapsedMs: Math.round(elapsedMs),
             elapsedSec: Number((elapsedMs / 1000).toFixed(2)),
-            // Speedrun key metric: wall/game clear time when won
             clearSec: won ? Number((elapsedMs / 1000).toFixed(2)) : null
         };
         console.log('\n======== POLICY RUN ========');
@@ -438,7 +206,15 @@ async function main() {
         if (won) {
             console.log(`SPEEDRUN CLEAR: ${result.clearSec}s  score=${result.score}`);
         }
-        // Append to eval log for the train loop / speedrun tracking
+
+        try {
+            fs.mkdirSync(path.dirname(EVAL_OUT), { recursive: true });
+            fs.writeFileSync(EVAL_OUT, JSON.stringify(result, null, 2) + '\n');
+            console.log(`eval result → ${EVAL_OUT}`);
+        } catch (err) {
+            console.error('failed to write EVAL_OUT', err.message || err);
+        }
+
         try {
             const boardPath = path.join(ROOT, 'rl', 'weights', 'eval-log.jsonl');
             fs.mkdirSync(path.dirname(boardPath), { recursive: true });
@@ -447,7 +223,9 @@ async function main() {
                 policy: POLICY_PATH,
                 ...result
             }) + '\n');
-        } catch (_) { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
         process.exitCode = won ? 0 : 2;
     } finally {
         await page.evaluate(() => {
@@ -458,7 +236,6 @@ async function main() {
     }
 }
 
-// Only auto-run when executed directly (not when imported for installPolicyPilot).
 const isMain = process.argv[1] &&
     path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {

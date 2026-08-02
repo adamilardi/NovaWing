@@ -5,11 +5,6 @@ Behavior cloning trainer for NovaWing (speedrun-aware).
 Reads JSONL demos from rl/demos/, trains a small MLP, exports
 rl/weights/bc-policy.json for scripts/rl/play-policy.mjs.
 
-Speedrun mode (--speedrun, default on):
-  - Upsamples win episodes heavily
-  - Weights steps by progress / score
-  - Among wins, prefers *faster* clears (shorter elapsedMs)
-
   python rl/train_bc.py --epochs 40 --hidden 128,128 --speedrun
 """
 
@@ -20,241 +15,30 @@ import json
 import math
 import random
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
 try:
     import torch
-    import torch.nn as nn
     from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler, random_split
 except ImportError as exc:
     print("PyTorch is required. pip install -r rl/requirements.txt", file=sys.stderr)
     raise SystemExit(1) from exc
 
-ROOT = Path(__file__).resolve().parent.parent
+# Allow `python rl/train_bc.py` without installing a package.
+_RL_DIR = Path(__file__).resolve().parent
+if str(_RL_DIR) not in sys.path:
+    sys.path.insert(0, str(_RL_DIR))
+
+from contract import ACTION_SIZE, OBS_SIZE, OBS_VERSION  # noqa: E402
+from demos_io import Sample, load_bc_samples  # noqa: E402
+from model import PolicyMLP, action_loss, load_checkpoint_into_policy  # noqa: E402
+
+ROOT = _RL_DIR.parent
 DEFAULT_DEMOS = ROOT / "rl" / "demos"
 DEFAULT_OUT = ROOT / "rl" / "weights" / "bc-policy.json"
-
-# Must match scripts/rl/obs-encode.mjs (OBS v2 = segment/orientation/BH).
-OBS_VERSION = 2
-OBS_SIZE = 176
-ACTION_SIZE = 4
-
-
-@dataclass
-class Sample:
-    obs: np.ndarray
-    action: np.ndarray
-    weight: float = 1.0
-    won: bool = False
-    elapsed_ms: Optional[float] = None
-    peak_score: float = 0.0
-    max_level: int = 1
-    progress: float = 0.0
-
-
-def _episode_elapsed_ms(header: dict, steps: List[dict]) -> Optional[float]:
-    if header.get("elapsedMs") is not None:
-        try:
-            return float(header["elapsedMs"])
-        except (TypeError, ValueError):
-            pass
-    if header.get("elapsedSec") is not None:
-        try:
-            return float(header["elapsedSec"]) * 1000.0
-        except (TypeError, ValueError):
-            pass
-    if not steps:
-        return None
-    # Prefer game-time from last snapshot meta
-    last = steps[-1].get("meta") or {}
-    if last.get("elapsedMs") is not None:
-        try:
-            return float(last["elapsedMs"])
-        except (TypeError, ValueError):
-            pass
-    # Fall back to step count * nominal sample period (~50ms)
-    return float(len(steps) * 50)
-
-
-def load_jsonl_demos(
-    demo_dir: Path,
-    *,
-    speedrun: bool = True,
-    drop_early_frac: float = 0.0,
-) -> Tuple[List[Sample], dict]:
-    files = sorted(demo_dir.glob("demo-*.jsonl"))
-    if not files:
-        raise FileNotFoundError(
-            f"No demo-*.jsonl in {demo_dir}. Record first: npm run rl:record"
-        )
-
-    episodes: List[dict] = []
-    meta = {
-        "files": [],
-        "episodes": 0,
-        "wins": 0,
-        "obs_version": None,
-        "speedrun": speedrun,
-    }
-
-    for path in files:
-        path = path.resolve()
-        try:
-            meta["files"].append(str(path.relative_to(ROOT)))
-        except ValueError:
-            meta["files"].append(str(path))
-
-        header = None
-        steps: List[dict] = []
-        with path.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                row = json.loads(line)
-                if row.get("type") == "header":
-                    header = row
-                    ver = row.get("obsVersion", OBS_VERSION)
-                    if meta["obs_version"] is None:
-                        meta["obs_version"] = ver
-                    # Skip legacy demos (e.g. OBS v1) instead of aborting the whole run.
-                    if ver != OBS_VERSION:
-                        meta.setdefault("skipped_version", 0)
-                        meta["skipped_version"] += 1
-                        header = None
-                        steps = []
-                        break
-                    if row.get("obsSize", OBS_SIZE) != OBS_SIZE:
-                        meta.setdefault("skipped_size", 0)
-                        meta["skipped_size"] += 1
-                        header = None
-                        steps = []
-                        break
-                    continue
-                if row.get("type") == "step":
-                    steps.append(row)
-
-        if header is None or not steps:
-            continue
-
-        won = bool(header.get("won"))
-        meta["episodes"] += 1
-        if won:
-            meta["wins"] += 1
-
-        elapsed = _episode_elapsed_ms(header, steps)
-        peak_score = float(header.get("peakScore") or 0)
-        max_level = int(header.get("maxLevel") or 1)
-
-        # Per-step max progress from meta
-        max_progress = 0.0
-        for st in steps:
-            m = st.get("meta") or {}
-            prog = m.get("progress")
-            if prog is not None:
-                max_progress = max(max_progress, float(prog))
-            # level-normalized progress if duration available
-            if m.get("levelProgressMs") is not None and m.get("levelDurationMs"):
-                try:
-                    max_progress = max(
-                        max_progress,
-                        float(m["levelProgressMs"]) / max(1.0, float(m["levelDurationMs"])),
-                    )
-                except (TypeError, ValueError, ZeroDivisionError):
-                    pass
-
-        # Episode quality weight
-        if speedrun:
-            if won:
-                # Faster wins get higher weight. Estimate time from steps if missing.
-                t = elapsed if elapsed and elapsed > 0 else float(len(steps) * 50)
-                # 90s → ~2.0x, 120s → 1.5x, 180s → 1.0x
-                speed_w = 180000.0 / max(t, 60000.0)
-                # Wins dominate the dataset (policy was dying early with weak win signal).
-                ep_w = 24.0 * speed_w * (1.0 + 0.2 * max(0, max_level - 1))
-            else:
-                # Partial credit for deep runs only; starve early deaths.
-                depth = max(max_progress, 0.0)
-                if max_level >= 2:
-                    depth = max(depth, 0.55)
-                ep_w = 0.15 + 0.9 * min(1.0, depth) + 0.35 * max(0, max_level - 1)
-                if peak_score > 18000:
-                    ep_w *= 1.35
-                if peak_score < 5000 and max_level < 2:
-                    ep_w *= 0.08
-        else:
-            ep_w = 1.0
-
-        # Optionally drop first fraction of each episode (spawn noise)
-        start_i = int(len(steps) * drop_early_frac) if drop_early_frac > 0 else 0
-
-        ep_samples: List[Sample] = []
-        for i, st in enumerate(steps):
-            if i < start_i:
-                continue
-            obs = np.asarray(st["obs"], dtype=np.float32)
-            act = np.asarray(st["action"], dtype=np.float32)
-            if obs.shape != (OBS_SIZE,) or act.shape != (ACTION_SIZE,):
-                continue
-            # Later steps in a successful run are slightly more valuable
-            t_frac = (i + 1) / max(1, len(steps))
-            step_w = ep_w * (0.85 + 0.3 * t_frac)
-            ep_samples.append(
-                Sample(
-                    obs=obs,
-                    action=act,
-                    weight=float(step_w),
-                    won=won,
-                    elapsed_ms=elapsed,
-                    peak_score=peak_score,
-                    max_level=max_level,
-                    progress=max_progress,
-                )
-            )
-
-        episodes.append(
-            {
-                "path": str(path),
-                "won": won,
-                "elapsed_ms": elapsed,
-                "peak_score": peak_score,
-                "max_level": max_level,
-                "steps": len(ep_samples),
-                "weight": ep_w,
-            }
-        )
-        # attach samples after building
-        for s in ep_samples:
-            pass
-        # store on episodes for stats only; flatten after
-        episodes[-1]["_samples"] = ep_samples
-
-    samples: List[Sample] = []
-    for ep in episodes:
-        samples.extend(ep.pop("_samples"))
-
-    if not samples:
-        raise RuntimeError(f"No step samples found under {demo_dir}")
-
-    meta["steps"] = len(samples)
-    meta["episodes_detail"] = episodes
-
-    # Log speedrun ranking
-    wins = [e for e in episodes if e["won"] and e["elapsed_ms"]]
-    wins.sort(key=lambda e: e["elapsed_ms"])
-    if wins:
-        print("Fastest win demos:")
-        for e in wins[:5]:
-            print(
-                f"  {e['elapsed_ms']/1000:.1f}s  score={e['peak_score']}  "
-                f"w={e['weight']:.2f}  {Path(e['path']).name}"
-            )
-
-    return samples, meta
 
 
 class DemoDataset(Dataset):
@@ -273,73 +57,9 @@ class DemoDataset(Dataset):
         )
 
 
-class PolicyMLP(nn.Module):
-    def __init__(self, obs_size: int, action_size: int, hidden: Sequence[int]):
-        super().__init__()
-        layers: List[nn.Module] = []
-        prev = obs_size
-        for h in hidden:
-            layers.append(nn.Linear(prev, h))
-            layers.append(nn.ReLU())
-            prev = h
-        layers.append(nn.Linear(prev, action_size))
-        self.net = nn.Sequential(*layers)
-        self.hidden = list(hidden)
-        self.obs_size = obs_size
-        self.action_size = action_size
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
-
-    def export_json(self) -> dict:
-        linear_layers = [m for m in self.net if isinstance(m, nn.Linear)]
-        exported = []
-        for i, lin in enumerate(linear_layers):
-            w = lin.weight.detach().cpu().numpy()
-            b = lin.bias.detach().cpu().numpy()
-            is_last = i == len(linear_layers) - 1
-            exported.append(
-                {
-                    "w": w.tolist(),
-                    "b": b.tolist(),
-                    "act": "identity" if is_last else "relu",
-                }
-            )
-        return {
-            "version": OBS_VERSION,
-            "kind": "bc-mlp",
-            "obsSize": self.obs_size,
-            "actionSize": self.action_size,
-            "hidden": self.hidden,
-            "layers": exported,
-            "post": {"move": "tanh", "fire": "sigmoid", "boost": "sigmoid"},
-        }
-
-
-def action_loss(
-    pred: torch.Tensor, target: torch.Tensor, weights: Optional[torch.Tensor] = None
-) -> torch.Tensor:
-    """Per-sample weighted loss; returns batch mean."""
-    move_pred = torch.tanh(pred[:, 0:2])
-    move_tgt = target[:, 0:2]
-    move_l = ((move_pred - move_tgt) ** 2).mean(dim=1)
-
-    fire_l = nn.functional.binary_cross_entropy_with_logits(
-        pred[:, 2], target[:, 2].clamp(0, 1), reduction="none"
-    )
-    boost_l = nn.functional.binary_cross_entropy_with_logits(
-        pred[:, 3], target[:, 3].clamp(0, 1), reduction="none"
-    )
-    per = move_l + 0.5 * fire_l + 0.5 * boost_l
-    if weights is not None:
-        w = weights / weights.mean().clamp(min=1e-6)
-        per = per * w
-    return per.mean()
-
-
 def train(args: argparse.Namespace) -> Path:
     demo_dir = Path(args.demos)
-    samples, meta = load_jsonl_demos(
+    samples, meta = load_bc_samples(
         demo_dir,
         speedrun=args.speedrun,
         drop_early_frac=args.drop_early_frac,
@@ -356,6 +76,16 @@ def train(args: argparse.Namespace) -> Path:
             f"  skipped demos: wrong_version={skipped_v} wrong_size={skipped_s} "
             f"(re-record after OBS bump)"
         )
+
+    wins = [e for e in meta.get("episodes_detail", []) if e["won"] and e["elapsed_ms"]]
+    wins.sort(key=lambda e: e["elapsed_ms"])
+    if wins:
+        print("Fastest win demos:")
+        for e in wins[:5]:
+            print(
+                f"  {e['elapsed_ms']/1000:.1f}s  score={e['peak_score']}  "
+                f"w={e['weight']:.2f}  {Path(e['path']).name}"
+            )
 
     if not samples:
         print(
@@ -385,7 +115,6 @@ def train(args: argparse.Namespace) -> Path:
         )
         train_indices = list(train_set.indices)
 
-    # Weighted sampler on train subset
     if args.speedrun and train_indices:
         weights = torch.tensor(
             [samples[i].weight for i in train_indices], dtype=torch.double
@@ -412,20 +141,15 @@ def train(args: argparse.Namespace) -> Path:
     )
     model = PolicyMLP(OBS_SIZE, ACTION_SIZE, hidden).to(device)
 
-    # Warm-start from previous policy if present
-    if args.init and Path(args.init).exists():
-        print(f"Note: JSON init not loaded into torch (use continuous training).")
-    # Optional: load torch checkpoint (skip if OBS size / arch mismatch — e.g. v1→v2)
     ckpt_path = Path(args.checkpoint) if args.checkpoint else None
     if ckpt_path and ckpt_path.exists():
         try:
-            state = torch.load(ckpt_path, map_location=device)
-            model.load_state_dict(state["model"])
-            print(f"Resumed weights from {ckpt_path}")
-        except (RuntimeError, KeyError, TypeError) as exc:
+            msg = load_checkpoint_into_policy(model, ckpt_path, device)
+            print(msg)
+        except (RuntimeError, KeyError, TypeError, ValueError) as exc:
             print(
                 f"WARNING: checkpoint {ckpt_path} incompatible with "
-                f"OBS_SIZE={OBS_SIZE} ({exc}); training from scratch"
+                f"OBS_SIZE={OBS_SIZE} hidden={hidden} ({exc}); training from scratch"
             )
 
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -487,7 +211,7 @@ def train(args: argparse.Namespace) -> Path:
             "episodes": meta["episodes"],
             "wins": meta["wins"],
             "steps": meta["steps"],
-            "speedrun": speedrun if (speedrun := args.speedrun) else False,
+            "speedrun": bool(args.speedrun),
         },
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -503,9 +227,18 @@ def train(args: argparse.Namespace) -> Path:
     out_path.write_text(json.dumps(payload), encoding="utf-8")
     print(f"Wrote policy → {out_path} ({out_path.stat().st_size} bytes)")
 
-    # Save torch checkpoint for resume
     ckpt_out = out_path.with_suffix(".pt")
-    torch.save({"model": model.state_dict(), "hidden": hidden}, ckpt_out)
+    torch.save(
+        {
+            "kind": "bc",
+            "model": model.state_dict(),
+            "hidden": hidden,
+            "obs_size": OBS_SIZE,
+            "action_size": ACTION_SIZE,
+            "obs_version": OBS_VERSION,
+        },
+        ckpt_out,
+    )
     print(f"Wrote checkpoint → {ckpt_out}")
 
     model.eval()
@@ -545,8 +278,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=0.02,
         help="Drop first fraction of each episode (spawn noise)",
     )
-    p.add_argument("--checkpoint", type=str, default=str(DEFAULT_OUT.with_suffix(".pt")))
-    p.add_argument("--init", type=str, default="")
+    p.add_argument(
+        "--checkpoint",
+        type=str,
+        default=str(DEFAULT_OUT.with_suffix(".pt")),
+        help="Resume from BC or PPO .pt checkpoint when compatible",
+    )
     return p.parse_args(argv)
 
 

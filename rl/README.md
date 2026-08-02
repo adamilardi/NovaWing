@@ -8,7 +8,7 @@ record demos (heuristic expert / human later)
  behavior cloning (rl/train_bc.py)
         ↓  JSON weights  (rl/weights/bc-policy.json)
  play-policy / in-page inference
-        ↓  gated REINFORCE when policy wins exist
+        ↓  gated PPO+GAE when policy wins exist
  speedrun-loop (curriculum + clear-time promotion)
 ```
 
@@ -18,14 +18,14 @@ record demos (heuristic expert / human later)
 
 ## Observation / action contract (OBS v2)
 
-Defined in `scripts/rl/obs-encode.mjs` and mirrored by:
+**Single source of truth:** `scripts/rl/runtime-pure.js` (loaded by Node via `load-runtime.mjs` and by Playwright via `addInitScript`). Mirrored by:
 
 | Piece | Location |
 |-------|----------|
-| Encoder (Node + record) | `scripts/rl/obs-encode.mjs` |
-| Encoder (in-page pilot) | inlined in `scripts/rl/play-policy.mjs` (must match v2) |
-| Trainer size checks | `rl/train_bc.py` (`OBS_VERSION=2`, `OBS_SIZE=176`) |
-| Inference | `scripts/rl/policy-infer.mjs` |
+| Encode + forward + in-page pilot | `scripts/rl/runtime-pure.js` |
+| Node re-exports | `obs-encode.mjs`, `policy-infer.mjs` |
+| Python constants | `rl/contract.py` (`OBS_VERSION=2`, `OBS_SIZE=176`) |
+| Trainers | `rl/train_bc.py`, `rl/train_rl.py` (PPO) |
 
 - **Obs v2** (`OBS_SIZE=176`): v1 self features + `scrollMode` / `combatOrientation` + L3 segment one-hots + black-hole block; boss encounter id.
 - **Action**: `[ax, ay, fire, boost]` with `ax,ay ∈ [-1,1]`, buttons in `{0,1}`.
@@ -75,7 +75,7 @@ Unless `FORCE_LEVELS=1`:
 | L2 | L1 `lastWinRate` ≥ `GATE_L2` (default **0.20**) |
 | L3 | L2 `lastWinRate` ≥ `GATE_L3` (default **0.15**) |
 
-REINFORCE runs only if demo pool has ≥ `MIN_POLICY_WINS_FOR_RL` (default **3**) policy-win files, or `REINFORCE=1`.
+PPO runs only if demo pool has ≥ `MIN_POLICY_WINS_FOR_RL` (default **3**) policy-win files, or `REINFORCE=1` / `PPO=1`.
 
 ```bash
 # L1 only until the bot can clear
@@ -109,10 +109,18 @@ npm run rl:train
 LEVEL=1 HEADLESS=1 npm run rl:play
 POLICY=rl/weights/bc-policy-best.json LEVEL=1 npm run rl:play
 
-# Self-play + REINFORCE (after some wins)
+# Self-play + PPO (after some wins)
 EXPERT=policy EXPLORE=1 EPISODES=10 npm run rl:record:policy
 npm run rl:train:rl
 ```
+
+### Tests
+
+```bash
+npm run rl:test
+```
+
+Checks OBS size parity with Python, encode/forward, reward helpers, GAE, and BC↔PPO checkpoint round-trip.
 
 ---
 
@@ -197,12 +205,13 @@ Observed on a long L1 parallel run: expert clears ~70s reliably; policy often re
 
 ### Next training fixes (priority)
 
-1. **Expert-heavy BC until first eval clear** — set `REINFORCE=0` (or raise `MIN_POLICY_WINS_FOR_RL` high); reduce policy self-play weight until `evalWinRate > 0`.
+1. **Expert-heavy BC until first eval clear** — set `PPO=0` / `REINFORCE=0` (or raise `MIN_POLICY_WINS_FOR_RL` high); reduce policy self-play weight until `evalWinRate > 0`.
 2. **Oversample boss segments** — train harder on last N seconds of win demos, or record boss-only / late-wave starts.
 3. **Early-stop the loop** — if N consecutive evals are 0%, stop; do not burn 12 identical failure rounds.
 4. **Parallel expert farm only** for spare CPU/RAM (extra win demos); avoid two competing speedrun-loops writing the same policy file.
 5. **Boss practice scenario** for demos (playtest-style jump or debug start at boss) so the net sees more clear trajectories.
 6. Optional later: richer boss features in OBS (volley phase, laser telegraph) if imitation still fails.
+7. Optional: store `log_prob` at record time for exact on-policy PPO (current trainer recomputes under the loaded policy).
 
 ### Machine budget (this host ~8 cores / 9.5 GB)
 
@@ -219,16 +228,25 @@ Observed on a long L1 parallel run: expert clears ~70s reliably; policy often re
 
 ```
 scripts/rl/
-  obs-encode.mjs         # OBS v2 schema
+  runtime-pure.js        # single source: encode + forward + in-page pilot
+  load-runtime.mjs       # Node loader for runtime-pure.js
+  obs-encode.mjs         # re-exports encoder API
+  policy-infer.mjs       # re-exports forwardPolicy
+  rewards.mjs            # dense + terminal rewards
+  chrome.mjs             # Playwright chrome path (no hardcoding)
   record-demos.mjs       # expert / policy data collection
-  policy-infer.mjs       # JS MLP forward
   play-policy.mjs        # Playwright + trained pilot
   speedrun-loop.mjs      # curriculum + promote-on-clear
   playtest-scenarios.mjs # coverage / failure taxonomy
   status.sh              # loop / board snapshot
+  tests/                 # node:test suite
 rl/
+  contract.py            # OBS_VERSION / OBS_SIZE / ACTION_SIZE
+  demos_io.py            # shared JSONL + GAE
+  model.py               # PolicyMLP + ActorCritic + log-prob
   train_bc.py            # speedrun-weighted BC + JSON export
-  train_rl.py            # REINFORCE fine-tune
+  train_rl.py            # PPO + GAE fine-tune
+  tests/                 # unittest suite
   requirements.txt
   demos/                 # gitignored JSONL
   weights/               # policies, boards, playtest reports
@@ -236,9 +254,24 @@ rl/
 
 ---
 
+## PPO fine-tune (`train_rl.py`)
+
+Uses policy self-play demos with per-step rewards:
+
+| Piece | Detail |
+|-------|--------|
+| Algorithm | Clipped PPO (actor-critic) |
+| Advantage | GAE(λ) with learned value head |
+| Policy | Gaussian move + Bernoulli fire/boost; learnable move log-std |
+| Stability | value clip, grad clip, target-KL early stop |
+| Export | Policy MLP JSON only (value head stays in `.pt`) |
+| Gate | `MIN_POLICY_WINS_FOR_RL` policy-win demos (or `PPO=1`) |
+
+---
+
 ## Reward sketch (policy rollouts)
 
-Already used in `record-demos.mjs` for REINFORCE:
+Used in `scripts/rl/rewards.mjs` for PPO:
 
 | Signal | Idea |
 |--------|------|

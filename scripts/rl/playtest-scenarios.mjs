@@ -18,6 +18,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
+import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
+import { defaultLaunchOptions } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -30,8 +32,6 @@ const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const OUT_DIR = process.env.PLAYTEST_OUT || path.join(ROOT, 'rl', 'weights');
 const SAMPLE_MS = Number(process.env.SAMPLE_MS || 100);
-const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
-    '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
 
 /** Named scenarios for coverage-oriented playtests. */
 export const SCENARIOS = {
@@ -151,6 +151,10 @@ async function waitForGame(page, timeout = 25000) {
 async function installExpert(page, policy) {
     if (EXPERT === 'policy') {
         if (!policy) throw new Error(`Policy required at ${POLICY_PATH}`);
+        const hasRt = await page.evaluate(() => Boolean(window.NovaWingRL));
+        if (!hasRt) {
+            await page.addScriptTag({ path: RUNTIME_PURE_PATH });
+        }
         await page.evaluate(installPolicyPilot, { ...policy, explore: process.env.EXPLORE === '1' });
         return 'policy';
     }
@@ -198,6 +202,9 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
         deviceScaleFactor: 1
     });
     const page = await context.newPage();
+    if (EXPERT === 'policy') {
+        await page.addInitScript({ path: RUNTIME_PURE_PATH });
+    }
     page.on('dialog', async (dialog) => {
         if (dialog.type() === 'prompt') await dialog.accept('PlaytestBot');
         else await dialog.accept();
@@ -330,18 +337,7 @@ async function main() {
     console.log('NovaWing playtest scenarios');
     console.log(`scenarios=${ids.join(',')} trials=${TRIALS} expert=${EXPERT} headless=${HEADLESS}`);
 
-    const launchOptions = {
-        headless: HEADLESS,
-        args: [
-            '--use-gl=swiftshader',
-            '--ignore-gpu-blocklist',
-            '--no-sandbox',
-            '--autoplay-policy=no-user-gesture-required'
-        ]
-    };
-    if (fs.existsSync(CACHED_CHROME)) launchOptions.executablePath = CACHED_CHROME;
-
-    const browser = await chromium.launch(launchOptions);
+    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
     const results = [];
     const deathHist = {};
     const segmentCoverage = new Set();

@@ -4,7 +4,7 @@
  * EXPERT=heuristic  — classic play-bot pilot (default)
  * EXPERT=policy     — learned policy self-play (needs rl/weights/bc-policy.json)
  *
- * Policy rollouts store shaped `reward` per step for REINFORCE fine-tuning.
+ * Policy rollouts store shaped `reward` per step for PPO fine-tuning.
  *
  *   npm run rl:record
  *   EXPERT=policy EPISODES=8 npm run rl:record
@@ -16,6 +16,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
+import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
+import { defaultLaunchOptions } from './chrome.mjs';
 import {
     OBS_VERSION,
     OBS_SIZE,
@@ -24,6 +26,15 @@ import {
     encodeObservation,
     encodeAction
 } from './obs-encode.mjs';
+import {
+    REWARD_WIN,
+    REWARD_DEATH,
+    stepReward,
+    applyTerminalReward,
+    progNorm
+} from './rewards.mjs';
+
+export { REWARD_WIN, REWARD_DEATH, stepReward, applyTerminalReward };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -50,9 +61,6 @@ function isEpisodeWin(snap, outcome) {
     if (START_LEVEL != null && snap && Number(snap.level) > START_LEVEL) return true;
     return false;
 }
-const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
-    '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
-
 function stamp() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, '0');
@@ -62,37 +70,6 @@ function stamp() {
 
 function uniqueSuffix() {
     return `w${WORKER_ID}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function progNorm(snap) {
-    const dur = snap.levelDurationMs || 60000;
-    return dur > 0 ? Math.min(1, (snap.levelProgressMs || 0) / dur) : 0;
-}
-
-/** Shaped reward for RL (speedrun-oriented). */
-function stepReward(prev, snap, won, died) {
-    if (!prev || !snap) return 0;
-    let r = 0;
-    // Progress is the main speedrun signal
-    const dp = progNorm(snap) - progNorm(prev);
-    if (dp > 0) r += dp * 3.0;
-    // Score / kills proxy
-    const ds = (snap.score || 0) - (prev.score || 0);
-    if (ds > 0) r += Math.min(ds, 800) / 400;
-    // Survival
-    const dl = (snap.lives || 0) - (prev.lives || 0);
-    if (dl < 0) r += dl * 1.5; // -1.5 per life
-    // Level advance
-    if ((snap.level || 1) > (prev.level || 1)) r += 4.0;
-    // Phase change to boss = made it through waves
-    if (prev.phase === 'waves' && snap.phase === 'boss') r += 2.5;
-    // Boost while progressing (encourages speed clear)
-    if (snap.isBoosting && dp > 0) r += 0.05;
-    if (won) r += 20.0;
-    if (died) r -= 8.0;
-    // Time pressure: small penalty each step so faster is better
-    r -= 0.002;
-    return r;
 }
 
 async function waitForGame(page, timeout = 25000) {
@@ -108,6 +85,10 @@ async function waitForGame(page, timeout = 25000) {
 async function installExpert(page, policy) {
     if (EXPERT === 'policy') {
         if (!policy) throw new Error(`Policy required at ${POLICY_PATH}`);
+        const hasRt = await page.evaluate(() => Boolean(window.NovaWingRL));
+        if (!hasRt) {
+            await page.addScriptTag({ path: RUNTIME_PURE_PATH });
+        }
         const p = { ...policy, explore: EXPLORE };
         if (process.env.EXPLORE_MOVE_STD) p.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
         if (process.env.EXPLORE_BOOST_P) p.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
@@ -164,6 +145,9 @@ async function recordEpisode(browser, episodeIndex, policy) {
         deviceScaleFactor: 1
     });
     const page = await context.newPage();
+    if (EXPERT === 'policy') {
+        await page.addInitScript({ path: RUNTIME_PURE_PATH });
+    }
     page.on('dialog', async (dialog) => {
         if (dialog.type() === 'prompt') await dialog.accept(EXPERT === 'policy' ? 'PolicyPilot' : 'DemoPilot');
         else await dialog.accept();
@@ -205,7 +189,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
             if (snap && snap.ready && snap.player && status.input && !snap.levelTransitioning) {
                 const obs = encodeObservation(snap);
                 const action = encodeAction(status.input);
-                const reward = stepReward(prevSnap, snap, false, false);
+                const reward = stepReward(prevSnap, snap);
                 episodeReturn += reward;
                 const dur = snap.levelDurationMs || 60000;
                 steps.push({
@@ -241,18 +225,12 @@ async function recordEpisode(browser, episodeIndex, policy) {
 
             if (isWin) {
                 won = true;
-                if (steps.length) {
-                    steps[steps.length - 1].reward += 20;
-                    episodeReturn += 20;
-                }
+                episodeReturn = applyTerminalReward(steps, episodeReturn, 'win');
                 break;
             }
             if (isLose) {
                 won = false;
-                if (steps.length) {
-                    steps[steps.length - 1].reward -= 8;
-                    episodeReturn -= 8;
-                }
+                episodeReturn = applyTerminalReward(steps, episodeReturn, 'death');
                 break;
             }
 
@@ -298,18 +276,7 @@ async function main() {
         console.log(`policy=${POLICY_PATH} hidden=${JSON.stringify(policy.hidden)}`);
     }
 
-    const launchOptions = {
-        headless: HEADLESS,
-        args: [
-            '--use-gl=swiftshader',
-            '--ignore-gpu-blocklist',
-            '--no-sandbox',
-            '--autoplay-policy=no-user-gesture-required'
-        ]
-    };
-    if (fs.existsSync(CACHED_CHROME)) launchOptions.executablePath = CACHED_CHROME;
-
-    const browser = await chromium.launch(launchOptions);
+    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
     const allFiles = [];
     let totalSteps = 0;
     let wins = 0;
@@ -407,7 +374,11 @@ async function main() {
     process.exitCode = totalSteps > 0 ? 0 : 2;
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+const isMain = process.argv[1] &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+    main().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}

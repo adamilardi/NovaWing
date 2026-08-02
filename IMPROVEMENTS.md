@@ -71,7 +71,7 @@ Rules:
 - **Playtest**: `npm run rl:playtest` scenario harness + death taxonomy (`playtest-latest.json`).
 - Details: `rl/README.md` (includes **why learning is slow** + next training fixes).
 
-**Next RL session (when free CPU again):** expert-only BC until first L1 eval clear; oversample boss demos; early-stop loop on repeated 0% eval.
+**Next RL session (when free CPU again):** expert-only BC until first L1 eval clear (`PPO=0`); oversample boss demos; early-stop loop on repeated 0% eval. PPO+GAE lives in `rl/train_rl.py` once policy wins exist.
 
 ### EH-6. Deploy hygiene — `todo`
 

@@ -1,7 +1,7 @@
 /**
  * Self-play speedrun loop with curriculum gates + clear-time policy promotion.
  *
- *   expert demos → policy self-play → BC → (optional REINFORCE) → multi-level eval → repeat
+ *   expert demos → policy self-play → BC → (optional PPO) → multi-level eval → repeat
  *
  * Curriculum (unless FORCE_LEVELS=1):
  *   L1 always (if requested)
@@ -10,7 +10,7 @@
  *
  * Promotion:
  *   bc-policy-best.json only when a trial WINS and clearSec beats the global best.
- *   REINFORCE only when demo pool has enough policy wins (or REINFORCE=1 force).
+ *   PPO only when demo pool has enough policy wins (or REINFORCE=1 / PPO=1 force).
  *
  *   npm run rl:speedrun-loop
  *   ROUNDS=6 EXPERT_EPISODES=3 POLICY_EPISODES=10 EVAL_TRIALS=3 npm run rl:speedrun-loop
@@ -37,8 +37,9 @@ const FORCE_LEVELS = process.env.FORCE_LEVELS === '1';
 const GATE_L2 = Number(process.env.GATE_L2 || 0.2);
 const GATE_L3 = Number(process.env.GATE_L3 || 0.15);
 const MIN_POLICY_WINS_FOR_RL = Math.max(0, Number(process.env.MIN_POLICY_WINS_FOR_RL || 3));
-const FORCE_REINFORCE = process.env.REINFORCE === '1';
-const SKIP_REINFORCE = process.env.REINFORCE === '0';
+// REINFORCE env kept as alias; PPO is the trainer (train_rl.py).
+const FORCE_REINFORCE = process.env.REINFORCE === '1' || process.env.PPO === '1';
+const SKIP_REINFORCE = process.env.REINFORCE === '0' || process.env.PPO === '0';
 // Parallelism:
 //   RECORD_WORKERS — concurrent browser contexts *inside* each record-demos process
 //   LEVEL_PARALLEL — run different levels at the same time (Promise.all)
@@ -166,8 +167,15 @@ function saveBoard(board) {
     fs.writeFileSync(BOARD, JSON.stringify(board, null, 2) + '\n');
 }
 
-function parseEvalResult(out) {
-    const m = out.match(/======== POLICY RUN ========([\s\S]*?)(?:SPEEDRUN CLEAR:|$)/);
+function parseEvalResult(out, evalOutPath) {
+    if (evalOutPath && fs.existsSync(evalOutPath)) {
+        try {
+            return JSON.parse(fs.readFileSync(evalOutPath, 'utf8'));
+        } catch {
+            /* fall through to stdout parse */
+        }
+    }
+    const m = out.match(/======== POLICY RUN ========([\s\S]*?)(?:SPEEDRUN CLEAR:|eval result →|$)/);
     if (!m) return null;
     try {
         const jsonMatch = m[1].match(/\{[\s\S]*?\}/);
@@ -306,10 +314,11 @@ async function trainRound(demoStats) {
         return;
     }
 
-    log(`train RL (REINFORCE) policyWins=${policyWins}`);
+    log(`train RL (PPO+GAE) policyWins=${policyWins}`);
     await run(pythonBin(), [
         'rl/train_rl.py',
-        '--epochs', process.env.RL_EPOCHS || '8',
+        '--epochs', process.env.RL_EPOCHS || '4',
+        '--ppo-epochs', process.env.PPO_EPOCHS || '4',
         '--lr', process.env.RL_LR || '3e-5',
         '--hidden', process.env.HIDDEN || '128,128',
         '--out', 'rl/weights/bc-policy.json',
@@ -328,20 +337,30 @@ async function evalRound(levels) {
     const settled = await Promise.all(
         jobs.map(async ({ level, t }) => {
             log(`eval L${level} trial ${t}/${EVAL_TRIALS}`);
+            const evalOut = path.join(
+                LOG_DIR,
+                `eval-tmp-L${level}-t${t}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.json`
+            );
             const { out, code } = await run('node', ['scripts/rl/play-policy.mjs'], {
                 HEADLESS: '1',
                 DURATION_MS: String(durationForLevel(level)),
                 LEVEL: String(level),
                 POLICY,
-                EXPLORE: '0'
+                EXPLORE: '0',
+                EVAL_OUT: evalOut
             });
-            const parsed = parseEvalResult(out) || {
+            const parsed = parseEvalResult(out, evalOut) || {
                 won: false,
                 clearSec: null,
                 elapsedSec: null,
                 score: null,
                 level
             };
+            try {
+                if (fs.existsSync(evalOut)) fs.unlinkSync(evalOut);
+            } catch {
+                /* ignore */
+            }
             // Never treat non-zero exit / missing parse as a win.
             if (!parsed.won || parsed.clearSec == null) {
                 parsed.won = false;
@@ -465,7 +484,7 @@ async function main() {
         board.history.push({
             round: r,
             at: new Date().toISOString(),
-            mode: 'curriculum-self-play+bc+gated-reinforce',
+            mode: 'curriculum-self-play+bc+gated-ppo',
             requestedLevels: REQUESTED_LEVELS.slice(),
             activeLevels: levels.slice(),
             demoFiles: after.files,
