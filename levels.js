@@ -194,31 +194,33 @@
         ],
         pathEvents: buildPathEvents([
             // 0–12s: roomy mid intro — seeded walls cover the first seconds on-screen.
+            // Hold stretches bridge layout changes so corridor density never drops >~750ms.
             { startMs: 0, durationMs: 6000, openBands: canyon.bands('mid'), stepMs: 700 },
-            { startMs: 6200, durationMs: 4800, openBands: [[500, 980]], stepMs: 700 },
+            { startMs: 6200, durationMs: 5300, openBands: [[500, 980]], stepMs: 700 },
             // 12–24s: shaft opens upward — fly up and the camera reveals the high road.
-            { startMs: 11500, durationMs: 3800, openBands: topMidShaft, stepMs: 680 },
-            { startMs: 15800, durationMs: 3200, openBands: canyon.bands('top', 'mid'), stepMs: 680 },
-            { startMs: 19500, durationMs: 6000, openBands: canyon.bands('top'), stepMs: 660 },
+            { startMs: 11500, durationMs: 4300, openBands: topMidShaft, stepMs: 680 },
+            { startMs: 15800, durationMs: 3700, openBands: canyon.bands('top', 'mid'), stepMs: 680 },
+            { startMs: 19500, durationMs: 6500, openBands: canyon.bands('top'), stepMs: 660 },
             // 26–42s: drop back, then open a shaft downward into the deep route.
-            { startMs: 26000, durationMs: 3200, openBands: topMidShaft, stepMs: 680 },
-            { startMs: 29700, durationMs: 3600, openBands: canyon.bands('mid'), stepMs: 700 },
-            { startMs: 33800, durationMs: 3600, openBands: midBotShaft, stepMs: 680 },
-            { startMs: 38000, durationMs: 3200, openBands: canyon.bands('mid', 'bot'), stepMs: 680 },
-            { startMs: 41800, durationMs: 5800, openBands: canyon.bands('bot'), stepMs: 660 },
+            { startMs: 26000, durationMs: 3700, openBands: topMidShaft, stepMs: 680 },
+            { startMs: 29700, durationMs: 4100, openBands: canyon.bands('mid'), stepMs: 700 },
+            { startMs: 33800, durationMs: 4200, openBands: midBotShaft, stepMs: 680 },
+            { startMs: 38000, durationMs: 3800, openBands: canyon.bands('mid', 'bot'), stepMs: 680 },
+            { startMs: 41800, durationMs: 6400, openBands: canyon.bands('bot'), stepMs: 660 },
             // 48–62s: full multi-path choice — three lanes, camera follows your pick.
-            { startMs: 48200, durationMs: 3200, openBands: fullShaft, stepMs: 680 },
-            { startMs: 52000, durationMs: 9000, openBands: canyon.bands('top', 'mid', 'bot'), stepMs: 660 },
+            { startMs: 48200, durationMs: 3800, openBands: fullShaft, stepMs: 680 },
+            { startMs: 52000, durationMs: 9200, openBands: canyon.bands('top', 'mid', 'bot'), stepMs: 660 },
             // 62–78s: emphasize routes without ever sealing the player in.
             // Mid stays open as a highway so vertical travel is optional, not mandatory death.
-            { startMs: 61200, durationMs: 2400, openBands: fullShaft, stepMs: 680 },
-            { startMs: 63800, durationMs: 5000, openBands: canyon.bands('top', 'mid'), stepMs: 660 },
-            { startMs: 69000, durationMs: 2400, openBands: fullShaft, stepMs: 680 },
-            { startMs: 71600, durationMs: 5000, openBands: canyon.bands('mid', 'bot'), stepMs: 660 },
-            { startMs: 76800, durationMs: 2800, openBands: fullShaft, stepMs: 680 },
+            { startMs: 61200, durationMs: 2600, openBands: fullShaft, stepMs: 680 },
+            { startMs: 63800, durationMs: 5200, openBands: canyon.bands('top', 'mid'), stepMs: 660 },
+            { startMs: 69000, durationMs: 2600, openBands: fullShaft, stepMs: 680 },
+            { startMs: 71600, durationMs: 5200, openBands: canyon.bands('mid', 'bot'), stepMs: 660 },
+            { startMs: 76800, durationMs: 3000, openBands: fullShaft, stepMs: 680 },
             // 79–90s: pre-boss funnel back to mid (camera settles for the fight).
-            { startMs: 79800, durationMs: 2800, openBands: topMidShaft, stepMs: 700 },
-            { startMs: 82800, durationMs: 6200, openBands: canyon.bands('mid'), stepMs: 700 }
+            // Extend mid hold through durationMs so walls don't starve into the arena.
+            { startMs: 79800, durationMs: 3000, openBands: topMidShaft, stepMs: 700 },
+            { startMs: 82800, durationMs: 7200, openBands: canyon.bands('mid'), stepMs: 700 }
         ])
     });
 
@@ -339,17 +341,34 @@
     const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3];
 
     /**
-     * Register or replace the WIP Level 3 definition. Not shipped until
-     * LEVEL_DEFS_SHIPPED includes it (PR6).
+     * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via
+     * defineLevel so partial overrides cannot wipe required fields.
+     * LEVEL_3 is always in the campaign catalog; this does not gate shipping.
      * @param {object|null} def
      */
     function setLevel3Def(def) {
-        // Mutate shared reference used by getEffectiveLevelDefs when debug flag is on.
-        if (!def) return;
-        Object.keys(LEVEL_3).forEach(function (k) { delete LEVEL_3[k]; });
-        Object.assign(LEVEL_3, def);
+        if (!def || typeof def !== 'object') return;
+        // Snapshot current shipped fields, then re-normalize through defineLevel.
+        const merged = Object.assign({}, LEVEL_3, def, { id: 3 });
+        const normalized = defineLevel(merged);
+        // Preserve any non-defineLevel keys tools may attach (e.g. debug tags).
+        Object.keys(def).forEach(function (k) {
+            if (!Object.prototype.hasOwnProperty.call(normalized, k)) {
+                normalized[k] = def[k];
+            }
+        });
+        Object.keys(LEVEL_3).forEach(function (k) {
+            if (!Object.prototype.hasOwnProperty.call(normalized, k)) {
+                delete LEVEL_3[k];
+            }
+        });
+        Object.assign(LEVEL_3, normalized);
     }
 
+    /**
+     * True when URL forces level 3 entry (?level=3 or legacy ?level3=1).
+     * Catalog always includes L3; this only affects start-level helpers/tools.
+     */
     function wantsDebugLevel3() {
         try {
             if (typeof window === 'undefined' || !window.location) return false;
@@ -361,8 +380,7 @@
     }
 
     function getEffectiveLevelDefs() {
-        // PR6: LEVEL_3 is always in LEVEL_DEFS_SHIPPED.
-        // wantsDebugLevel3 kept for tools that force L3 entry; catalog is permanent.
+        // L3 is permanently in LEVEL_DEFS_SHIPPED (PR6+).
         return LEVEL_DEFS_SHIPPED;
     }
 

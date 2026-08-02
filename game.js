@@ -2645,7 +2645,46 @@ function spawnSplitterDrones(x, y) {
 
     showFloatingText(this, x, y - 28, 'SPLIT!', '#ff8866');
 
-    // Spread out from the rupture, but keep every fragment inside the playfield.
+    // Vertical (L3 top-down): fan fragments on X and keep approach on +Y.
+    // Horizontal (L1/L2): fan on Y and keep approach on −X.
+    if (isVerticalScroll()) {
+        const minX = 80;
+        const maxX = 720;
+        const baseY = Phaser.Math.Clamp(y + 20, 40, 520);
+        const fragments = [
+            { xOffset: -90, yOffset: -8, driftX: -150, speed: SPLITTER_DRONE_SPEED - 20 },
+            { xOffset: 90, yOffset: -8, driftX: 150, speed: SPLITTER_DRONE_SPEED - 20 },
+            { xOffset: -48, yOffset: 18, driftX: -85, speed: SPLITTER_DRONE_SPEED + 15 },
+            { xOffset: 48, yOffset: 18, driftX: 85, speed: SPLITTER_DRONE_SPEED + 15 }
+        ];
+
+        fragments.forEach(fragment => {
+            const spawnX = Phaser.Math.Clamp(x + fragment.xOffset, minX, maxX);
+            // Near a side wall, flip drift back toward center so drones stay on-screen.
+            const towardCenter = spawnX < 160 ? 1 : (spawnX > 640 ? -1 : Math.sign(fragment.driftX) || 1);
+            const driftX = Math.abs(fragment.driftX) * towardCenter;
+
+            const drone = spawnEnemy.call(this, {
+                allowDuringBoss: gamePhase === 'boss',
+                x: spawnX,
+                y: Phaser.Math.Clamp(baseY + fragment.yOffset, 30, 560),
+                type: 'splitterDrone',
+                speed: fragment.speed,
+                canShoot: false,
+                nextShotDelay: 99999,
+                skipPathClamp: true
+            });
+            if (!drone || !drone.body) return;
+            drone.driftVelocityX = driftX;
+            drone.driftVelocityY = 0;
+            drone.minPlayX = minX;
+            drone.maxPlayX = maxX;
+            drone.setVelocityX(driftX);
+        });
+        return;
+    }
+
+    // Horizontal rupture: spread on Y, keep leftward approach from applyApproachSpeed.
     const worldHeight = getLevelWorldHeight(currentLevel);
     const minY = currentOpenBands && currentOpenBands.length
         ? Math.min(...currentOpenBands.map(b => b[0])) + 20
@@ -2679,6 +2718,7 @@ function spawnSplitterDrones(x, y) {
         if (!drone || !drone.body) return;
         drone.setVelocityY(driftY);
         drone.driftVelocityY = driftY;
+        drone.driftVelocityX = 0;
         drone.minPlayY = minY;
         drone.maxPlayY = maxY;
     });
@@ -5307,11 +5347,31 @@ function updateEnemyMovement(enemy, frameDelta) {
     }
 
     if (enemy.enemyType === 'splitterDrone' && enemy.body) {
+        // Vertical: keep approach on Y (from updateScrollVelocity), bounce drift on X.
+        if (isVerticalScroll() && Number.isFinite(enemy.driftVelocityX)) {
+            let driftX = enemy.driftVelocityX;
+            const minX = Number.isFinite(enemy.minPlayX) ? enemy.minPlayX : 80;
+            const maxX = Number.isFinite(enemy.maxPlayX) ? enemy.maxPlayX : 720;
+
+            if (enemy.x <= minX && driftX < 0) {
+                enemy.x = minX;
+                driftX = Math.abs(driftX) * 0.7;
+            } else if (enemy.x >= maxX && driftX > 0) {
+                enemy.x = maxX;
+                driftX = -Math.abs(driftX) * 0.7;
+            }
+
+            enemy.driftVelocityX = driftX * 0.99;
+            enemy.setVelocityX(enemy.driftVelocityX);
+            // Y already set by updateScrollVelocity (downward approach).
+            return;
+        }
+
         let drift = Number.isFinite(enemy.driftVelocityY) ? enemy.driftVelocityY : 0;
         const minY = Number.isFinite(enemy.minPlayY) ? enemy.minPlayY : 80;
         const maxY = Number.isFinite(enemy.maxPlayY) ? enemy.maxPlayY : 520;
 
-        // Bounce off top/bottom so drones never leave the screen.
+        // Horizontal: bounce off top/bottom so drones never leave the playfield.
         if (enemy.y <= minY && drift < 0) {
             enemy.y = minY;
             drift = Math.abs(drift) * 0.7;
@@ -6016,8 +6076,11 @@ function releaseSprite(sprite) {
     sprite.killScore = null;
     sprite.boostRefill = null;
     sprite.driftVelocityY = null;
+    sprite.driftVelocityX = null;
     sprite.minPlayY = null;
     sprite.maxPlayY = null;
+    sprite.minPlayX = null;
+    sprite.maxPlayX = null;
     sprite.isWall = false;
     sprite.isDangerWall = false;
     if (sprite.body) {
