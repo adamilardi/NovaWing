@@ -33,7 +33,8 @@ const RECORD_VIDEO = process.env.RECORD_VIDEO !== '0';
 
 /**
  * In-page pilot. Serialized into the browser; no Node closures.
- * Tuned for survival first, then progress (boost), then DPS.
+ * Survival first, then progress (boost), then DPS.
+ * SPEEDRUN=1 (or ?speedrun=1) biases toward clear time: more boost, intro-boss DPS.
  */
 /** In-page heuristic pilot (also used by scripts/rl/record-demos.mjs). */
 export function installInPagePilot() {
@@ -45,6 +46,15 @@ export function installInPagePilot() {
     const VERT_HOME_Y = 460;
     const VERT_BOSS_Y = 480;
     const LANE_COUNT = 18;
+    // Speedrun bias: env injected via page URL or global override before install.
+    let SPEEDRUN = false;
+    try {
+        SPEEDRUN = window.__novawingPilotSpeedrun === true ||
+            (typeof location !== 'undefined' &&
+                /(?:^|[?&])speedrun=1(?:&|$)/.test(location.search || ''));
+    } catch (e) {
+        SPEEDRUN = Boolean(window.__novawingPilotSpeedrun);
+    }
 
     function clamp(v, min, max) {
         return Math.max(min, Math.min(max, v));
@@ -746,12 +756,22 @@ export function installInPagePilot() {
             if (p.x > 82) ax = -1;
         }
 
+        const isIntroBoss = snap.segment === 'introBoss' ||
+            (snap.boss && snap.boss.encounter === 'intro');
+        const isFinalBoss = snap.segment === 'finalBoss' ||
+            (snap.boss && snap.boss.encounter === 'final');
+        const openSpace = !snap.openBands || !snap.openBands.length;
+
         if (snap.phase === 'boss' && snap.boss && isVertical(snap)) {
             const b = snap.boss;
             const hp = Number.isFinite(b.health) ? b.health : 240;
             const pressured = here.ttc < 0.7 || here.bullets >= 2;
+            // Final BH fight: wider orbit; intro-style vertical: sit under and dump.
+            const orbitR = isFinalBoss
+                ? (lowLives || hp < 100 ? 110 : 70)
+                : (lowLives || hp < 100 ? 90 : 40);
             const preferX = clamp(
-                b.x + state.bossOrbitSign * (lowLives || hp < 100 ? 90 : 40),
+                b.x + state.bossOrbitSign * orbitR,
                 bounds.minX + 12,
                 bounds.maxX - 12
             );
@@ -772,19 +792,44 @@ export function installInPagePilot() {
             else ay = 0;
             if (here.ttc < 0.4 && here.dodgeDir !== 0) ax = here.dodgeDir;
             if (here.ttc < 0.28) ay = 1;
+
+            // Black-hole arena: stay outside danger radius, never enter kill radius.
+            const bh = snap.blackHole || {};
+            if (bh.active && bh.config && p) {
+                const cfg = bh.config;
+                const ax0 = cfg.x != null ? cfg.x : 400;
+                const ay0 = cfg.y != null ? cfg.y : 260;
+                const dxBh = p.x - ax0;
+                const dyBh = p.y - ay0;
+                const dist = Math.sqrt(dxBh * dxBh + dyBh * dyBh) || 0.001;
+                const dangerR = (cfg.dangerRadius != null ? cfg.dangerRadius : 48) + 28;
+                const killR = (cfg.killRadius != null ? cfg.killRadius : 28) + 36;
+                if (dist < killR) {
+                    // Emergency spit-out direction
+                    ax = dxBh / dist > 0 ? 1 : -1;
+                    ay = dyBh / dist > 0 ? 1 : -1;
+                } else if (dist < dangerR) {
+                    ax = dxBh / dist > 0 ? 1 : -1;
+                    if (p.y < ay0 + dangerR + 40) ay = 1;
+                }
+            }
         } else if (snap.phase === 'boss' && snap.boss) {
             const b = snap.boss;
             const hp = Number.isFinite(b.health) ? b.health : 240;
             const pressured = here.ttc < 0.7 || here.bullets >= 2;
+            // Intro boss (L3): track tighter for faster escape threshold.
+            const orbitAmp = isIntroBoss
+                ? (SPEEDRUN ? 18 : 28)
+                : (lowLives || hp < 100 ? 70 : 28);
             const preferY = clamp(
-                b.y + state.bossOrbitSign * (lowLives || hp < 100 ? 70 : 28),
+                b.y + state.bossOrbitSign * orbitAmp,
                 bounds.minY + 12,
                 bounds.maxY - 12
             );
 
             if (now > state.bossWeaveUntil) {
                 state.bossOrbitSign *= -1;
-                state.bossWeaveUntil = now + (pressured ? 360 : 520);
+                state.bossWeaveUntil = now + (pressured ? 360 : (isIntroBoss && SPEEDRUN ? 280 : 520));
             }
             if (p.y <= bounds.minY + 20) state.bossOrbitSign = 1;
             if (p.y >= bounds.maxY - 20) state.bossOrbitSign = -1;
@@ -798,6 +843,11 @@ export function installInPagePilot() {
                 // Use i-frames to re-center for DPS.
                 const err = b.y - p.y;
                 ay = Math.abs(err) > 12 ? (err > 0 ? 1 : -1) : 0;
+            } else if (isIntroBoss && SPEEDRUN && here.ttc > 0.45) {
+                // Speedrun intro: stick closer to boss Y for DPS to force escape.
+                const err = b.y - p.y;
+                if (Math.abs(err) > 10) ay = err > 0 ? 1 : -1;
+                else ay = 0;
             } else {
                 const err = safeY - p.y;
                 if (Math.abs(err) > 8) ay = err > 0 ? 1 : -1;
@@ -809,9 +859,10 @@ export function installInPagePilot() {
                 ay = here.dodgeDir;
             }
 
-            // Park left for reaction time; further left when fragile, low HP phase, or storm.
+            // Park left for reaction time; intro speedrun sits closer for DPS.
             const endgame = hp < 80 || here.bullets >= 5;
-            const preferX = (lowLives || endgame || b.x < 520) ? 98 : 130;
+            let preferX = (lowLives || endgame || b.x < 520) ? 98 : 130;
+            if (isIntroBoss && SPEEDRUN && !lowLives) preferX = 150;
             if (p.x < preferX - 10) ax = 0.5;
             else if (p.x > preferX + 18) ax = -1;
             else ax = 0;
@@ -823,7 +874,7 @@ export function installInPagePilot() {
             }
         }
 
-        // Boost: survival first. No boost until weapon 2 unless near wave end.
+        // Boost: survival first; SPEEDRUN biases clear-time progress multiplier.
         let boost = false;
         const energy = snap.boostEnergy || 0;
         if (!snap.boostLocked && energy > 5) {
@@ -832,14 +883,21 @@ export function installInPagePilot() {
                 const corridorTight = snap.openBands && snap.openBands.length === 1;
                 let safeTtc = early ? 0.75 : (lowLives ? 0.45 : 0.26);
                 if (corridorTight) safeTtc += 0.12;
+                if (SPEEDRUN && openSpace) safeTtc *= 0.72;
+                if (SPEEDRUN && isVertical(snap)) safeTtc = Math.min(safeTtc, 0.32);
                 const prog = snap.levelProgressMs || 0;
                 const dur = snap.levelDurationMs || 60000;
                 const late = prog > dur * 0.88;
+                const mid = prog > dur * 0.35;
 
                 if (!early && (ttc > safeTtc || invuln)) boost = true;
                 else if (early && late && ttc > 0.6) boost = true;
                 else if (!early && !lowLives && energy > 60 && ttc > 0.22) boost = true;
                 else if (late && energy > 10 && ttc > 0.24) boost = true;
+                // Speedrun: open space can boost earlier (progress clock is free time).
+                else if (SPEEDRUN && openSpace && early && energy > 35 && ttc > 0.55) boost = true;
+                else if (SPEEDRUN && openSpace && mid && energy > 20 && ttc > 0.28) boost = true;
+                else if (SPEEDRUN && isVertical(snap) && energy > 25 && ttc > 0.35 && !lowLives) boost = true;
 
                 if (here.kind === 'wall' && here.ttc < 0.55) boost = false;
                 if (here.ttc < 0.2) boost = false;
@@ -848,10 +906,20 @@ export function installInPagePilot() {
                     boost = false;
                 }
             } else if (snap.phase === 'boss') {
-                // Boss: boost mainly for emergency vertical repositioning.
+                // Boss: boost mainly for emergency repositioning; intro DPS press.
                 if (here.ttc < 0.4) boost = true;
                 else if (Math.abs(p.y - state.safeY) > 70 && energy > 25 && here.ttc > 0.35) boost = true;
+                else if (isIntroBoss && SPEEDRUN && energy > 20 && here.ttc > 0.5) boost = true;
                 if (lowLives && here.ttc > 0.5) boost = false;
+                // Never boost into the black hole.
+                const bh = snap.blackHole || {};
+                if (bh.active && bh.config && p) {
+                    const cfg = bh.config;
+                    const ax0 = cfg.x != null ? cfg.x : 400;
+                    const ay0 = cfg.y != null ? cfg.y : 260;
+                    const dist = Math.hypot(p.x - ax0, p.y - ay0);
+                    if (dist < (cfg.dangerRadius || 48) + 50) boost = false;
+                }
             }
         }
 
@@ -945,6 +1013,10 @@ async function runOnce(browser, trialIndex) {
     url.searchParams.set('trial', String(trialIndex));
     if (process.env.LEVEL) {
         url.searchParams.set('level', String(process.env.LEVEL));
+    }
+    // SPEEDRUN=1 biases heuristic pilot toward clear time (more boost / intro DPS).
+    if (process.env.SPEEDRUN === '1' || process.env.SPEEDRUN === 'true') {
+        url.searchParams.set('speedrun', '1');
     }
 
     const videoDir = path.join(SCREENSHOT_DIR, 'video');

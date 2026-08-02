@@ -38,8 +38,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DEMOS = ROOT / "rl" / "demos"
 DEFAULT_OUT = ROOT / "rl" / "weights" / "bc-policy.json"
 
-OBS_VERSION = 1
-OBS_SIZE = 164
+# Must match scripts/rl/obs-encode.mjs (OBS v2 = segment/orientation/BH).
+OBS_VERSION = 2
+OBS_SIZE = 176
 ACTION_SIZE = 4
 
 
@@ -120,14 +121,19 @@ def load_jsonl_demos(
                     ver = row.get("obsVersion", OBS_VERSION)
                     if meta["obs_version"] is None:
                         meta["obs_version"] = ver
+                    # Skip legacy demos (e.g. OBS v1) instead of aborting the whole run.
                     if ver != OBS_VERSION:
-                        raise ValueError(
-                            f"{path}: obsVersion {ver} != expected {OBS_VERSION}"
-                        )
+                        meta.setdefault("skipped_version", 0)
+                        meta["skipped_version"] += 1
+                        header = None
+                        steps = []
+                        break
                     if row.get("obsSize", OBS_SIZE) != OBS_SIZE:
-                        raise ValueError(
-                            f"{path}: obsSize {row.get('obsSize')} != {OBS_SIZE}"
-                        )
+                        meta.setdefault("skipped_size", 0)
+                        meta["skipped_size"] += 1
+                        header = None
+                        steps = []
+                        break
                     continue
                 if row.get("type") == "step":
                     steps.append(row)
@@ -164,21 +170,22 @@ def load_jsonl_demos(
         # Episode quality weight
         if speedrun:
             if won:
-                # Faster wins get higher weight. Target ~120s campaign ≈ 1.0 baseline.
-                t = elapsed if elapsed and elapsed > 0 else 180000.0
-                # 90s → ~2.0x, 120s → 1.5x, 180s → 1.0x, 240s → 0.75x
+                # Faster wins get higher weight. Estimate time from steps if missing.
+                t = elapsed if elapsed and elapsed > 0 else float(len(steps) * 50)
+                # 90s → ~2.0x, 120s → 1.5x, 180s → 1.0x
                 speed_w = 180000.0 / max(t, 60000.0)
-                ep_w = 8.0 * speed_w * (1.0 + 0.15 * max(0, max_level - 1))
+                # Wins dominate the dataset (policy was dying early with weak win signal).
+                ep_w = 24.0 * speed_w * (1.0 + 0.2 * max(0, max_level - 1))
             else:
-                # Partial credit for deep runs; ignore total flops
+                # Partial credit for deep runs only; starve early deaths.
                 depth = max(max_progress, 0.0)
                 if max_level >= 2:
                     depth = max(depth, 0.55)
-                ep_w = 0.35 + 1.25 * min(1.0, depth) + 0.4 * max(0, max_level - 1)
-                if peak_score > 15000:
-                    ep_w *= 1.2
-                if peak_score < 3000 and max_level < 2:
-                    ep_w *= 0.25  # early deaths almost ignored
+                ep_w = 0.15 + 0.9 * min(1.0, depth) + 0.35 * max(0, max_level - 1)
+                if peak_score > 18000:
+                    ep_w *= 1.35
+                if peak_score < 5000 and max_level < 2:
+                    ep_w *= 0.08
         else:
             ep_w = 1.0
 
@@ -337,10 +344,30 @@ def train(args: argparse.Namespace) -> Path:
         speedrun=args.speedrun,
         drop_early_frac=args.drop_early_frac,
     )
+    skipped_v = meta.get("skipped_version") or 0
+    skipped_s = meta.get("skipped_size") or 0
     print(
         f"Loaded {meta['steps']} steps from {meta['episodes']} episodes "
-        f"({meta['wins']} wins) speedrun={args.speedrun}"
+        f"({meta['wins']} wins) speedrun={args.speedrun} "
+        f"obs_v={OBS_VERSION} size={OBS_SIZE}"
     )
+    if skipped_v or skipped_s:
+        print(
+            f"  skipped demos: wrong_version={skipped_v} wrong_size={skipped_s} "
+            f"(re-record after OBS bump)"
+        )
+
+    if not samples:
+        print(
+            "No usable demo steps for current OBS contract.\n"
+            f"  Need demo-*.jsonl with obsVersion={OBS_VERSION} obsSize={OBS_SIZE}.\n"
+            "  Archive old demos and re-record:\n"
+            "    npm run rl:archive-demos\n"
+            "    LEVEL=1 EPISODES=8 npm run rl:record\n"
+            "    npm run rl:train",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     hidden = [int(x) for x in args.hidden.split(",") if x.strip()] or [128, 128]
 
@@ -388,12 +415,18 @@ def train(args: argparse.Namespace) -> Path:
     # Warm-start from previous policy if present
     if args.init and Path(args.init).exists():
         print(f"Note: JSON init not loaded into torch (use continuous training).")
-    # Optional: load torch checkpoint
+    # Optional: load torch checkpoint (skip if OBS size / arch mismatch — e.g. v1→v2)
     ckpt_path = Path(args.checkpoint) if args.checkpoint else None
     if ckpt_path and ckpt_path.exists():
-        state = torch.load(ckpt_path, map_location=device)
-        model.load_state_dict(state["model"])
-        print(f"Resumed weights from {ckpt_path}")
+        try:
+            state = torch.load(ckpt_path, map_location=device)
+            model.load_state_dict(state["model"])
+            print(f"Resumed weights from {ckpt_path}")
+        except (RuntimeError, KeyError, TypeError) as exc:
+            print(
+                f"WARNING: checkpoint {ckpt_path} incompatible with "
+                f"OBS_SIZE={OBS_SIZE} ({exc}); training from scratch"
+            )
 
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     random.seed(args.seed)

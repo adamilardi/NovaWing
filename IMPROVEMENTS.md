@@ -14,16 +14,74 @@ Status: `done` · `in_progress` · `todo`
 - [x] **Atomic leaderboard write (D1)** — mark run used + insert entry in one batch
 - [x] **Spoofable rate-limit key** — local server honors `X-Forwarded-For` only when `TRUST_PROXY=1`
 - [x] **`npm start`** script for local server
+- [x] **Leaderboard Slice A** — lock score/kills/accuracy at run complete
+- [x] **Campaign L1–L3** — OPEN SPACE, THE CANYON, SINGULARITY RUN (segmented finale)
 
 ---
 
-## Priority roadmap
+## Active track: Engineering health *(current priority)*
 
-### 1. Ship review fixes
+Goal: keep the game shippable as `game.js` grows, without blocking content polish.
 
-- [ ] Commit review hardening changes
+### EH-1. CI / smoke — `in_progress`
+
+- [x] `npm run check` syntax-gates core JS (includes `audio.js`)
+- [x] Run `npm run check` in GitHub Actions on PR / push (`.github/workflows/ci.yml`)
+- [ ] Optional Playwright smoke (`scripts/test-mobile.mjs` or short bot) on PR
+- [ ] Fail deploy if check fails (document: always `npm run check` before `npm run deploy`)
+
+### EH-2. Modularize `game.js` — `in_progress`
+
+`game.js` was ~7.9k lines / ~230 functions with many module-level `let`s. Prefer the existing **IIFE + global** pattern (`levels.js`) so build stays `cp` into `dist/` (no bundler required yet).
+
+**Extraction order (small, mergeable slices):**
+
+| Order | Module | Approx. lines | Notes |
+|-------|--------|---------------|--------|
+| 1 | `audio.js` (`createSfx`) | ~400 | **done** — few deps; no scene state |
+| 2 | `net.js` | ~200 | run token, leaderboard fetch/submit |
+| 3 | `black-hole.js` | ~300 | forces, hazard rings, visuals API |
+| 4 | `boss.js` | ~600 | fight, volleys, drones, lasers, escape |
+| 5 | `segments.js` | ~400 | L3 advance/enter handlers |
+| 6 | `waves.js` | ~500 | pattern registry + spawners |
+
+Rules:
+
+- One module per PR when possible; keep `npm run check` + manual smoke green.
+- Do **not** freeze campaign length; keep `getTotalLevels()` live.
+- Shared mutable state either stays on a thin `game.js` runtime object or remains module `let`s with explicit `window.NovaWing*` APIs (same as levels).
+- Defer a bundler (esbuild) until module count makes script-tag order painful.
+
+### EH-3. Pin Phaser + SRI — `todo`
+
+- [ ] Vendor Phaser into the repo / `dist` **or** pin CDN URL with subresource integrity
+- [ ] Avoid un-pinned third-party script supply-chain risk (version is pinned to 3.55.2 today)
+
+### EH-4. Local server robustness — `todo`
+
+- [ ] Persist run tokens (file/SQLite) so restarts mid-run do not drop completions
+- [ ] Document local vs Cloudflare behavior differences
+
+### EH-5. Keep RL / bots on a side track — `in_progress` (process)
+
+- RL training (`rl/`, `scripts/rl/`) must not gate game releases.
+- Ship criteria for the game: playable L1–L3, leaderboard complete path, `npm run check` green.
+- **OBS v2** (`OBS_SIZE=176`): segment / orientation / black-hole features; re-record demos after bump.
+- **Speedrun loop**: curriculum gates (L2/L3 unlock on win rate), promote `bc-policy-best` only on faster clears, REINFORCE gated on policy wins.
+- **Playtest**: `npm run rl:playtest` scenario harness + death taxonomy (`playtest-latest.json`).
+- Details: `rl/README.md` (includes **why learning is slow** + next training fixes).
+
+**Next RL session (when free CPU again):** expert-only BC until first L1 eval clear; oversample boss demos; early-stop loop on repeated 0% eval.
+
+### EH-6. Deploy hygiene — `todo`
+
+- [ ] Commit outstanding review/hardening + L3 when ready
 - [ ] Deploy (`npm run deploy`) and confirm remote D1 migrations if needed
 - [ ] Set `TRUST_PROXY=1` only when local `server.js` is behind a trusted reverse proxy
+
+---
+
+## Product / integrity backlog
 
 ### 2. In-game pilot name UI
 
@@ -31,11 +89,9 @@ Status: `done` · `in_progress` · `todo`
 - [ ] Better mobile UX (no blocking dialog)
 - [ ] Keep localStorage name memory
 
-### 3. Leaderboard integrity (anti-cheat) — **in progress**
+### 3. Leaderboard integrity (anti-cheat)
 
-**Problem:** Server measures run *time*, but score / kills / accuracy were fully client-trusted on leaderboard POST. A bot can wait ~24s and submit a forged payload.
-
-#### Slice A — lock stats at run complete *(this slice)* — **done**
+#### Slice A — lock stats at run complete — **done**
 
 - [x] Design: PATCH `/api/run` locks score, kills, accuracy with the server time
 - [x] POST `/api/leaderboard` accepts only `name` + `runId` + `version`; stats come from the locked run
@@ -57,38 +113,25 @@ Status: `done` · `in_progress` · `todo`
 - [ ] Soft ban / shadow-reject for repeated implausible attempts
 - [ ] Auth or proof-of-work only if competitive abuse appears
 
-### 4. Pin Phaser + SRI
+### 7. Gameplay / polish
 
-- [ ] Vendor Phaser into the repo / `dist` **or** pin CDN URL with subresource integrity
-- [ ] Avoid un-pinned third-party script supply-chain risk
+See **`GAMEPLAY_IDEAS.md`** for the full list. Short pointer:
 
-### 5. CI / smoke tests
-
-- [ ] Run `npm run check` in CI
-- [ ] Optional Playwright smoke (`scripts/test-mobile.mjs` or bot) on PR
-- [ ] Fail deploy if check fails
-
-### 6. Local server robustness
-
-- [ ] Persist run tokens (file/SQLite) so restarts mid-run do not drop completions
-- [ ] Document local vs Cloudflare behavior differences
-
-### 7. Gameplay / polish (from review + `GAMEPLAY_IDEAS.md`)
-
-- [ ] Combo meter
-- [ ] Boost grazing rewards
-- [ ] More authored wave patterns / levels
-- [ ] Boss / juice (hit-stop, shake) as needed
+- [ ] Combo meter + boost grazing
+- [ ] Hit-stop / shake juice
+- [ ] L2 path rewards; L3 pacing / transition juice
+- [ ] In-game name UI (also listed above)
 
 ---
 
-## Suggested work order
+## Suggested work order (engineering-health first)
 
-1. Finish **leaderboard Slice A** (current)
-2. Commit + deploy review + Slice A together
-3. In-game name UI
-4. Phaser SRI / vendor + CI check
-5. Leaderboard Slice B when abuse or competitive ranking matters
+1. **CI** for `npm run check` (and keep it green)
+2. **Extract modules** in EH-2 order (`audio.js` first)
+3. **Phaser vendor/SRI**
+4. In-game pilot name UI (mobile post-run UX)
+5. Gameplay juice from `GAMEPLAY_IDEAS.md` when ready for fun pass
+6. Leaderboard Slice B only if competitive abuse appears
 
 ---
 
@@ -96,3 +139,4 @@ Status: `done` · `in_progress` · `todo`
 
 - Client-side games cannot be fully cheat-proof without authoritative simulation. Slice A removes the “mutate stats after complete” window and centralizes validation; it does not stop a modified client from lying once at complete time.
 - `GAME_VERSION` should bump when scoring rules change in a way that invalidates old comparisons.
+- Gameplay ideas live in `GAMEPLAY_IDEAS.md` so this file stays engineering/product-ops focused.

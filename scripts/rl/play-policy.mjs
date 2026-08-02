@@ -24,8 +24,16 @@ const HEADLESS = process.env.HEADLESS === '0' ? false
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const TICK_MS = Number(process.env.TICK_MS || 16);
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
+// When LEVEL is set, win = clear that stage (advance past it), not full campaign victory.
+const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
 const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
     '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
+
+function isLevelOrCampaignWin(snap, outcome) {
+    if (outcome === 'win' || (snap && snap.victoryPending)) return true;
+    if (START_LEVEL != null && snap && Number(snap.level) > START_LEVEL) return true;
+    return false;
+}
 
 async function waitForGame(page, timeout = 25000) {
     await page.waitForFunction(() => {
@@ -54,9 +62,13 @@ export function installPolicyPilot(policy) {
         ? policy.exploreBoostP
         : 0.05;
 
+    // Inlined OBS v2 encoder — must match scripts/rl/obs-encode.mjs layout.
     const K_ENEMIES = 6, K_OBSTACLES = 4, K_BULLETS = 8, K_WALLS = 6, K_POWERUPS = 3, K_BANDS = 3;
     const OBS_SIZE = policy.obsSize;
-    const ENEMY_TYPE_ID = { regular: 0.2, interceptor: 0.5, splitter: 0.8, splitterDrone: 0.65, bossDrone: 0.9 };
+    const ENEMY_TYPE_ID = {
+        regular: 0.2, interceptor: 0.5, splitter: 0.8, splitterDrone: 0.65, bossDrone: 0.9,
+        dart: 0.35, riser: 0.4, strafer: 0.45, mineDropper: 0.55, orbiter: 0.7
+    };
     const POWERUP_TYPE_ID = { weapon: 0.2, boost: 0.35, shield: 0.5, repair: 0.65, bomb: 0.8 };
 
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -71,6 +83,11 @@ export function installPolicyPilot(policy) {
             return { e: e, dx: dx, dy: dy, d2: dx * dx + dy * dy };
         }).sort(function (a, b) { return a.d2 - b.d2; });
     }
+    function encounterId(enc) {
+        if (enc === 'intro') return 0.5;
+        if (enc === 'final' || enc === 'standard') return 1.0;
+        return 0;
+    }
 
     function encode(snap) {
         const out = new Float32Array(OBS_SIZE);
@@ -81,6 +98,7 @@ export function installPolicyPilot(policy) {
         const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil ? 1 : 0;
         const dur = snap.levelDurationMs || 60000;
         const progress = dur > 0 ? clamp((snap.levelProgressMs || 0) / dur, 0, 1) : 0;
+        const seg = snap.segment || null;
         let o = 0;
         out[o++] = nrm(p.x, 800);
         out[o++] = nrm(p.y, wh);
@@ -96,6 +114,12 @@ export function installPolicyPilot(policy) {
         out[o++] = snap.phase === 'waves' ? 1 : 0;
         out[o++] = snap.phase === 'boss' ? 1 : 0;
         out[o++] = clamp((snap.level || 1) / 3, 0, 1);
+        out[o++] = snap.scrollMode === 'vertical' ? 1 : 0;
+        out[o++] = snap.combatOrientation === 'up' ? 1 : 0;
+        out[o++] = seg === 'introBoss' ? 1 : 0;
+        out[o++] = seg === 'transition' ? 1 : 0;
+        out[o++] = seg === 'topdown' ? 1 : 0;
+        out[o++] = seg === 'finalBoss' ? 1 : 0;
 
         function fill(ranked, k, dims, write) {
             for (let i = 0; i < k; i++) {
@@ -143,11 +167,39 @@ export function installPolicyPilot(policy) {
             out[o++] = 1;
             out[o++] = nrm((b.x || 0) - px, 500);
             out[o++] = nrm((b.y || 0) - py, wh);
-            out[o++] = clamp((b.health || 0) / 280, 0, 1);
+            out[o++] = clamp((b.health || 0) / Math.max(1, b.maxHealth || 280), 0, 1);
             out[o++] = clamp((b.phase || 1) / 3, 0, 1);
-            out[o++] = nrm(b.w || 300, 400);
+            out[o++] = encounterId(b.encounter);
         } else {
             out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0;
+        }
+        // Black hole block (v2)
+        const bh = snap.blackHole || {};
+        const cfg = bh.config || {};
+        const active = Boolean(bh.active);
+        const preview = Boolean(bh.preview);
+        if (!active && !preview) {
+            out[o++] = 0; out[o++] = 0; out[o++] = 0;
+            out[o++] = 0; out[o++] = 0; out[o++] = 0;
+        } else {
+            const anchor = active
+                ? { x: cfg.x != null ? cfg.x : 400, y: cfg.y != null ? cfg.y : 260 }
+                : (cfg.previewAnchor || { x: 400, y: 40 });
+            const dx = (anchor.x || 0) - px;
+            const dy = (anchor.y || 0) - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const dangerR = cfg.dangerRadius != null ? cfg.dangerRadius : 48;
+            const killR = cfg.killRadius != null ? cfg.killRadius : 28;
+            out[o++] = active ? 1 : 0;
+            out[o++] = preview && !active ? 1 : 0;
+            out[o++] = nrm(dx, 400);
+            out[o++] = nrm(dy, 400);
+            out[o++] = nrm(dist, 400);
+            let hazard = 0;
+            if (dist < killR) hazard = 1;
+            else if (dist < dangerR) hazard = 0.65;
+            else if (dist < dangerR * 2) hazard = 0.25;
+            out[o++] = hazard;
         }
         return out;
     }
@@ -312,6 +364,7 @@ async function main() {
         let lastLog = 0;
         let won = false;
         let finalSnap = null;
+        let peakLevel = START_LEVEL || 1;
 
         while (Date.now() - started < DURATION_MS) {
             const status = await page.evaluate(() => ({
@@ -325,12 +378,17 @@ async function main() {
             }));
             if (status.error) console.error('[policy]', status.error);
             finalSnap = status.snap;
+            if (status.snap && status.snap.level > peakLevel) peakLevel = status.snap.level;
 
-            if (status.outcome === 'win' || (status.snap && status.snap.victoryPending)) {
+            if (isLevelOrCampaignWin(status.snap, status.outcome)) {
                 won = true;
                 break;
             }
-            if (status.outcome === 'lose' || (status.snap && status.snap.levelEnded)) {
+            if (
+                status.outcome === 'lose' ||
+                (status.snap && status.snap.levelEnded && !status.snap.victoryPending &&
+                    !status.snap.levelTransitioning)
+            ) {
                 won = false;
                 break;
             }
@@ -360,7 +418,16 @@ async function main() {
             score: finalSnap ? finalSnap.score : null,
             lives: finalSnap ? finalSnap.lives : null,
             level: finalSnap ? finalSnap.level : null,
+            peakLevel,
+            startLevel: START_LEVEL,
+            // Level-scoped clear vs full campaign
+            winKind: won
+                ? (finalSnap && finalSnap.victoryPending ? 'campaign' : 'level')
+                : null,
             phase: finalSnap ? finalSnap.phase : null,
+            segment: finalSnap ? finalSnap.segment : null,
+            scrollMode: finalSnap ? finalSnap.scrollMode : null,
+            combatOrientation: finalSnap ? finalSnap.combatOrientation : null,
             elapsedMs: Math.round(elapsedMs),
             elapsedSec: Number((elapsedMs / 1000).toFixed(2)),
             // Speedrun key metric: wall/game clear time when won

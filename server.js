@@ -30,7 +30,8 @@ function isPublicRequest(requestPath) {
     if (
         requestPath === '/index.html' ||
         requestPath === '/game.js' ||
-        requestPath === '/levels.js'
+        requestPath === '/levels.js' ||
+        requestPath === '/audio.js'
     ) {
         return true;
     }

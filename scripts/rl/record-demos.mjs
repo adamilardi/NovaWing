@@ -1,18 +1,21 @@
 /**
- * Record expert demos for behavior cloning.
+ * Record demos for BC / RL.
  *
- * Runs the heuristic in-page pilot, encodes observations each tick, and writes
- * JSONL under rl/demos/ (or DEMO_DIR).
+ * EXPERT=heuristic  — classic play-bot pilot (default)
+ * EXPERT=policy     — learned policy self-play (needs rl/weights/bc-policy.json)
+ *
+ * Policy rollouts store shaped `reward` per step for REINFORCE fine-tuning.
  *
  *   npm run rl:record
- *   EPISODES=10 LEVEL=1 npm run rl:record
- *   LEVEL=2 EPISODES=5 npm run rl:record
+ *   EXPERT=policy EPISODES=8 npm run rl:record
+ *   LEVEL=2 EXPERT=policy EXPLORE=1 npm run rl:record
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
+import { installPolicyPilot } from './play-policy.mjs';
 import {
     OBS_VERSION,
     OBS_SIZE,
@@ -32,13 +35,64 @@ const EPISODES = Math.max(1, Number(process.env.EPISODES || 5));
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const SAMPLE_MS = Number(process.env.SAMPLE_MS || 50);
 const DEMO_DIR = process.env.DEMO_DIR || path.join(ROOT, 'rl', 'demos');
+const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
+const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
+const EXPLORE = process.env.EXPLORE === '1' || EXPERT === 'policy';
+// When LEVEL is set, a "win" means clearing that level (advance past it), not full campaign.
+const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
+// Parallel browser contexts per process (each episode is independent).
+const WORKERS = Math.max(1, Math.min(8, Number(process.env.WORKERS || 1)));
+const WORKER_ID = String(process.env.WORKER_ID || process.pid);
+
+/** Level-scoped or campaign victory. */
+function isEpisodeWin(snap, outcome) {
+    if (outcome === 'win' || (snap && snap.victoryPending)) return true;
+    if (START_LEVEL != null && snap && Number(snap.level) > START_LEVEL) return true;
+    return false;
+}
 const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
     '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
 
 function stamp() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${ms}`;
+}
+
+function uniqueSuffix() {
+    return `w${WORKER_ID}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function progNorm(snap) {
+    const dur = snap.levelDurationMs || 60000;
+    return dur > 0 ? Math.min(1, (snap.levelProgressMs || 0) / dur) : 0;
+}
+
+/** Shaped reward for RL (speedrun-oriented). */
+function stepReward(prev, snap, won, died) {
+    if (!prev || !snap) return 0;
+    let r = 0;
+    // Progress is the main speedrun signal
+    const dp = progNorm(snap) - progNorm(prev);
+    if (dp > 0) r += dp * 3.0;
+    // Score / kills proxy
+    const ds = (snap.score || 0) - (prev.score || 0);
+    if (ds > 0) r += Math.min(ds, 800) / 400;
+    // Survival
+    const dl = (snap.lives || 0) - (prev.lives || 0);
+    if (dl < 0) r += dl * 1.5; // -1.5 per life
+    // Level advance
+    if ((snap.level || 1) > (prev.level || 1)) r += 4.0;
+    // Phase change to boss = made it through waves
+    if (prev.phase === 'waves' && snap.phase === 'boss') r += 2.5;
+    // Boost while progressing (encourages speed clear)
+    if (snap.isBoosting && dp > 0) r += 0.05;
+    if (won) r += 20.0;
+    if (died) r -= 8.0;
+    // Time pressure: small penalty each step so faster is better
+    r -= 0.002;
+    return r;
 }
 
 async function waitForGame(page, timeout = 25000) {
@@ -51,11 +105,59 @@ async function waitForGame(page, timeout = 25000) {
     }, null, { timeout });
 }
 
-async function recordEpisode(browser, episodeIndex) {
+async function installExpert(page, policy) {
+    if (EXPERT === 'policy') {
+        if (!policy) throw new Error(`Policy required at ${POLICY_PATH}`);
+        const p = { ...policy, explore: EXPLORE };
+        if (process.env.EXPLORE_MOVE_STD) p.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
+        if (process.env.EXPLORE_BOOST_P) p.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
+        await page.evaluate(installPolicyPilot, p);
+        return 'policy';
+    }
+    await page.evaluate(installInPagePilot);
+    return 'heuristic';
+}
+
+async function readStatus(page, mode) {
+    if (mode === 'policy') {
+        return page.evaluate(() => ({
+            snap: window.__novawingPolicyLastSnap ||
+                (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
+                    ? window.__novawingDebug.getBotSnapshot()
+                    : null),
+            input: window.__novawingPolicyLastAction || null,
+            outcome: window.__novawingPolicyOutcome
+        }));
+    }
+    return page.evaluate(() => ({
+        snap: window.__novawingPilotLastSnap ||
+            (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
+                ? window.__novawingDebug.getBotSnapshot()
+                : null),
+        input: window.__novawingPilotLastInput || null,
+        outcome: window.__novawingPilotOutcome
+    }));
+}
+
+async function stopExpert(page, mode) {
+    await page.evaluate((m) => {
+        if (m === 'policy') {
+            if (window.__novawingPolicyStop) window.__novawingPolicyStop();
+        } else if (window.__novawingPilotStop) {
+            window.__novawingPilotStop();
+        }
+    }, mode).catch(() => {});
+}
+
+async function recordEpisode(browser, episodeIndex, policy) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('demo', String(episodeIndex));
+    url.searchParams.set('expert', EXPERT);
     if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
+    // Heuristic speedrun bias (progress boost + intro-boss DPS). Default on for demos.
+    const speedrun = process.env.SPEEDRUN !== '0';
+    if (speedrun) url.searchParams.set('speedrun', '1');
 
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
@@ -63,7 +165,7 @@ async function recordEpisode(browser, episodeIndex) {
     });
     const page = await context.newPage();
     page.on('dialog', async (dialog) => {
-        if (dialog.type() === 'prompt') await dialog.accept('DemoPilot');
+        if (dialog.type() === 'prompt') await dialog.accept(EXPERT === 'policy' ? 'PolicyPilot' : 'DemoPilot');
         else await dialog.accept();
     });
     page.on('pageerror', (err) => console.error('[pageerror]', err.message || err));
@@ -74,7 +176,7 @@ async function recordEpisode(browser, episodeIndex) {
     await waitForGame(page);
     await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
     await page.waitForTimeout(150);
-    await page.evaluate(installInPagePilot);
+    const mode = await installExpert(page, policy);
 
     const steps = [];
     const started = Date.now();
@@ -82,66 +184,82 @@ async function recordEpisode(browser, episodeIndex) {
     let won = false;
     let maxLevel = 1;
     let peakScore = 0;
+    let prevSnap = null;
+    let episodeReturn = 0;
 
     try {
         while (Date.now() - started < DURATION_MS) {
-            const status = await page.evaluate(() => {
-                const snap = window.__novawingPilotLastSnap ||
-                    (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
-                        ? window.__novawingDebug.getBotSnapshot()
-                        : null);
-                return {
-                    snap,
-                    input: window.__novawingPilotLastInput || null,
-                    outcome: window.__novawingPilotOutcome
-                };
-            });
-
+            const status = await readStatus(page, mode);
             const snap = status.snap;
             finalSnap = snap;
             if (snap && snap.score > peakScore) peakScore = snap.score;
             if (snap && snap.level > maxLevel) maxLevel = snap.level;
 
-            if (status.outcome === 'win' || (snap && snap.victoryPending)) {
-                won = true;
-                break;
-            }
-            if (status.outcome === 'lose' || (snap && snap.levelEnded)) {
-                won = false;
-                break;
-            }
+            const isWin = isEpisodeWin(snap, status.outcome);
+            // Don't treat mid-run level transitions as death (levelEnded flashes during restart paths).
+            const isLose = !isWin && (
+                status.outcome === 'lose' ||
+                (snap && snap.levelEnded && !snap.victoryPending && !snap.levelTransitioning)
+            );
 
             if (snap && snap.ready && snap.player && status.input && !snap.levelTransitioning) {
                 const obs = encodeObservation(snap);
                 const action = encodeAction(status.input);
+                const reward = stepReward(prevSnap, snap, false, false);
+                episodeReturn += reward;
                 const dur = snap.levelDurationMs || 60000;
-                const progNorm = dur > 0
-                    ? Math.min(1, (snap.levelProgressMs || 0) / dur)
-                    : 0;
                 steps.push({
                     obs: Array.from(obs),
                     action,
-                    reward: 0,
+                    reward,
                     meta: {
                         t: snap.time || 0,
                         elapsedMs: snap.elapsedMs != null ? snap.elapsedMs : null,
                         level: snap.level || 1,
                         phase: snap.phase || 'waves',
+                        segment: snap.segment || null,
+                        scrollMode: snap.scrollMode || null,
+                        combatOrientation: snap.combatOrientation || null,
                         score: snap.score || 0,
                         lives: snap.lives || 0,
-                        progress: progNorm,
+                        progress: progNorm(snap),
                         levelProgressMs: snap.levelProgressMs || 0,
-                        levelDurationMs: dur
+                        levelDurationMs: dur,
+                        expert: EXPERT
                     }
                 });
+                prevSnap = {
+                    score: snap.score,
+                    lives: snap.lives,
+                    level: snap.level,
+                    phase: snap.phase,
+                    levelProgressMs: snap.levelProgressMs,
+                    levelDurationMs: snap.levelDurationMs,
+                    isBoosting: snap.isBoosting
+                };
+            }
+
+            if (isWin) {
+                won = true;
+                if (steps.length) {
+                    steps[steps.length - 1].reward += 20;
+                    episodeReturn += 20;
+                }
+                break;
+            }
+            if (isLose) {
+                won = false;
+                if (steps.length) {
+                    steps[steps.length - 1].reward -= 8;
+                    episodeReturn -= 8;
+                }
+                break;
             }
 
             await page.waitForTimeout(SAMPLE_MS);
         }
     } finally {
-        await page.evaluate(() => {
-            if (window.__novawingPilotStop) window.__novawingPilotStop();
-        }).catch(() => {});
+        await stopExpert(page, mode);
         await context.close();
     }
 
@@ -152,6 +270,7 @@ async function recordEpisode(browser, episodeIndex) {
         peakScore,
         steps: steps.length,
         elapsedSec: Number(((Date.now() - started) / 1000).toFixed(1)),
+        episodeReturn,
         finalPhase: finalSnap ? finalSnap.phase : null,
         finalLives: finalSnap ? finalSnap.lives : null,
         samples: steps
@@ -161,9 +280,23 @@ async function recordEpisode(browser, episodeIndex) {
 async function main() {
     fs.mkdirSync(DEMO_DIR, { recursive: true });
     console.log('NovaWing RL demo recorder');
-    console.log(`URL=${BASE} episodes=${EPISODES} sample=${SAMPLE_MS}ms headless=${HEADLESS}`);
-    console.log(`obsSize=${OBS_SIZE} actionSize=${ACTION_SIZE} version=${OBS_VERSION}`);
+    console.log(
+        `URL=${BASE} episodes=${EPISODES} workers=${WORKERS} sample=${SAMPLE_MS}ms headless=${HEADLESS}`
+    );
+    console.log(`expert=${EXPERT} explore=${EXPLORE} obsSize=${OBS_SIZE}`);
     if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
+
+    let policy = null;
+    if (EXPERT === 'policy') {
+        if (!fs.existsSync(POLICY_PATH)) {
+            throw new Error(`Policy not found: ${POLICY_PATH}. Train first or use EXPERT=heuristic`);
+        }
+        policy = JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8'));
+        if (policy.obsSize !== OBS_SIZE) {
+            throw new Error(`Policy obsSize ${policy.obsSize} != ${OBS_SIZE}`);
+        }
+        console.log(`policy=${POLICY_PATH} hidden=${JSON.stringify(policy.hidden)}`);
+    }
 
     const launchOptions = {
         headless: HEADLESS,
@@ -181,48 +314,76 @@ async function main() {
     let totalSteps = 0;
     let wins = 0;
 
-    try {
-        for (let i = 1; i <= EPISODES; i++) {
-            console.log(`\n=== episode ${i}/${EPISODES} ===`);
-            const ep = await recordEpisode(browser, i);
-            totalSteps += ep.steps;
-            if (ep.won) wins += 1;
+    async function writeEpisode(i, ep) {
+        totalSteps += ep.steps;
+        if (ep.won) wins += 1;
 
-            const file = path.join(
-                DEMO_DIR,
-                `demo-${stamp()}-ep${String(i).padStart(2, '0')}${ep.won ? '-win' : ''}.jsonl`
-            );
-            const clearMs = ep.samples.length
-                ? (ep.samples[ep.samples.length - 1].meta.elapsedMs
-                    ?? Math.round(ep.elapsedSec * 1000))
-                : Math.round(ep.elapsedSec * 1000);
-            const header = {
-                type: 'header',
-                obsVersion: OBS_VERSION,
-                obsSize: OBS_SIZE,
-                actionSize: ACTION_SIZE,
-                layout: OBS_LAYOUT,
-                episode: i,
-                won: ep.won,
-                maxLevel: ep.maxLevel,
-                peakScore: ep.peakScore,
-                steps: ep.steps,
-                elapsedSec: ep.elapsedSec,
-                elapsedMs: clearMs,
-                level: process.env.LEVEL || null,
-                expert: process.env.EXPERT || 'heuristic',
-                createdAt: new Date().toISOString()
-            };
-            const lines = [JSON.stringify(header)];
-            for (const step of ep.samples) {
-                lines.push(JSON.stringify({ type: 'step', ...step }));
+        const tag = [
+            ep.won ? 'win' : null,
+            EXPERT === 'policy' ? 'policy' : null,
+            process.env.LEVEL ? `L${process.env.LEVEL}` : null
+        ].filter(Boolean).join('-');
+        const file = path.join(
+            DEMO_DIR,
+            `demo-${stamp()}-${uniqueSuffix()}-ep${String(i).padStart(2, '0')}${tag ? '-' + tag : ''}.jsonl`
+        );
+        const clearMs = ep.samples.length
+            ? (ep.samples[ep.samples.length - 1].meta.elapsedMs
+                ?? Math.round(ep.elapsedSec * 1000))
+            : Math.round(ep.elapsedSec * 1000);
+        const header = {
+            type: 'header',
+            obsVersion: OBS_VERSION,
+            obsSize: OBS_SIZE,
+            actionSize: ACTION_SIZE,
+            layout: OBS_LAYOUT,
+            episode: i,
+            won: ep.won,
+            maxLevel: ep.maxLevel,
+            peakScore: ep.peakScore,
+            steps: ep.steps,
+            elapsedSec: ep.elapsedSec,
+            elapsedMs: clearMs,
+            episodeReturn: ep.episodeReturn,
+            level: process.env.LEVEL || null,
+            expert: EXPERT,
+            explore: EXPLORE,
+            workers: WORKERS,
+            workerId: WORKER_ID,
+            createdAt: new Date().toISOString()
+        };
+        const lines = [JSON.stringify(header)];
+        for (const step of ep.samples) {
+            lines.push(JSON.stringify({ type: 'step', ...step }));
+        }
+        fs.writeFileSync(file, lines.join('\n') + '\n');
+        allFiles.push(file);
+        console.log(
+            `episode ${i}: steps=${ep.steps} won=${ep.won} maxL=${ep.maxLevel} ` +
+            `score=${ep.peakScore} ret=${ep.episodeReturn.toFixed(1)} ${ep.elapsedSec}s ` +
+            `-> ${path.basename(file)}`
+        );
+        return file;
+    }
+
+    try {
+        console.log(`parallel workers=${WORKERS}`);
+        // Process episodes in waves of WORKERS concurrent browser contexts.
+        for (let start = 1; start <= EPISODES; start += WORKERS) {
+            const batch = [];
+            for (let i = start; i < start + WORKERS && i <= EPISODES; i++) {
+                batch.push(i);
             }
-            fs.writeFileSync(file, lines.join('\n') + '\n');
-            allFiles.push(file);
-            console.log(
-                `episode ${i}: steps=${ep.steps} won=${ep.won} maxL=${ep.maxLevel} ` +
-                `score=${ep.peakScore} ${ep.elapsedSec}s -> ${path.basename(file)}`
+            console.log(`\n=== batch episodes ${batch.join(',')} / ${EPISODES} (${EXPERT}) ===`);
+            const results = await Promise.all(
+                batch.map(async (i) => {
+                    const ep = await recordEpisode(browser, i, policy);
+                    return { i, ep };
+                })
             );
+            for (const { i, ep } of results) {
+                await writeEpisode(i, ep);
+            }
         }
     } finally {
         await browser.close();
@@ -233,16 +394,16 @@ async function main() {
         obsVersion: OBS_VERSION,
         obsSize: OBS_SIZE,
         actionSize: ACTION_SIZE,
+        expert: EXPERT,
         episodes: EPISODES,
         wins,
         totalSteps,
         files: allFiles.map((f) => path.relative(ROOT, f))
     };
-    const manifestPath = path.join(DEMO_DIR, 'manifest.json');
+    const manifestPath = path.join(DEMO_DIR, `manifest-${EXPERT}.json`);
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     console.log('\n======== RECORD SUMMARY ========');
     console.log(JSON.stringify(manifest, null, 2));
-    console.log(`Demos in ${DEMO_DIR}`);
     process.exitCode = totalSteps > 0 ? 0 : 2;
 }
 
