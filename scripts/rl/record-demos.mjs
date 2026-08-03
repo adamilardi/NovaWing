@@ -54,6 +54,13 @@ const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) ||
 // Parallel browser contexts per process (each episode is independent).
 const WORKERS = Math.max(1, Math.min(8, Number(process.env.WORKERS || 1)));
 const WORKER_ID = String(process.env.WORKER_ID || process.pid);
+// Boss practice: skip open-space waves → land on boss (?boss=1). Faster RL on the skill bottleneck.
+// BOSS=1|true  or BOSS=standard|intro|final  or SKIP_TO_BOSS=1
+const BOSS_RAW = (process.env.BOSS || process.env.SKIP_TO_BOSS || '').toLowerCase();
+const BOSS_SKIP = Boolean(BOSS_RAW) && BOSS_RAW !== '0' && BOSS_RAW !== 'false';
+const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
+    ? BOSS_RAW
+    : (process.env.BOSS_ENCOUNTER || '1');
 
 /** Level-scoped or campaign victory. */
 function isEpisodeWin(snap, outcome) {
@@ -139,6 +146,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
     // Heuristic speedrun bias (progress boost + intro-boss DPS). Default on for demos.
     const speedrun = process.env.SPEEDRUN !== '0';
     if (speedrun) url.searchParams.set('speedrun', '1');
+    if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
 
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
@@ -160,6 +168,23 @@ async function recordEpisode(browser, episodeIndex, policy) {
     await waitForGame(page);
     await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
     await page.waitForTimeout(150);
+    // Ensure boss phase is live (URL auto-skip + belt-and-suspenders API call).
+    if (BOSS_SKIP) {
+        await page.waitForTimeout(350);
+        await page.evaluate((enc) => {
+            if (window.__novawingDebug && window.__novawingDebug.startBoss) {
+                window.__novawingDebug.startBoss(enc === '1' ? true : enc);
+            }
+        }, BOSS_ENCOUNTER);
+        // Never label ordinary wave data as boss practice if the jump failed.
+        await page.waitForFunction(() => {
+            const d = window.__novawingDebug;
+            if (!d || !d.getBotSnapshot) return false;
+            const s = d.getBotSnapshot();
+            return s && s.phase === 'boss' && s.boss;
+        }, null, { timeout: 8000 });
+        await page.waitForTimeout(100);
+    }
     const mode = await installExpert(page, policy);
 
     const steps = [];
@@ -263,6 +288,7 @@ async function main() {
     );
     console.log(`expert=${EXPERT} explore=${EXPLORE} obsSize=${OBS_SIZE}`);
     if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
+    if (BOSS_SKIP) console.log(`boss practice=ON encounter=${BOSS_ENCOUNTER}`);
 
     let policy = null;
     if (EXPERT === 'policy') {
@@ -288,6 +314,7 @@ async function main() {
         const tag = [
             ep.won ? 'win' : null,
             EXPERT === 'policy' ? 'policy' : null,
+            BOSS_SKIP ? 'boss' : null,
             process.env.LEVEL ? `L${process.env.LEVEL}` : null
         ].filter(Boolean).join('-');
         const file = path.join(
@@ -306,6 +333,7 @@ async function main() {
             layout: OBS_LAYOUT,
             episode: i,
             won: ep.won,
+            bossPractice: BOSS_SKIP || false,
             maxLevel: ep.maxLevel,
             peakScore: ep.peakScore,
             steps: ep.steps,

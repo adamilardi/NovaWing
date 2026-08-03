@@ -1346,7 +1346,14 @@ function create() {
         } else if (currentLevel >= 2) {
             showFloatingText(this, 400, 160, 'FLY UP / DOWN TO REVEAL PATHS', '#ffcc55', { screenSpace: true });
         }
-        if (isSegmentedLevel(currentLevel)) {
+        const bossSkip = getDebugBossSkip();
+        if (bossSkip) {
+            // RL/bot: skip open-space waves; land on boss after a short settle.
+            this.time.delayedCall(280, () => {
+                if (levelEnded || victoryPending) return;
+                debugSkipToBoss(this, bossSkip);
+            });
+        } else if (isSegmentedLevel(currentLevel)) {
             this.time.delayedCall(250, () => {
                 if (levelEnded || victoryPending) return;
                 levelTransitioning = false;
@@ -4408,6 +4415,13 @@ function startLevel(levelId, options = {}) {
     this.time.delayedCall(options.fromClear ? 700 : 250, () => {
         if (levelEnded || victoryPending) return;
 
+        // Honor ?boss= on mid-run level skips (debug L key / bot level jumps).
+        const bossSkip = options.bossSkip || getDebugBossSkip();
+        if (bossSkip && !options.fromClear) {
+            debugSkipToBoss(this, bossSkip);
+            return;
+        }
+
         if (isSegmentedLevel()) {
             const first = levelDef.segments[0];
             levelTransitioning = false;
@@ -4951,6 +4965,92 @@ function getDebugStartLevel() {
         // Ignore bad query strings; fall back to level 1.
     }
     return 1;
+}
+
+/**
+ * RL / bot hack: skip waves and land on the boss.
+ * Query forms:
+ *   ?boss=1            → L1/L2 standard boss; L3 finalBoss
+ *   ?boss=standard|intro|final
+ *   ?skip=boss | ?phase=boss  (aliases of boss=1)
+ * Returns false or encounter key: 'standard' | 'intro' | 'final'.
+ */
+function getDebugBossSkip() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const raw = (params.get('boss') || '').toLowerCase();
+        const alias = params.get('skip') === 'boss' || params.get('phase') === 'boss';
+        if (!raw && !alias) return false;
+        if (raw === 'intro' || raw === 'final' || raw === 'standard') return raw;
+        // boss=1 / true / yes / empty-with-alias
+        if (raw === '1' || raw === 'true' || raw === 'yes' || raw === '' || alias) {
+            return isSegmentedLevel(getDebugStartLevel()) ? 'final' : 'standard';
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
+ * Approximate mid/late-wave loadout so boss-skip fights match a real clear attempt
+ * (raw start = weapon 1 is far harder than arriving via waves).
+ */
+function applyBossPracticeLoadout() {
+    // Typical L1 clear arrives near max gun; clamp to game max.
+    const maxW = typeof MAX_WEAPON_LEVEL === 'number' ? MAX_WEAPON_LEVEL : 5;
+    weaponLevel = Math.max(weaponLevel || 1, Math.min(4, maxW));
+    boostEnergy = typeof BOOST_MAX === 'number' ? BOOST_MAX : boostEnergy;
+    boostLocked = false;
+    if (isPlaytestBotSession() && lives < 5) lives = 5;
+    if (typeof updateWeaponText === 'function') updateWeaponText();
+    if (typeof updateLivesText === 'function') updateLivesText();
+    if (typeof updateBoostUi === 'function') updateBoostUi();
+}
+
+/**
+ * Jump straight into a boss fight (classic L1/L2) or L3 boss segment.
+ * Safe to call after create / startLevel once the scene is ready.
+ * @returns {boolean}
+ */
+function debugSkipToBoss(scene, encounterKey) {
+    if (!scene || levelEnded || victoryPending) return false;
+    let key = encounterKey || getDebugBossSkip() || 'standard';
+    if (key === true || key === 1) {
+        key = isSegmentedLevel() ? 'final' : 'standard';
+    }
+
+    levelTransitioning = false;
+    applyBossPracticeLoadout();
+
+    if (isSegmentedLevel()) {
+        const segId = key === 'intro' ? 'introBoss' : 'finalBoss';
+        if (levelSegment === segId && gamePhase === 'boss' && boss && boss.active) {
+            return true;
+        }
+        // Invalidate in-flight segment cinematics, then jump.
+        segmentEnterGen += 1;
+        if (scene.cameras && scene.cameras.main) {
+            scene.cameras.main.setZoom(1);
+            scene.cameras.main.setRotation(0);
+        }
+        advanceLevelSegment(scene, segId, 'debugBoss');
+        return true;
+    }
+
+    // Classic L1/L2: force waves gate then startBossFight.
+    if (gamePhase === 'boss' && boss && boss.active) return true;
+    if (scene.enemySpawnEvent) scene.enemySpawnEvent.remove(false);
+    if (scene.obstacleSpawnEvent) scene.obstacleSpawnEvent.remove(false);
+    if (scene.powerupSpawnEvent) scene.powerupSpawnEvent.remove(false);
+    if (scene.firstPowerupEvent) scene.firstPowerupEvent.remove(false);
+    gamePhase = 'waves';
+    levelSegment = null;
+    if (sfx && sfx.startMusic) sfx.startMusic('boss');
+    const enc = key === 'intro' || key === 'final' ? key : 'standard';
+    startBossFight.call(scene, enc);
+    showFloatingText(scene, 400, 100, 'DEBUG: BOSS SKIP', '#ff8899', { screenSpace: true });
+    return true;
 }
 
 /** True when Playwright / automated pilot loaded the page with `?bot=…`. */
@@ -7594,6 +7694,15 @@ window.__novawingDebug = {
         return combatOrientation;
     },
     getTotalLevels: totalLevels,
+    /**
+     * Skip waves → boss fight. encounter: 'standard' | 'intro' | 'final' | true.
+     * Used by RL boss-practice demos (?boss=1) and playtests.
+     */
+    startBoss(encounter) {
+        const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
+        if (!scene) return false;
+        return debugSkipToBoss(scene, encounter || getDebugBossSkip() || 'standard');
+    },
     /**
      * Debug jump to a named L3 segment. Invalidates transition timers and
      * resets camera zoom/rotation so mid-cinematic jumps do not leave half state.

@@ -24,6 +24,12 @@ const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
 const EVAL_OUT = process.env.EVAL_OUT || path.join(ROOT, 'rl', 'weights', 'last-eval.json');
+// Boss practice: skip waves → boss (same contract as record-demos).
+const BOSS_RAW = (process.env.BOSS || process.env.SKIP_TO_BOSS || '').toLowerCase();
+const BOSS_SKIP = Boolean(BOSS_RAW) && BOSS_RAW !== '0' && BOSS_RAW !== 'false';
+const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
+    ? BOSS_RAW
+    : (process.env.BOSS_ENCOUNTER || '1');
 
 function isLevelOrCampaignWin(snap, outcome) {
     if (outcome === 'win' || (snap && snap.victoryPending)) return true;
@@ -86,6 +92,7 @@ async function main() {
     console.log(`policy=${POLICY_PATH}`);
     console.log(`hidden=${JSON.stringify(policy.hidden)} obs=${policy.obsSize}`);
     console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms explore=${Boolean(policy.explore)}`);
+    if (BOSS_SKIP) console.log(`boss practice=ON encounter=${BOSS_ENCOUNTER}`);
 
     const dummy = new Float32Array(OBS_SIZE);
     const y = forwardPolicy(policy, dummy);
@@ -114,6 +121,7 @@ async function main() {
         url.searchParams.set('bot', String(Date.now()));
         url.searchParams.set('policy', '1');
         if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
+        if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
 
         const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
         if (!resp || !resp.ok()) throw new Error(`load failed: ${resp && resp.status()}`);
@@ -126,6 +134,22 @@ async function main() {
         }
         await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
         await page.waitForTimeout(150);
+
+        if (BOSS_SKIP) {
+            await page.waitForTimeout(350);
+            await page.evaluate((enc) => {
+                if (window.__novawingDebug && window.__novawingDebug.startBoss) {
+                    window.__novawingDebug.startBoss(enc === '1' ? true : enc);
+                }
+            }, BOSS_ENCOUNTER);
+            await page.waitForFunction(() => {
+                const d = window.__novawingDebug;
+                if (!d || !d.getBotSnapshot) return false;
+                const s = d.getBotSnapshot();
+                return s && s.phase === 'boss' && s.boss;
+            }, null, { timeout: 8000 });
+            await page.waitForTimeout(100);
+        }
 
         await page.evaluate(installPolicyPilot, policy);
         console.log('policy pilot installed');
@@ -190,6 +214,7 @@ async function main() {
             level: finalSnap ? finalSnap.level : null,
             peakLevel,
             startLevel: START_LEVEL,
+            bossPractice: BOSS_SKIP || false,
             winKind: won
                 ? (finalSnap && finalSnap.victoryPending ? 'campaign' : 'level')
                 : null,

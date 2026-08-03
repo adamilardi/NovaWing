@@ -1,17 +1,35 @@
 #!/usr/bin/env bash
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# Compact snapshot first (also writes rl/weights/overnight-status.txt)
+if command -v node >/dev/null 2>&1; then
+  node "$ROOT/scripts/rl/print-status.mjs" 2>/dev/null || true
+  echo
+fi
+
+echo "=== RL speedrun status (detail) ==="
 PID_FILE=/tmp/rl-speedrun-loop.pid
-echo "=== RL speedrun status ==="
+OVERNIGHT_PID="$ROOT/rl/weights/overnight-loop.pid"
+if [[ -f "$OVERNIGHT_PID" ]]; then
+  OPID=$(cat "$OVERNIGHT_PID")
+  if kill -0 "$OPID" 2>/dev/null; then
+    echo "overnight-loop:"
+    ps -p "$OPID" -o pid,etime,cmd
+  else
+    echo "overnight-loop: not running (stale pid $OPID)"
+  fi
+else
+  echo "overnight-loop: no pid file ($OVERNIGHT_PID)"
+fi
 if [[ -f "$PID_FILE" ]]; then
   PID=$(cat "$PID_FILE")
   if kill -0 "$PID" 2>/dev/null; then
+    echo "legacy loop pid:"
     ps -p "$PID" -o pid,etime,cmd
   else
-    echo "loop not running (stale pid $PID)"
+    echo "legacy loop not running (stale pid $PID)"
   fi
-else
-  echo "no pid file"
 fi
 echo
 echo "=== last log ==="

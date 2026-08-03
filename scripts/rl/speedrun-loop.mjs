@@ -45,6 +45,15 @@ const SKIP_REINFORCE = process.env.REINFORCE === '0' || process.env.PPO === '0';
 //   LEVEL_PARALLEL — run different levels at the same time (Promise.all)
 const RECORD_WORKERS = Math.max(1, Math.min(6, Number(process.env.RECORD_WORKERS || 2)));
 const LEVEL_PARALLEL = process.env.LEVEL_PARALLEL !== '0';
+// Boss practice: skip waves → boss for record + eval (much faster credit assignment).
+// BOSS_PRACTICE=1 enables; BOSS_RECORD_ONLY=1 records boss-only but keeps full-level eval.
+const BOSS_PRACTICE = process.env.BOSS_PRACTICE === '1' || process.env.BOSS === '1';
+const BOSS_RECORD_ONLY = process.env.BOSS_RECORD_ONLY === '1';
+const BOSS_ENV = BOSS_PRACTICE || BOSS_RECORD_ONLY
+    ? (process.env.BOSS_ENCOUNTER || '1')
+    : '';
+const BOSS_EVAL = BOSS_PRACTICE && !BOSS_RECORD_ONLY;
+const DURATION_MS_BOSS = Number(process.env.DURATION_MS_BOSS || 90000);
 const LOG_DIR = path.join(ROOT, 'rl', 'weights');
 const LOOP_LOG = path.join(LOG_DIR, 'speedrun-loop.log');
 const BOARD = path.join(LOG_DIR, 'speedrun-board.json');
@@ -53,7 +62,8 @@ const POLICY_BEST = path.join(LOG_DIR, 'bc-policy-best.json');
 const POLICY_BEST_PT = path.join(LOG_DIR, 'bc-policy-best.pt');
 const POLICY_PT = path.join(LOG_DIR, 'bc-policy.pt');
 
-function durationForLevel(level) {
+function durationForLevel(level, { boss = false } = {}) {
+    if (boss) return DURATION_MS_BOSS;
     return level >= 3 ? DURATION_MS_L3 : DURATION_MS;
 }
 
@@ -72,8 +82,11 @@ function activeLevels(board) {
         return REQUESTED_LEVELS.slice();
     }
     const by = board.byLevel || {};
-    const l1wr = Number(by[1] && by[1].lastWinRate) || 0;
-    const l2wr = Number(by[2] && by[2].lastWinRate) || 0;
+    // Boss-only evals are useful curriculum gates, but they are not comparable
+    // to full-level win rates or clear times.
+    const winRateKey = BOSS_EVAL ? 'lastBossPracticeWinRate' : 'lastWinRate';
+    const l1wr = Number(by[1] && by[1][winRateKey]) || 0;
+    const l2wr = Number(by[2] && by[2][winRateKey]) || 0;
     const out = [];
     for (const level of REQUESTED_LEVELS) {
         if (level === 1) out.push(1);
@@ -241,21 +254,24 @@ async function recordExpert(round, levels) {
     if (EXPERT_EPISODES <= 0) return;
     log(
         `record expert demos levels=${levels.join(',')} ` +
-        `workers=${RECORD_WORKERS}/process (round ${round})`
+        `workers=${RECORD_WORKERS}/process (round ${round})` +
+        (BOSS_ENV ? ' boss=1' : '')
     );
     await mapLevels(levels, async (level) => {
         const eps = episodesForLevel(EXPERT_EPISODES, level);
         log(`  expert L${level} ×${eps} workers=${RECORD_WORKERS}`);
+        const useBoss = Boolean(BOSS_ENV);
         await run('node', ['scripts/rl/record-demos.mjs'], {
             EPISODES: String(eps),
-            DURATION_MS: String(durationForLevel(level)),
+            DURATION_MS: String(durationForLevel(level, { boss: useBoss })),
             HEADLESS: '1',
             SAMPLE_MS: '50',
             LEVEL: String(level),
             EXPERT: 'heuristic',
             SPEEDRUN: '1',
             WORKERS: String(RECORD_WORKERS),
-            WORKER_ID: `expert-L${level}-r${round}`
+            WORKER_ID: `expert-L${level}-r${round}`,
+            ...(useBoss ? { BOSS: BOSS_ENV } : { BOSS: '0' })
         });
     });
 }
@@ -267,14 +283,16 @@ async function recordSelfPlay(round, levels) {
     }
     log(
         `record POLICY self-play levels=${levels.join(',')} ` +
-        `workers=${RECORD_WORKERS}/process explore=1 (round ${round})`
+        `workers=${RECORD_WORKERS}/process explore=1 (round ${round})` +
+        (BOSS_ENV ? ' boss=1' : '')
     );
     await mapLevels(levels, async (level) => {
         const eps = episodesForLevel(POLICY_EPISODES, level);
         log(`  policy L${level} ×${eps} workers=${RECORD_WORKERS}`);
+        const useBoss = Boolean(BOSS_ENV);
         await run('node', ['scripts/rl/record-demos.mjs'], {
             EPISODES: String(eps),
-            DURATION_MS: String(durationForLevel(level)),
+            DURATION_MS: String(durationForLevel(level, { boss: useBoss })),
             HEADLESS: '1',
             SAMPLE_MS: '50',
             LEVEL: String(level),
@@ -282,7 +300,8 @@ async function recordSelfPlay(round, levels) {
             EXPLORE: '1',
             POLICY,
             WORKERS: String(RECORD_WORKERS),
-            WORKER_ID: `policy-L${level}-r${round}`
+            WORKER_ID: `policy-L${level}-r${round}`,
+            ...(useBoss ? { BOSS: BOSS_ENV } : { BOSS: '0' })
         });
     });
 }
@@ -327,7 +346,12 @@ async function trainRound(demoStats) {
 }
 
 async function evalRound(levels) {
-    log(`eval parallel levels=${levels.join(',')} trials=${EVAL_TRIALS}`);
+    // Full-level eval for honest clear times unless BOSS_PRACTICE (not BOSS_RECORD_ONLY).
+    const evalBoss = BOSS_EVAL;
+    log(
+        `eval parallel levels=${levels.join(',')} trials=${EVAL_TRIALS}` +
+        (evalBoss ? ' boss=1' : '')
+    );
     const jobs = [];
     for (const level of levels) {
         for (let t = 1; t <= EVAL_TRIALS; t++) {
@@ -343,11 +367,12 @@ async function evalRound(levels) {
             );
             const { out, code } = await run('node', ['scripts/rl/play-policy.mjs'], {
                 HEADLESS: '1',
-                DURATION_MS: String(durationForLevel(level)),
+                DURATION_MS: String(durationForLevel(level, { boss: evalBoss })),
                 LEVEL: String(level),
                 POLICY,
                 EXPLORE: '0',
-                EVAL_OUT: evalOut
+                EVAL_OUT: evalOut,
+                ...(evalBoss ? { BOSS: BOSS_ENV || '1' } : { BOSS: '0' })
             });
             const parsed = parseEvalResult(out, evalOut) || {
                 won: false,
@@ -391,17 +416,21 @@ async function main() {
         `Speedrun loop rounds=${ROUNDS} requested=${REQUESTED_LEVELS.join(',')} ` +
         `gates L2@${GATE_L2} L3@${GATE_L3} force_levels=${FORCE_LEVELS} ` +
         `expert=${EXPERT_EPISODES}/level policy=${POLICY_EPISODES}/level eval=${EVAL_TRIALS}/level ` +
-        `min_policy_wins_rl=${MIN_POLICY_WINS_FOR_RL}`
+        `min_policy_wins_rl=${MIN_POLICY_WINS_FOR_RL} ` +
+        `boss_practice=${BOSS_PRACTICE} boss_record_only=${BOSS_RECORD_ONLY} ` +
+        `eval_mode=${BOSS_EVAL ? 'boss-practice' : 'full-level'}`
     );
 
     for (let r = 1; r <= ROUNDS; r++) {
         const levels = activeLevels(board);
         log(`\n######## ROUND ${r}/${ROUNDS} active=[L${levels.join('+L')}] ########`);
         if (levels.length < REQUESTED_LEVELS.length && !FORCE_LEVELS) {
+            const rateKey = BOSS_EVAL ? 'lastBossPracticeWinRate' : 'lastWinRate';
             log(
                 `curriculum: training ${levels.join(',')} only ` +
-                `(L1 wr=${(board.byLevel[1] && board.byLevel[1].lastWinRate) ?? 0}; ` +
-                `L2 wr=${(board.byLevel[2] && board.byLevel[2].lastWinRate) ?? 0})`
+                `(L1 wr=${(board.byLevel[1] && board.byLevel[1][rateKey]) ?? 0}; ` +
+                `L2 wr=${(board.byLevel[2] && board.byLevel[2][rateKey]) ?? 0}; ` +
+                `mode=${BOSS_EVAL ? 'boss-practice' : 'full-level'})`
             );
         }
 
@@ -434,7 +463,8 @@ async function main() {
             : null;
         const winRate = evals.length ? clears.length / evals.length : 0;
 
-        // Per-level summary + curriculum lastWinRate
+        // Per-level summary. Boss-only metrics live in separate fields so a
+        // short practice clear cannot overwrite an honest full-level result.
         const levelSummary = {};
         for (const level of levels) {
             const subset = evals.filter((e) => e.evalLevel === level);
@@ -446,28 +476,35 @@ async function main() {
             if (!board.byLevel[level]) {
                 board.byLevel[level] = { bestClearSec: null, lastWinRate: 0 };
             }
-            board.byLevel[level].lastWinRate = wr;
-            board.byLevel[level].lastTrials = subset.length;
-            board.byLevel[level].lastAt = new Date().toISOString();
+            const levelBoard = board.byLevel[level];
+            const rateKey = BOSS_EVAL ? 'lastBossPracticeWinRate' : 'lastWinRate';
+            const trialsKey = BOSS_EVAL ? 'lastBossPracticeTrials' : 'lastTrials';
+            const atKey = BOSS_EVAL ? 'lastBossPracticeAt' : 'lastAt';
+            const bestKey = BOSS_EVAL ? 'bestBossPracticeClearSec' : 'bestClearSec';
+            levelBoard[rateKey] = wr;
+            levelBoard[trialsKey] = subset.length;
+            levelBoard[atKey] = new Date().toISOString();
 
             if (best != null) {
                 if (
-                    board.byLevel[level].bestClearSec == null ||
-                    best < board.byLevel[level].bestClearSec
+                    levelBoard[bestKey] == null ||
+                    best < levelBoard[bestKey]
                 ) {
-                    board.byLevel[level].bestClearSec = best;
-                    log(`NEW BEST L${level} CLEAR ${best}s`);
+                    levelBoard[bestKey] = best;
+                    log(`NEW BEST L${level} ${BOSS_EVAL ? 'BOSS ' : ''}CLEAR ${best}s`);
                 }
             }
             log(
-                `  L${level} eval: win_rate=${wr.toFixed(2)} best=${best ?? '—'}s ` +
-                `level_best=${board.byLevel[level].bestClearSec ?? '—'}s`
+                `  L${level} ${BOSS_EVAL ? 'boss_' : ''}eval: win_rate=${wr.toFixed(2)} ` +
+                `best=${best ?? '—'}s level_best=${levelBoard[bestKey] ?? '—'}s`
             );
         }
 
         // Global promotion: only on wins, only if clear time improves
         let promoted = false;
-        if (bestThis != null) {
+        if (BOSS_EVAL) {
+            log('boss-practice eval is diagnostic — full-level best and policy promotion unchanged');
+        } else if (bestThis != null) {
             const bestEval = clears.reduce((a, b) =>
                 a.clearSec <= b.clearSec ? a : b
             );
@@ -485,13 +522,15 @@ async function main() {
             round: r,
             at: new Date().toISOString(),
             mode: 'curriculum-self-play+bc+gated-ppo',
+            evalMode: BOSS_EVAL ? 'boss-practice' : 'full-level',
             requestedLevels: REQUESTED_LEVELS.slice(),
             activeLevels: levels.slice(),
             demoFiles: after.files,
             policyDemos: after.policy,
             policyWins: after.policyWins,
             evalWinRate: winRate,
-            bestClearSec: bestThis,
+            bestClearSec: BOSS_EVAL ? null : bestThis,
+            bestBossPracticeClearSec: BOSS_EVAL ? bestThis : null,
             globalBestClearSec: board.bestClearSec,
             promoted,
             levelSummary,
@@ -500,8 +539,9 @@ async function main() {
         saveBoard(board);
 
         log(
-            `round ${r} done: eval_win_rate=${winRate.toFixed(2)} ` +
-            `best_this=${bestThis ?? '—'}s  global_best=${board.bestClearSec ?? '—'}s ` +
+            `round ${r} done: ${BOSS_EVAL ? 'boss_' : ''}eval_win_rate=${winRate.toFixed(2)} ` +
+            `${BOSS_EVAL ? 'boss_' : ''}best_this=${bestThis ?? '—'}s  ` +
+            `global_full_level_best=${board.bestClearSec ?? '—'}s ` +
             `promoted=${promoted}`
         );
     }

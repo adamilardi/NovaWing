@@ -167,6 +167,37 @@ Includes **death histogram** (`black_hole_swallow`, `wall_or_corridor`, `softloc
 5. Open multi-level loop (gates unlock L2/L3 automatically)
 6. Status anytime: `npm run rl:status`
 
+### Boss practice (skip waves)
+
+The L1 skill bottleneck is the **boss**. Skip open-space waves for denser boss demos:
+
+```bash
+# Record expert boss-only (URL ?boss=1)
+npm run rl:seed-boss
+
+# Eval policy starting on boss
+npm run rl:eval-boss
+
+# Loop with boss practice (record + eval)
+BOSS_PRACTICE=1 DURATION_MS_BOSS=90000 npm run rl:speedrun-loop:l1
+
+# Record boss-only, keep full-level eval for honest clear times
+BOSS_RECORD_ONLY=1 npm run rl:speedrun-loop:l1
+```
+
+| Env / query | Effect |
+|-------------|--------|
+| `BOSS=1` / `?boss=1` | L1/L2 → standard boss; L3 → finalBoss |
+| `BOSS=intro\|final\|standard` | Force encounter / segment |
+| `BOSS_PRACTICE=1` | speedrun-loop: boss on record **and** eval |
+| `BOSS_RECORD_ONLY=1` | speedrun-loop: boss demos only; full-level eval |
+
+Boss-practice eval win rates and clear times are stored separately from full-level
+metrics and do not promote `bc-policy-best.json`. The overnight wrapper defaults to
+`BOSS_RECORD_ONLY=1`, so its curriculum and policy promotions use honest full-level evals.
+
+Debug API: `window.__novawingDebug.startBoss()` (also used by Playwright after load).
+
 ### Heuristic speedrun mode
 
 `SPEEDRUN=1` (default for demo recording) adds `?speedrun=1` so the in-page pilot:
