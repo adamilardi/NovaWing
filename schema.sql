@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS leaderboard_entries (
     id TEXT PRIMARY KEY,
     game_version TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'campaign',
     name TEXT NOT NULL,
     time_ms INTEGER NOT NULL,
     score INTEGER NOT NULL,
@@ -10,11 +11,12 @@ CREATE TABLE IF NOT EXISTS leaderboard_entries (
 );
 
 CREATE INDEX IF NOT EXISTS leaderboard_rank_idx
-ON leaderboard_entries (game_version, time_ms ASC, score DESC, kills DESC, created_at ASC);
+ON leaderboard_entries (game_version, scope, time_ms ASC, score DESC, kills DESC, created_at ASC);
 
 CREATE TABLE IF NOT EXISTS leaderboard_runs (
     id TEXT PRIMARY KEY,
     game_version TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'campaign',
     client_key TEXT,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,

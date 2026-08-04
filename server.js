@@ -9,13 +9,16 @@ const HOST = '0.0.0.0';
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
-const RUN_REQUEST_LIMIT = 30;
+// A full campaign opens one campaign token plus one token per level.
+const RUN_REQUEST_LIMIT = 120;
 const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
 const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
 // Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
 const MAX_PLAUSIBLE_KILLS = 300;
-const BOSS_SCORE = 2500;
+const CAMPAIGN_BOSS_SCORE = 5500;
+const FINAL_BOSS_SCORE = 2500;
+const LEVEL_BOSS_SCORE = 1500;
 // Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
 const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
@@ -117,6 +120,7 @@ function normalizeEntry(entry) {
 
     const name = sanitizeName(entry.name);
     const version = sanitizeGameVersion(entry.version);
+    const scope = sanitizeLeaderboardScope(entry.scope);
     const timeMs = Math.round(Number(entry.timeMs));
     const score = Math.round(Number(entry.score));
     const kills = Math.round(Number(entry.kills));
@@ -130,6 +134,7 @@ function normalizeEntry(entry) {
     return {
         id: typeof entry.id === 'string' && entry.id ? entry.id.slice(0, 80) : crypto.randomUUID(),
         version,
+        scope,
         name,
         timeMs,
         score,
@@ -146,6 +151,13 @@ function sanitizeGameVersion(value) {
         .slice(0, 24);
 
     return cleaned || '1.0.0';
+}
+
+function sanitizeLeaderboardScope(value) {
+    const scope = String(value || 'campaign').toLowerCase();
+    return scope === 'level-1' || scope === 'level-2' || scope === 'level-3'
+        ? scope
+        : 'campaign';
 }
 
 function sanitizeName(value) {
@@ -169,10 +181,11 @@ function sortLeaderboard(entries) {
 async function handleLeaderboardRequest(req, res) {
     if (req.method === 'GET') {
         const version = getRequestVersion(req);
+        const scope = getRequestScope(req);
         const entries = (await readLeaderboard())
-            .filter(entry => entry.version === version)
+            .filter(entry => entry.version === version && entry.scope === scope)
             .slice(0, LEADERBOARD_LIMIT);
-        sendJson(res, 200, { version, entries });
+        sendJson(res, 200, { version, scope, entries });
         return;
     }
 
@@ -193,6 +206,7 @@ async function handleLeaderboardRequest(req, res) {
     const submittedEntry = normalizeEntry({
         name: payload.name,
         version: runValidation.version,
+        scope: runValidation.scope,
         timeMs: runValidation.timeMs,
         score: runValidation.score,
         kills: runValidation.kills,
@@ -215,11 +229,15 @@ async function handleLeaderboardRequest(req, res) {
     const result = await queueLeaderboardWrite(async () => {
         const entries = await readLeaderboard();
         const sorted = sortLeaderboard(entries.concat(submittedEntry));
-        const versionEntries = sorted.filter(entry => entry.version === submittedEntry.version);
+        const versionEntries = sorted.filter(entry =>
+            entry.version === submittedEntry.version && entry.scope === submittedEntry.scope
+        );
         const rank = versionEntries.findIndex(entry => entry.id === submittedEntry.id) + 1;
         const savedEntries = sorted.filter(entry => {
             const sameVersionRank = sorted
-                .filter(candidate => candidate.version === entry.version)
+                .filter(candidate =>
+                    candidate.version === entry.version && candidate.scope === entry.scope
+                )
                 .findIndex(candidate => candidate.id === entry.id);
             return sameVersionRank >= 0 && sameVersionRank < LEADERBOARD_LIMIT;
         });
@@ -231,6 +249,7 @@ async function handleLeaderboardRequest(req, res) {
         entry: submittedEntry,
         rank: result.rank,
         version: submittedEntry.version,
+        scope: submittedEntry.scope,
         entries: result.savedEntries
     });
 }
@@ -254,6 +273,7 @@ async function handleRunRequest(req, res) {
         sendJson(res, 200, {
             runId: completion.runId,
             version: completion.version,
+            scope: completion.scope,
             timeMs: completion.timeMs,
             score: completion.score,
             kills: completion.kills,
@@ -270,10 +290,12 @@ async function handleRunRequest(req, res) {
     }
 
     const version = sanitizeGameVersion(payload.version);
+    const scope = sanitizeLeaderboardScope(payload.scope);
     const runId = crypto.randomUUID();
     const now = Date.now();
     activeRuns.set(runId, {
         version,
+        scope,
         clientKey,
         startedAt: now,
         expiresAt: now + RUN_TOKEN_TTL_MS,
@@ -287,6 +309,7 @@ async function handleRunRequest(req, res) {
     sendJson(res, 201, {
         runId,
         version,
+        scope,
         startedAt: new Date(now).toISOString(),
         expiresAt: new Date(now + RUN_TOKEN_TTL_MS).toISOString()
     });
@@ -295,10 +318,12 @@ async function handleRunRequest(req, res) {
 function inspectRunToken(payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
+    const requestedScope = sanitizeLeaderboardScope(payload.scope);
     const run = activeRuns.get(runId);
 
     if (!run) return { ok: false, error: 'Invalid or expired run token' };
     if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (run.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
     if (Date.now() > run.expiresAt) {
         activeRuns.delete(runId);
         return { ok: false, error: 'Run token expired' };
@@ -312,6 +337,7 @@ function inspectRunToken(payload) {
         ok: true,
         runId,
         version: run.version,
+        scope: run.scope,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
         timeMs: run.completedAt - run.startedAt,
@@ -338,11 +364,13 @@ function markRunTokenUsed(runId) {
 function completeRunToken(payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
+    const requestedScope = sanitizeLeaderboardScope(payload.scope);
     const run = activeRuns.get(runId);
     const now = Date.now();
 
     if (!run) return { ok: false, error: 'Invalid or expired run token' };
     if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (run.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
     if (now > run.expiresAt) {
         activeRuns.delete(runId);
         return { ok: false, error: 'Run token expired' };
@@ -358,6 +386,7 @@ function completeRunToken(payload) {
             ok: true,
             runId,
             version: run.version,
+            scope: run.scope,
             completedAt: run.completedAt,
             timeMs: run.completedAt - run.startedAt,
             score: run.score,
@@ -376,7 +405,7 @@ function completeRunToken(payload) {
     if (!stats) {
         return { ok: false, error: 'Invalid run stats' };
     }
-    if (!isPlausibleCompletedRun({ timeMs, ...stats })) {
+    if (!isPlausibleCompletedRun({ timeMs, scope: run.scope, ...stats })) {
         return { ok: false, error: 'Implausible run stats' };
     }
 
@@ -389,6 +418,7 @@ function completeRunToken(payload) {
         ok: true,
         runId,
         version: run.version,
+        scope: run.scope,
         completedAt,
         timeMs,
         score: stats.score,
@@ -433,17 +463,25 @@ function isPlausibleCompletedRun(entry) {
     if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
     if (entry.kills < 1) return false;
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
-    if (entry.score < BOSS_SCORE) return false;
+    const bossScore = getBossScoreForScope(entry.scope);
+    const bossKills = entry.scope === 'campaign' ? 3 : 1;
+    if (entry.score < bossScore) return false;
 
     if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
 
-    const regularKills = Math.max(0, entry.kills - 1);
-    const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    const regularKills = Math.max(0, entry.kills - bossKills);
+    const maxScore = bossScore + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
 
-    if (entry.kills === 1 && entry.score > BOSS_SCORE + MAX_POWERUP_BONUS_SCORE) return false;
+    if (entry.kills === bossKills && entry.score > bossScore + MAX_POWERUP_BONUS_SCORE) return false;
 
     return true;
+}
+
+function getBossScoreForScope(scope) {
+    if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
+    if (scope === 'level-3') return FINAL_BOSS_SCORE;
+    return LEVEL_BOSS_SCORE;
 }
 
 function getClientKey(req) {
@@ -478,6 +516,11 @@ function allowRunRequest(clientKey) {
 function getRequestVersion(req) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     return sanitizeGameVersion(url.searchParams.get('version'));
+}
+
+function getRequestScope(req) {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    return sanitizeLeaderboardScope(url.searchParams.get('scope'));
 }
 
 function queueLeaderboardWrite(task) {

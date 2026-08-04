@@ -4,7 +4,9 @@ const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
 // Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
 const MAX_PLAUSIBLE_KILLS = 300;
-const BOSS_SCORE = 2500;
+const CAMPAIGN_BOSS_SCORE = 5500;
+const FINAL_BOSS_SCORE = 2500;
+const LEVEL_BOSS_SCORE = 1500;
 // Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
 const MAX_KILL_SCORE = 200;
 const MAX_POWERUP_BONUS_SCORE = 2500;
@@ -19,8 +21,9 @@ export async function onRequest(context) {
 
     if (request.method === 'GET') {
         const version = getRequestVersion(request);
-        const entries = await getLeaderboard(env.DB, version);
-        return jsonResponse(request, { version, entries });
+        const scope = getRequestScope(request);
+        const entries = await getLeaderboard(env.DB, version, scope);
+        return jsonResponse(request, { version, scope, entries });
     }
 
     if (request.method !== 'POST') {
@@ -46,6 +49,7 @@ export async function onRequest(context) {
     const entry = normalizeEntry({
         name: payload.name,
         version: runValidation.version,
+        scope: runValidation.scope,
         timeMs: runValidation.timeMs,
         score: runValidation.score,
         kills: runValidation.kills,
@@ -63,13 +67,19 @@ export async function onRequest(context) {
         return jsonResponse(request, { error: consumed.error }, 400);
     }
 
-    const rankedEntries = await getRankedEntries(env.DB, entry.version);
+    const rankedEntries = await getRankedEntries(env.DB, entry.version, entry.scope);
     const rank = rankedEntries.findIndex(candidate => candidate.id === entry.id) + 1;
     const entries = rankedEntries.slice(0, LEADERBOARD_LIMIT);
 
     await pruneLeaderboard(env.DB);
 
-    return jsonResponse(request, { entry, rank, version: entry.version, entries }, 201);
+    return jsonResponse(request, {
+        entry,
+        rank,
+        version: entry.version,
+        scope: entry.scope,
+        entries
+    }, 201);
 }
 
 async function readJson(request) {
@@ -93,22 +103,23 @@ async function readJson(request) {
     }
 }
 
-async function getLeaderboard(db, version) {
-    return (await getRankedEntries(db, version)).slice(0, LEADERBOARD_LIMIT);
+async function getLeaderboard(db, version, scope) {
+    return (await getRankedEntries(db, version, scope)).slice(0, LEADERBOARD_LIMIT);
 }
 
-async function getRankedEntries(db, version) {
+async function getRankedEntries(db, version, scope) {
     const result = await db.prepare(`
-        SELECT id, game_version, name, time_ms, score, kills, accuracy, created_at
+        SELECT id, game_version, scope, name, time_ms, score, kills, accuracy, created_at
         FROM leaderboard_entries
-        WHERE game_version = ?
+        WHERE game_version = ? AND scope = ?
         ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
         LIMIT 100
-    `).bind(version).all();
+    `).bind(version, scope).all();
 
     return (result.results || []).map(row => ({
         id: row.id,
         version: row.game_version,
+        scope: row.scope,
         name: row.name,
         timeMs: row.time_ms,
         score: row.score,
@@ -126,7 +137,7 @@ async function pruneLeaderboard(db) {
             FROM (
                 SELECT id,
                     ROW_NUMBER() OVER (
-                        PARTITION BY game_version
+                        PARTITION BY game_version, scope
                         ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
                     ) AS leaderboard_rank
                 FROM leaderboard_entries
@@ -139,16 +150,18 @@ async function pruneLeaderboard(db) {
 async function inspectRunToken(db, payload) {
     const runId = typeof payload.runId === 'string' ? payload.runId : '';
     const requestedVersion = sanitizeGameVersion(payload.version);
+    const requestedScope = sanitizeLeaderboardScope(payload.scope);
     const now = Date.now();
 
     const result = await db.prepare(`
-        SELECT id, game_version, created_at, expires_at, used_at, completed_at, score, kills, accuracy
+        SELECT id, game_version, scope, created_at, expires_at, used_at, completed_at, score, kills, accuracy
         FROM leaderboard_runs
         WHERE id = ?
     `).bind(runId).first();
 
     if (!result || result.used_at) return { ok: false, error: 'Invalid or expired run token' };
     if (result.game_version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
+    if (result.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
     if (Date.parse(result.expires_at) <= now) return { ok: false, error: 'Run token expired' };
     if (!result.completed_at) return { ok: false, error: 'Run is not complete' };
 
@@ -169,6 +182,7 @@ async function inspectRunToken(db, payload) {
         ok: true,
         runId,
         version: result.game_version,
+        scope: result.scope,
         startedAt,
         completedAt,
         timeMs,
@@ -195,9 +209,9 @@ async function consumeRunTokenAndInsert(db, runId, entry) {
             `).bind(usedAt, runId),
             db.prepare(`
                 INSERT INTO leaderboard_entries (
-                    id, game_version, name, time_ms, score, kills, accuracy, created_at
+                    id, game_version, scope, name, time_ms, score, kills, accuracy, created_at
                 )
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE EXISTS (
                     SELECT 1
                     FROM leaderboard_runs
@@ -206,6 +220,7 @@ async function consumeRunTokenAndInsert(db, runId, entry) {
             `).bind(
                 entry.id,
                 entry.version,
+                entry.scope,
                 entry.name,
                 entry.timeMs,
                 entry.score,
@@ -237,6 +252,7 @@ function normalizeEntry(entry) {
 
     const name = sanitizeName(entry.name);
     const version = sanitizeGameVersion(entry.version);
+    const scope = sanitizeLeaderboardScope(entry.scope);
     const timeMs = Math.round(Number(entry.timeMs));
     const score = Math.round(Number(entry.score));
     const kills = Math.round(Number(entry.kills));
@@ -250,6 +266,7 @@ function normalizeEntry(entry) {
     return {
         id: entry.id,
         version,
+        scope,
         name,
         timeMs,
         score,
@@ -273,22 +290,42 @@ function isPlausibleCompletedRun(entry) {
     if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
     if (entry.kills < 1) return false;
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
-    if (entry.score < BOSS_SCORE) return false;
+    const bossScore = getBossScoreForScope(entry.scope);
+    const bossKills = entry.scope === 'campaign' ? 3 : 1;
+    if (entry.score < bossScore) return false;
 
     if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
 
-    const regularKills = Math.max(0, entry.kills - 1);
-    const maxScore = BOSS_SCORE + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
+    const regularKills = Math.max(0, entry.kills - bossKills);
+    const maxScore = bossScore + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
     if (entry.score > maxScore) return false;
 
-    if (entry.kills === 1 && entry.score > BOSS_SCORE + MAX_POWERUP_BONUS_SCORE) return false;
+    if (entry.kills === bossKills && entry.score > bossScore + MAX_POWERUP_BONUS_SCORE) return false;
 
     return true;
+}
+
+function getBossScoreForScope(scope) {
+    if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
+    if (scope === 'level-3') return FINAL_BOSS_SCORE;
+    return LEVEL_BOSS_SCORE;
 }
 
 function getRequestVersion(request) {
     const url = new URL(request.url);
     return sanitizeGameVersion(url.searchParams.get('version'));
+}
+
+function getRequestScope(request) {
+    const url = new URL(request.url);
+    return sanitizeLeaderboardScope(url.searchParams.get('scope'));
+}
+
+function sanitizeLeaderboardScope(value) {
+    const scope = String(value || 'campaign').toLowerCase();
+    return scope === 'level-1' || scope === 'level-2' || scope === 'level-3'
+        ? scope
+        : 'campaign';
 }
 
 function sanitizeName(value) {

@@ -36,7 +36,7 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-const GAME_VERSION = '1.1.1';
+const GAME_VERSION = '1.2.0';
 // Level catalog lives in levels.js (loaded before this file). Campaign length is
 // live via getTotalLevels() — do not freeze TOTAL_LEVELS for victory/clamps.
 const LEVEL_DURATION_MS = (typeof window !== 'undefined' && window.NovaWingLevels
@@ -137,6 +137,7 @@ const AUDIO_MUTE_KEY = 'novawing-muted';
 const LEADERBOARD_API_URL = '/api/leaderboard';
 const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
+const LEADERBOARD_SCOPES = ['level-1', 'level-2', 'level-3', 'campaign'];
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 // Base touch layout (game coords 800×600). getTouchLayout() may enlarge for phones/tablets.
@@ -523,6 +524,11 @@ let enemiesKilled = 0;
 let lastWavePatternKey = null;
 let nextPowerupIndex = 0;
 let levelStartTime = 0;
+let levelAttemptStartTime = 0;
+let levelStartScore = 0;
+let levelStartKills = 0;
+let levelStartShotsFired = 0;
+let levelStartShotsHit = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
 let victoryPending = false;
@@ -569,12 +575,9 @@ let sfx;
 let audioMuted = false;
 let leaderboardEntries = [];
 let leaderboardStatus = 'Loading online leaderboard...';
-let leaderboardLoadPromise = null;
-let runTokenPromise = null;
-let runCompletePromise = null;
-let currentRunId = null;
-let currentRunOfficialTimeMs = null;
-let runRequestSequence = 0;
+let leaderboardLoadPromises = new Map();
+let campaignRunState = null;
+let levelRunState = null;
 
 function preload() {
     SPRITE_KEYS.forEach(key => {
@@ -1122,12 +1125,24 @@ function create() {
     bossNextLaserAt = 0;
     bossPhase = 1;
     levelStartTime = this.time.now;
+    levelAttemptStartTime = this.time.now;
+    levelStartScore = score;
+    levelStartKills = enemiesKilled;
+    levelStartShotsFired = shotsFired;
+    levelStartShotsHit = shotsHit;
     levelProgressMs = 0;
     victoryPending = false;
-    leaderboardEntries = getLocalLeaderboard();
+    leaderboardLoadPromises = new Map();
+    leaderboardEntries = getLocalLeaderboard('campaign');
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer();
-    startRunOnServer();
+    if (isLeaderboardEligibleSession()) {
+        campaignRunState = startScopedRunOnServer('campaign');
+        levelRunState = startScopedRunOnServer(getLevelLeaderboardScope(currentLevel));
+    } else {
+        campaignRunState = null;
+        levelRunState = null;
+    }
 
     createBackgroundLayers(this);
     sfx.startMusic('waves');
@@ -4280,11 +4295,57 @@ function defeatBoss(bossSprite) {
     flashVignette(this, 0xffcc55, 0.55);
     sfx.explosion(1.4, bossX);
 
-    // Award boss kill before locking run stats on the server (final level only).
+    // Award the boss kill before locking this level's stats on the server.
     enemiesKilled++;
     score += isFinalLevel ? 2500 : 1500;
     refillBoost(this, BOOST_MAX, bossX, bossY);
     updateScoreText();
+
+    const clearedLevel = currentLevel;
+    const levelScope = getLevelLeaderboardScope(clearedLevel);
+    const levelTimeMs = Math.max(0, this.time.now - levelAttemptStartTime);
+    const levelScore = Math.max(0, score - levelStartScore);
+    const levelKills = Math.max(0, enemiesKilled - levelStartKills);
+    const levelAccuracy = getLevelRunAccuracy();
+    const scoreEligible = isLeaderboardEligibleSession();
+    let playerName = null;
+
+    if (scoreEligible) {
+        completeScopedRunOnServer(levelRunState, {
+            score: levelScore,
+            kills: levelKills,
+            accuracy: levelAccuracy
+        });
+        if (isFinalLevel) {
+            completeScopedRunOnServer(campaignRunState, {
+                score,
+                kills: enemiesKilled,
+                accuracy: getRunAccuracy()
+            });
+        }
+
+        playerName = promptForPlayerName(levelScope, isFinalLevel);
+        submitLeaderboard({
+            name: playerName,
+            scope: levelScope,
+            timeMs: levelTimeMs,
+            score: levelScore,
+            kills: levelKills,
+            accuracy: levelAccuracy
+        }, levelRunState).then(result => {
+            const rank = Number(result && result.rank);
+            const rankText = Number.isFinite(rank) && rank > 0 ? '  RANK #' + rank : '';
+            const where = result && result.online ? 'ONLINE' : 'LOCALLY';
+            showFloatingText(
+                this,
+                400,
+                180,
+                'LEVEL ' + clearedLevel + ' SCORE SAVED ' + where + rankText,
+                result && result.online ? '#66f6ff' : '#ffcc55',
+                { screenSpace: true }
+            );
+        });
+    }
 
     if (!isFinalLevel) {
         sfx.victory();
@@ -4297,18 +4358,14 @@ function defeatBoss(bossSprite) {
 
     victoryPending = true;
     const completionTimeMs = this.time.now - levelStartTime;
-    completeRunOnServer({
-        timeMs: completionTimeMs,
-        score,
-        kills: enemiesKilled,
-        accuracy: getRunAccuracy()
-    });
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
     sfx.victory();
     this.time.delayedCall(650, () => {
         endLevel.call(this, 'BOSS DESTROYED', '#55ffaa', {
             completed: true,
-            completionTimeMs
+            completionTimeMs,
+            playerName,
+            skipLeaderboard: !scoreEligible
         });
     });
 }
@@ -4332,6 +4389,14 @@ function startLevel(levelId, options = {}) {
     levelTransitioning = true;
     currentLevel = Phaser.Math.Clamp(levelId, 1, totalLevels());
     const levelDef = getLevelDef(currentLevel);
+    levelAttemptStartTime = this.time.now;
+    levelStartScore = score;
+    levelStartKills = enemiesKilled;
+    levelStartShotsFired = shotsFired;
+    levelStartShotsHit = shotsHit;
+    levelRunState = isLeaderboardEligibleSession()
+        ? startScopedRunOnServer(getLevelLeaderboardScope(currentLevel))
+        : null;
 
     if (this.enemySpawnEvent) this.enemySpawnEvent.remove(false);
     if (this.obstacleSpawnEvent) this.obstacleSpawnEvent.remove(false);
@@ -4989,6 +5054,19 @@ function getDebugBossSkip() {
         return false;
     } catch (error) {
         return false;
+    }
+}
+
+/** Debug, bot, and direct-level sessions never write public leaderboard scores. */
+function isLeaderboardEligibleSession() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        return ![
+            'bot', 'demo', 'expert', 'policy', 'playtest',
+            'boss', 'skip', 'phase', 'level', 'level3', 'speedrun'
+        ].some(key => params.has(key));
+    } catch (error) {
+        return true;
     }
 }
 
@@ -6446,14 +6524,30 @@ function padRight(value, minLength, fillChar) {
     return text;
 }
 
-function getLocalLeaderboard() {
+function sanitizeLeaderboardScope(value) {
+    const scope = String(value || 'campaign').toLowerCase();
+    return LEADERBOARD_SCOPES.includes(scope) ? scope : 'campaign';
+}
+
+function getLevelLeaderboardScope(levelId) {
+    const level = Phaser.Math.Clamp(Math.floor(Number(levelId) || 1), 1, 3);
+    return 'level-' + level;
+}
+
+function getLeaderboardScopeLabel(scope) {
+    const normalized = sanitizeLeaderboardScope(scope);
+    return normalized === 'campaign' ? 'CAMPAIGN' : 'LEVEL ' + normalized.slice(-1);
+}
+
+function getLocalLeaderboard(scope = 'campaign') {
+    const normalizedScope = sanitizeLeaderboardScope(scope);
     try {
-        const raw = window.localStorage.getItem(getVersionedLeaderboardKey());
+        const raw = window.localStorage.getItem(getVersionedLeaderboardKey(normalizedScope));
         const entries = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(entries)) return [];
 
         return entries
-            .map(normalizeLeaderboardEntry)
+            .map(entry => normalizeLeaderboardEntry({ ...entry, scope: normalizedScope }))
             .filter(Boolean)
             .sort(compareLeaderboardEntries)
             .slice(0, LEADERBOARD_LIMIT);
@@ -6462,16 +6556,21 @@ function getLocalLeaderboard() {
     }
 }
 
-function saveLocalLeaderboard(entries) {
+function saveLocalLeaderboard(entries, scope = 'campaign') {
     try {
-        window.localStorage.setItem(getVersionedLeaderboardKey(), JSON.stringify(entries));
+        window.localStorage.setItem(
+            getVersionedLeaderboardKey(scope),
+            JSON.stringify(entries)
+        );
     } catch (err) {
         // Private browsing or storage quotas should not block the result screen.
     }
 }
 
-function getVersionedLeaderboardKey() {
-    return LOCAL_LEADERBOARD_KEY + ':' + GAME_VERSION;
+function getVersionedLeaderboardKey(scope = 'campaign') {
+    const normalizedScope = sanitizeLeaderboardScope(scope);
+    const base = LOCAL_LEADERBOARD_KEY + ':' + GAME_VERSION;
+    return normalizedScope === 'campaign' ? base : base + ':' + normalizedScope;
 }
 
 function getSavedPlayerName() {
@@ -6490,9 +6589,14 @@ function savePlayerName(name) {
     }
 }
 
-function promptForPlayerName() {
+function promptForPlayerName(scope = 'campaign', includeCampaign = false) {
     const previousName = getSavedPlayerName();
-    const typedName = window.prompt('Name for the online leaderboard:', previousName || 'Pilot');
+    const label = getLeaderboardScopeLabel(scope);
+    const suffix = includeCampaign ? ' + CAMPAIGN' : '';
+    const typedName = window.prompt(
+        'Name for the ' + label + suffix + ' leaderboards:',
+        previousName || 'Pilot'
+    );
     const name = sanitizePlayerName(typedName || previousName || 'Pilot');
     savePlayerName(name);
     return name;
@@ -6519,6 +6623,7 @@ function sanitizeGameVersion(value) {
 function normalizeLeaderboardEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
 
+    const scope = sanitizeLeaderboardScope(entry.scope);
     const timeMs = Math.round(Number(entry.timeMs));
     const entryScore = Math.round(Number(entry.score));
     const kills = Math.round(Number(entry.kills));
@@ -6532,6 +6637,7 @@ function normalizeLeaderboardEntry(entry) {
     return {
         id: typeof entry.id === 'string' && entry.id ? entry.id : Date.now() + '-' + Math.random().toString(16).slice(2),
         version: sanitizeGameVersion(entry.version || GAME_VERSION),
+        scope,
         name: sanitizePlayerName(entry.name),
         timeMs,
         score: entryScore,
@@ -6548,11 +6654,13 @@ function compareLeaderboardEntries(a, b) {
     return String(a.createdAt).localeCompare(String(b.createdAt));
 }
 
-function recordLocalLeaderboard(entry) {
-    const currentEntries = getLocalLeaderboard();
+function recordLocalLeaderboard(entry, scope = entry && entry.scope) {
+    const normalizedScope = sanitizeLeaderboardScope(scope);
+    const currentEntries = getLocalLeaderboard(normalizedScope);
     const savedEntry = normalizeLeaderboardEntry({
         id: Date.now() + '-' + Math.random().toString(16).slice(2),
         version: GAME_VERSION,
+        scope: normalizedScope,
         name: entry.name,
         timeMs: entry.timeMs,
         score: entry.score,
@@ -6565,22 +6673,28 @@ function recordLocalLeaderboard(entry) {
     const sorted = currentEntries.concat(savedEntry).sort(compareLeaderboardEntries);
     const rank = sorted.findIndex(candidate => candidate.id === savedEntry.id) + 1;
     const entries = sorted.slice(0, LEADERBOARD_LIMIT);
-    saveLocalLeaderboard(entries);
-    leaderboardEntries = entries;
+    saveLocalLeaderboard(entries, normalizedScope);
+    if (normalizedScope === 'campaign') leaderboardEntries = entries;
 
     return { rank, entries };
 }
 
-function loadLeaderboardFromServer() {
-    if (leaderboardLoadPromise) return leaderboardLoadPromise;
-
-    if (!window.fetch) {
-        leaderboardEntries = getLocalLeaderboard();
-        leaderboardStatus = 'Offline scores shown';
-        return Promise.resolve({ entries: leaderboardEntries, online: false });
+function loadLeaderboardFromServer(scope = 'campaign') {
+    const normalizedScope = sanitizeLeaderboardScope(scope);
+    if (leaderboardLoadPromises.has(normalizedScope)) {
+        return leaderboardLoadPromises.get(normalizedScope);
     }
 
-    leaderboardLoadPromise = fetch(getLeaderboardUrl(), {
+    if (!window.fetch) {
+        const entries = getLocalLeaderboard(normalizedScope);
+        if (normalizedScope === 'campaign') {
+            leaderboardEntries = entries;
+            leaderboardStatus = 'Offline scores shown';
+        }
+        return Promise.resolve({ scope: normalizedScope, entries, online: false });
+    }
+
+    const loadPromise = fetch(getLeaderboardUrl(normalizedScope), {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
     })
@@ -6589,64 +6703,68 @@ function loadLeaderboardFromServer() {
             return response.json();
         })
         .then(payload => {
-            const entries = normalizeLeaderboardEntries(payload.entries);
-            leaderboardEntries = entries;
-            leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
-            return { entries, online: true };
+            const entries = normalizeLeaderboardEntries(payload.entries, normalizedScope);
+            if (normalizedScope === 'campaign') {
+                leaderboardEntries = entries;
+                leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
+            }
+            return { scope: normalizedScope, entries, online: true };
         })
         .catch(() => {
-            leaderboardEntries = getLocalLeaderboard();
-            leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Leaderboard unavailable';
-            return { entries: leaderboardEntries, online: false };
+            const entries = getLocalLeaderboard(normalizedScope);
+            if (normalizedScope === 'campaign') {
+                leaderboardEntries = entries;
+                leaderboardStatus = entries.length ? 'Offline scores shown' : 'Leaderboard unavailable';
+            }
+            return { scope: normalizedScope, entries, online: false };
         });
 
-    leaderboardLoadPromise.then(() => {
-        leaderboardLoadPromise = null;
-    }, () => {
-        leaderboardLoadPromise = null;
-    });
-
-    return leaderboardLoadPromise;
+    leaderboardLoadPromises.set(normalizedScope, loadPromise);
+    loadPromise.finally(() => leaderboardLoadPromises.delete(normalizedScope));
+    return loadPromise;
 }
 
-function getLeaderboardUrl() {
-    return LEADERBOARD_API_URL + '?version=' + encodeURIComponent(GAME_VERSION);
+function getLeaderboardUrl(scope = 'campaign') {
+    return LEADERBOARD_API_URL + '?version=' + encodeURIComponent(GAME_VERSION) +
+        '&scope=' + encodeURIComponent(sanitizeLeaderboardScope(scope));
 }
 
-function startRunOnServer() {
-    const requestId = ++runRequestSequence;
-    currentRunId = null;
-    currentRunOfficialTimeMs = null;
-    runCompletePromise = null;
+function startScopedRunOnServer(scope) {
+    const state = {
+        scope: sanitizeLeaderboardScope(scope),
+        runId: null,
+        tokenPromise: null,
+        completePromise: null,
+        officialTimeMs: null
+    };
 
     if (!window.fetch) {
-        runTokenPromise = Promise.resolve(null);
-        return runTokenPromise;
+        state.tokenPromise = Promise.resolve(null);
+        return state;
     }
 
-    runTokenPromise = fetch(RUN_API_URL, {
+    state.tokenPromise = fetch(RUN_API_URL, {
         method: 'POST',
         headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ version: GAME_VERSION })
+        body: JSON.stringify({ version: GAME_VERSION, scope: state.scope })
     })
         .then(response => {
             if (!response.ok) throw new Error('Run token unavailable');
             return response.json();
         })
         .then(payload => {
-            if (requestId !== runRequestSequence) return null;
-            currentRunId = typeof payload.runId === 'string' ? payload.runId : null;
-            return currentRunId;
+            state.runId = typeof payload.runId === 'string' ? payload.runId : null;
+            return state.runId;
         })
         .catch(() => {
-            if (requestId === runRequestSequence) currentRunId = null;
+            state.runId = null;
             return null;
         });
 
-    return runTokenPromise;
+    return state;
 }
 
 function getRunAccuracy() {
@@ -6655,28 +6773,33 @@ function getRunAccuracy() {
         : 0;
 }
 
-function completeRunOnServer(stats = {}) {
-    currentRunOfficialTimeMs = null;
+function getLevelRunAccuracy() {
+    const fired = Math.max(0, shotsFired - levelStartShotsFired);
+    const hits = Math.max(0, shotsHit - levelStartShotsHit);
+    return fired > 0 ? Math.min(100, Math.round((hits / fired) * 100)) : 0;
+}
+
+function completeScopedRunOnServer(state, stats = {}) {
+    if (!state) return Promise.resolve(null);
+    if (state.completePromise) return state.completePromise;
+    state.officialTimeMs = null;
 
     if (!window.fetch) {
-        runCompletePromise = Promise.resolve(null);
-        return runCompletePromise;
+        state.completePromise = Promise.resolve(null);
+        return state.completePromise;
     }
 
-    const requestId = runRequestSequence;
-    // Capture the run id for this attempt so a restart mid-flight cannot swap tokens.
-    const tokenPromise = runTokenPromise || Promise.resolve(currentRunId);
+    const tokenPromise = state.tokenPromise || Promise.resolve(state.runId);
     const score = Math.round(Number(stats.score));
     const kills = Math.round(Number(stats.kills));
     const accuracy = Math.round(Number(
         Number.isFinite(stats.accuracy) ? stats.accuracy : getRunAccuracy()
     ));
 
-    runCompletePromise = tokenPromise
+    state.completePromise = tokenPromise
         .then(runId => {
-            if (requestId !== runRequestSequence || !runId) return null;
-            // Prefer the resolved token id; currentRunId may lag behind the promise resolve.
-            if (currentRunId && runId !== currentRunId) return null;
+            if (!runId) return null;
+            if (state.runId && runId !== state.runId) return null;
 
             return fetch(RUN_API_URL, {
                 method: 'PATCH',
@@ -6686,6 +6809,7 @@ function completeRunOnServer(stats = {}) {
                 },
                 body: JSON.stringify({
                     version: GAME_VERSION,
+                    scope: state.scope,
                     runId,
                     score,
                     kills,
@@ -6702,57 +6826,56 @@ function completeRunOnServer(stats = {}) {
             }));
         })
         .then(payload => {
-            if (!payload || requestId !== runRequestSequence) return null;
+            if (!payload) return null;
 
             const officialTimeMs = Math.round(Number(payload.timeMs));
             if (Number.isFinite(officialTimeMs) && officialTimeMs > 0) {
-                currentRunOfficialTimeMs = officialTimeMs;
+                state.officialTimeMs = officialTimeMs;
             }
 
             return payload;
         })
         .catch(() => null);
 
-    return runCompletePromise;
+    return state.completePromise;
 }
 
-function normalizeLeaderboardEntries(entries) {
+function normalizeLeaderboardEntries(entries, scope = 'campaign') {
+    const normalizedScope = sanitizeLeaderboardScope(scope);
     if (!Array.isArray(entries)) return [];
     return entries
-        .map(normalizeLeaderboardEntry)
+        .map(entry => normalizeLeaderboardEntry({ ...entry, scope: normalizedScope }))
         .filter(Boolean)
         .sort(compareLeaderboardEntries)
         .slice(0, LEADERBOARD_LIMIT);
 }
 
-function submitLeaderboard(entry) {
+function submitLeaderboard(entry, state) {
+    const scope = sanitizeLeaderboardScope((state && state.scope) || entry.scope);
+    const scopedEntry = { ...entry, scope };
     if (!window.fetch) {
-        const result = recordLocalLeaderboard(entry);
+        const result = recordLocalLeaderboard(scopedEntry, scope);
         result.online = false;
         return Promise.resolve(result);
     }
 
-    // Prefer the completion started at final boss defeat (stats already locked there).
-    const completionPromise = runCompletePromise || completeRunOnServer({
-        timeMs: entry.timeMs,
-        score: entry.score,
-        kills: entry.kills,
-        accuracy: entry.accuracy
-    });
+    const completionPromise = state && state.completePromise
+        ? state.completePromise
+        : completeScopedRunOnServer(state, scopedEntry);
 
     return completionPromise.then(completion => {
         if (!completion) {
-            const result = recordLocalLeaderboard(entry);
+            const result = recordLocalLeaderboard(scopedEntry, scope);
             leaderboardStatus = 'Saved locally; online run verification unavailable';
             result.online = false;
             return result;
         }
 
         // Prefer server-locked stats from run completion; name still comes from the player.
-        const verifiedEntry = mergeCompletionStats(entry, completion);
+        const verifiedEntry = mergeCompletionStats(scopedEntry, completion);
         const runId = typeof completion.runId === 'string' && completion.runId
             ? completion.runId
-            : currentRunId;
+            : (state && state.runId);
 
         return fetch(LEADERBOARD_API_URL, {
             method: 'POST',
@@ -6760,17 +6883,19 @@ function submitLeaderboard(entry) {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(createLeaderboardPayload(verifiedEntry, runId))
+            body: JSON.stringify(createLeaderboardPayload(verifiedEntry, runId, scope))
         })
             .then(response => {
                 if (!response.ok) throw new Error('Score submission failed');
                 return response.json();
             })
             .then(payload => {
-                const entries = normalizeLeaderboardEntries(payload.entries);
-                leaderboardEntries = entries;
-                leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
-                saveLocalLeaderboard(entries);
+                const entries = normalizeLeaderboardEntries(payload.entries, scope);
+                if (scope === 'campaign') {
+                    leaderboardEntries = entries;
+                    leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
+                }
+                saveLocalLeaderboard(entries, scope);
                 return {
                     rank: Number(payload.rank) || null,
                     entries,
@@ -6779,7 +6904,7 @@ function submitLeaderboard(entry) {
                 };
             })
             .catch(() => {
-                const result = recordLocalLeaderboard(verifiedEntry);
+                const result = recordLocalLeaderboard(verifiedEntry, scope);
                 leaderboardStatus = 'Saved locally; online leaderboard unavailable';
                 result.online = false;
                 return result;
@@ -6804,17 +6929,18 @@ function mergeCompletionStats(entry, completion) {
     };
 }
 
-function createLeaderboardPayload(entry, runId = currentRunId) {
+function createLeaderboardPayload(entry, runId, scope = entry && entry.scope) {
     // Combat stats are locked on the run row; only name + token are needed to post.
     return {
         name: entry.name,
         version: GAME_VERSION,
+        scope: sanitizeLeaderboardScope(scope),
         runId
     };
 }
 
-function formatLeaderboardLines(entries) {
-    if (!entries.length) return [leaderboardStatus || 'No completed runs yet'];
+function formatLeaderboardLines(entries, emptyMessage) {
+    if (!entries.length) return [emptyMessage || leaderboardStatus || 'No completed runs yet'];
 
     return entries.map((entry, index) => {
         return padLeft(index + 1, 2, ' ') + '. ' +
@@ -6875,9 +7001,16 @@ function endLevel(title, color, options = {}) {
     const accuracy = getRunAccuracy();
     const completionTimeMs = options.completionTimeMs || Math.max(0, this.time.now - levelStartTime);
     const completed = Boolean(options.completed);
-    const playerName = completed ? promptForPlayerName() : null;
-    const currentLeaderboard = leaderboardEntries.length ? leaderboardEntries : getLocalLeaderboard();
-    const resultLine = completed ? 'Submitting score...' : 'Complete the boss fight to set a time';
+    const skipLeaderboard = Boolean(options.skipLeaderboard);
+    const playerName = completed && !skipLeaderboard
+        ? sanitizePlayerName(options.playerName || promptForPlayerName('campaign'))
+        : null;
+    const currentLeaderboard = leaderboardEntries.length
+        ? leaderboardEntries
+        : getLocalLeaderboard('campaign');
+    const resultLine = completed && !skipLeaderboard
+        ? 'Submitting campaign score...'
+        : (completed ? 'Debug run — leaderboard disabled' : 'Complete the boss fight to set a time');
     let submittedEntry = null;
     let submittedRank = null;
 
@@ -6918,18 +7051,54 @@ function endLevel(title, color, options = {}) {
         align: 'left'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    this.add.text(400, 318, 'FASTEST RUNS', {
+    const leaderboardTitle = this.add.text(400, 318, 'CAMPAIGN FASTEST', {
         fontSize: '22px',
         fill: '#ffffff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    const leaderboardText = this.add.text(400, 421, formatLeaderboardLines(currentLeaderboard), {
+    let selectedLeaderboardScope = 'campaign';
+    const leaderboardText = this.add.text(400, 430, formatLeaderboardLines(currentLeaderboard), {
         fontSize: '14px',
         fill: '#c7ddff',
         fontFamily: 'monospace',
         align: 'left'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+
+    const tabDefs = [
+        { scope: 'level-1', label: 'L1', x: 235 },
+        { scope: 'level-2', label: 'L2', x: 335 },
+        { scope: 'level-3', label: 'L3', x: 435 },
+        { scope: 'campaign', label: 'CAMPAIGN', x: 565 }
+    ];
+    const tabTexts = tabDefs.map(tab => {
+        const text = this.add.text(tab.x, 349, tab.label, {
+            fontSize: '15px',
+            fill: tab.scope === 'campaign' ? '#ffe66d' : '#8aa0c8',
+            fontFamily: 'monospace'
+        }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+        text.setInteractive({ useHandCursor: true });
+        return { ...tab, text };
+    });
+
+    const selectLeaderboardScope = scope => {
+        selectedLeaderboardScope = sanitizeLeaderboardScope(scope);
+        leaderboardTitle.setText(getLeaderboardScopeLabel(selectedLeaderboardScope) + ' FASTEST');
+        tabTexts.forEach(tab => {
+            tab.text.setFill(tab.scope === selectedLeaderboardScope ? '#ffe66d' : '#8aa0c8');
+        });
+        leaderboardText.setText('Loading...');
+        loadLeaderboardFromServer(selectedLeaderboardScope).then(result => {
+            if (!leaderboardText.scene || selectedLeaderboardScope !== result.scope) return;
+            leaderboardText.setText(formatLeaderboardLines(
+                result.entries || [],
+                result.online ? 'No online scores yet' : 'No local scores yet'
+            ));
+        });
+    };
+    tabTexts.forEach(tab => {
+        tab.text.on('pointerdown', () => selectLeaderboardScope(tab.scope));
+    });
 
     const shareStatusText = this.add.text(400, 520, '', {
         fontSize: '14px',
@@ -6971,16 +7140,17 @@ function endLevel(title, color, options = {}) {
     }
     clearTouchActionState();
 
-    if (completed) {
+    if (completed && !skipLeaderboard) {
         const scoreEntry = {
             name: playerName,
-            timeMs: currentRunOfficialTimeMs || completionTimeMs,
+            scope: 'campaign',
+            timeMs: (campaignRunState && campaignRunState.officialTimeMs) || completionTimeMs,
             score,
             kills: enemiesKilled,
             accuracy
         };
 
-        submitLeaderboard(scoreEntry).then(result => {
+        submitLeaderboard(scoreEntry, campaignRunState).then(result => {
             if (!resultLineText.scene || !leaderboardText.scene) return;
 
             const rank = Number(result.rank);
@@ -6990,12 +7160,14 @@ function endLevel(title, color, options = {}) {
             resultLineText.setText(rankedInTop
                 ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
                 : 'Finished outside top ' + LEADERBOARD_LIMIT);
-            leaderboardText.setText(formatLeaderboardLines(result.entries || []));
+            if (selectedLeaderboardScope === 'campaign') {
+                leaderboardText.setText(formatLeaderboardLines(result.entries || []));
+            }
             shareText.setVisible(true);
             shareStatusText.setText(result.online ? 'Score posted online' : 'Score saved locally');
         });
     } else {
-        loadLeaderboardFromServer().then(result => {
+        loadLeaderboardFromServer('campaign').then(result => {
             if (!leaderboardText.scene) return;
             leaderboardText.setText(formatLeaderboardLines(result.entries || []));
         });

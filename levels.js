@@ -121,12 +121,15 @@
         bossArenaY: 300,
         // Softer opener — L2/L3 scale boss HP up from DEFAULT.
         bossHealth: Math.round(DEFAULT_BOSS_HEALTH * 0.9),
-        // Easy patterns only: no walls, pincers, mines, sandwiches, or splitters.
+        // Gentler fire remains, but obstacle waves keep the opener from becoming empty.
         wavePatternKeys: [
             'diagonal',
             'vFormation',
             'chaser',
+            'asteroidWall',
             'swarm',
+            'minefield',
+            'sandwich',
             'oppositeInterceptors'
         ],
         hasPathWalls: false,
