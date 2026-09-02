@@ -11,6 +11,27 @@ import numpy as np
 
 from contract import ACTION_SIZE, OBS_SIZE, OBS_VERSION
 
+VERTICAL_SEGMENTS = frozenset({"topdown", "finalBoss"})
+
+
+def is_vertical_step_meta(meta: Optional[Dict[str, Any]]) -> bool:
+    if not meta:
+        return False
+    if meta.get("scrollMode") == "vertical":
+        return True
+    if meta.get("combatOrientation") == "up":
+        return True
+    return meta.get("segment") in VERTICAL_SEGMENTS
+
+
+def header_has_canonical_axes(header: Optional[dict]) -> bool:
+    if not header:
+        return False
+    if header.get("canonicalAxes") is True:
+        return True
+    layout = header.get("layout") or {}
+    return layout.get("canonicalAxes") is True
+
 
 @dataclass
 class Sample:
@@ -175,7 +196,10 @@ def iter_episode_records(
         obs_list: List[np.ndarray] = []
         act_list: List[np.ndarray] = []
         rew_list: List[float] = []
+        keep_vertical = header_has_canonical_axes(header)
         for st in steps:
+            if not keep_vertical and is_vertical_step_meta(st.get("meta")):
+                continue
             try:
                 obs = np.asarray(st["obs"], dtype=np.float32)
                 act = np.asarray(st["action"], dtype=np.float32)
@@ -284,6 +308,7 @@ def load_bc_samples(
         "skipped_version": 0,
         "skipped_size": 0,
         "skipped_empty": 0,
+        "skipped_vertical_uncanonical": 0,
     }
     episodes_detail: List[dict] = []
 
@@ -332,8 +357,12 @@ def load_bc_samples(
 
         start_i = int(len(steps) * drop_early_frac) if drop_early_frac > 0 else 0
         n_kept = 0
+        keep_vertical = header_has_canonical_axes(header)
         for i, st in enumerate(steps):
             if i < start_i:
+                continue
+            if not keep_vertical and is_vertical_step_meta(st.get("meta")):
+                meta["skipped_vertical_uncanonical"] += 1
                 continue
             try:
                 obs = np.asarray(st["obs"], dtype=np.float32)

@@ -17,7 +17,12 @@ if str(_RL) not in sys.path:
     sys.path.insert(0, str(_RL))
 
 from contract import ACTION_SIZE, OBS_SIZE, OBS_VERSION  # noqa: E402
-from demos_io import compute_gae  # noqa: E402
+from demos_io import (  # noqa: E402
+    compute_gae,
+    header_has_canonical_axes,
+    is_vertical_step_meta,
+    load_bc_samples,
+)
 from model import (  # noqa: E402
     ActorCritic,
     PolicyMLP,
@@ -123,6 +128,63 @@ class TestModel(unittest.TestCase):
         s = json.dumps(payload)
         self.assertIn("layers", s)
         self.assertEqual(payload["kind"], "ppo-mlp")
+
+
+class TestCanonicalDemoSkip(unittest.TestCase):
+    def test_vertical_meta_and_header_flag(self):
+        self.assertTrue(is_vertical_step_meta({"scrollMode": "vertical"}))
+        self.assertTrue(is_vertical_step_meta({"combatOrientation": "up"}))
+        self.assertTrue(is_vertical_step_meta({"segment": "topdown"}))
+        self.assertFalse(is_vertical_step_meta({"scrollMode": "horizontal", "segment": "introBoss"}))
+        self.assertTrue(header_has_canonical_axes({"canonicalAxes": True}))
+        self.assertTrue(header_has_canonical_axes({"layout": {"canonicalAxes": True}}))
+        self.assertFalse(header_has_canonical_axes({"obsVersion": 2}))
+
+    def test_load_skips_old_vertical_steps(self):
+        dummy = np.zeros(OBS_SIZE, dtype=np.float32)
+        dummy[0] = 0.2
+        act = [0.0, 0.0, 1.0, 0.0]
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "demo-old-L3.jsonl"
+            header = {
+                "type": "header",
+                "obsVersion": OBS_VERSION,
+                "obsSize": OBS_SIZE,
+                "actionSize": ACTION_SIZE,
+                "won": False,
+                "maxLevel": 3,
+                "peakScore": 100,
+            }
+            intro = {
+                "type": "step",
+                "obs": dummy.tolist(),
+                "action": act,
+                "reward": 0.1,
+                "meta": {"scrollMode": "horizontal", "segment": "introBoss"},
+            }
+            topdown = {
+                "type": "step",
+                "obs": dummy.tolist(),
+                "action": act,
+                "reward": 0.1,
+                "meta": {"scrollMode": "vertical", "segment": "topdown"},
+            }
+            path.write_text(
+                json.dumps(header) + "\n" + json.dumps(intro) + "\n" + json.dumps(topdown) + "\n",
+                encoding="utf-8",
+            )
+            samples, meta = load_bc_samples(Path(td), speedrun=False)
+            self.assertEqual(len(samples), 1)
+            self.assertEqual(meta["skipped_vertical_uncanonical"], 1)
+
+            header["canonicalAxes"] = True
+            path.write_text(
+                json.dumps(header) + "\n" + json.dumps(intro) + "\n" + json.dumps(topdown) + "\n",
+                encoding="utf-8",
+            )
+            samples2, meta2 = load_bc_samples(Path(td), speedrun=False)
+            self.assertEqual(len(samples2), 2)
+            self.assertEqual(meta2["skipped_vertical_uncanonical"], 0)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-const GAME_VERSION = '1.2.0';
+const GAME_VERSION = '1.2.1';
 // Level catalog lives in levels.js (loaded before this file). Campaign length is
 // live via getTotalLevels() — do not freeze TOTAL_LEVELS for victory/clamps.
 const LEVEL_DURATION_MS = (typeof window !== 'undefined' && window.NovaWingLevels
@@ -134,10 +134,10 @@ const BOOST_WORLD_SPEED_MULTIPLIER = 1.7;
 const LOCAL_LEADERBOARD_KEY = 'novawing-fastest-runs';
 const PLAYER_NAME_KEY = 'novawing-player-name';
 const AUDIO_MUTE_KEY = 'novawing-muted';
+const AUDIO_STYLE_KEY = 'novawing-sfx-style';
 const LEADERBOARD_API_URL = '/api/leaderboard';
 const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
-const LEADERBOARD_SCOPES = ['level-1', 'level-2', 'level-3', 'campaign'];
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 // Base touch layout (game coords 800×600). getTouchLayout() may enlarge for phones/tablets.
@@ -176,6 +176,8 @@ const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.Z,
     Phaser.Input.Keyboard.KeyCodes.M
 ];
+// Extra world / boss / powerup textures. Add a key here to load it, then
+// point levelDef.art.wall / .boss / .bossVertical / .playerVertical at that key.
 const BAKED_SPRITE_ASSETS = {
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
@@ -372,6 +374,7 @@ const SPRITES = {
         sourceKey: 'playerVerticalSource',
         path: 'assets/player-vertical.png',
         hasAlpha: true,
+        upright: true,
         // Wider than side-view hull so the pilot craft reads on a tall vertical frame.
         displayWidth: 72,
         body: { w: 0.42, h: 0.52, ox: 0.29, oy: 0.20 }
@@ -395,6 +398,7 @@ const SPRITES = {
         sourceKey: 'enemyDartSource',
         path: 'assets/enemy-dart.png',
         hasAlpha: true,
+        upright: true,
         displayWidth: 52,
         body: { w: 0.55, h: 0.58, ox: 0.22, oy: 0.20 }
     },
@@ -402,6 +406,7 @@ const SPRITES = {
         sourceKey: 'enemyRiserSource',
         path: 'assets/enemy-riser.png',
         hasAlpha: true,
+        upright: true,
         displayWidth: 50,
         body: { w: 0.55, h: 0.58, ox: 0.22, oy: 0.20 }
     },
@@ -409,6 +414,7 @@ const SPRITES = {
         sourceKey: 'enemyStraferSource',
         path: 'assets/enemy-strafer.png',
         hasAlpha: true,
+        upright: true,
         displayWidth: 88,
         body: { w: 0.62, h: 0.48, ox: 0.19, oy: 0.26 }
     },
@@ -416,6 +422,7 @@ const SPRITES = {
         sourceKey: 'enemyMineDropperSource',
         path: 'assets/enemy-minedropper.png',
         hasAlpha: true,
+        upright: true,
         displayWidth: 72,
         body: { w: 0.58, h: 0.52, ox: 0.21, oy: 0.24 }
     },
@@ -423,6 +430,7 @@ const SPRITES = {
         sourceKey: 'enemyOrbiterSource',
         path: 'assets/enemy-orbiter.png',
         hasAlpha: true,
+        upright: true,
         displayWidth: 70,
         body: { w: 0.60, h: 0.55, ox: 0.20, oy: 0.22 }
     },
@@ -450,19 +458,127 @@ const SPRITES = {
         body: { w: 0.48, h: 0.55, ox: 0.26, oy: 0.22 }
     }
 };
-const SPRITE_KEYS = [
-    'player',
-    'playerVertical',
-    'enemy',
-    'enemy2',
-    'enemyDart',
-    'enemyRiser',
-    'enemyStrafer',
-    'enemyMineDropper',
-    'enemyOrbiter',
-    'splitter',
-    'splitterDrone'
-];
+const SPRITE_KEYS = Object.keys(SPRITES).filter(key => SPRITES[key] && SPRITES[key].path);
+
+// Combat-type catalog. New enemy art = SPRITES row + ENEMY_TYPES row.
+// Wave spawners pass `type`; spawnEnemy applies stats / textures from here.
+const ENEMY_TYPES = {
+    regular: {
+        texture: 'enemy',
+        verticalTexture: 'enemyDart',
+        speed: REGULAR_ENEMY_SPEED,
+        health: REGULAR_ENEMY_HEALTH,
+        killScore: REGULAR_KILL_SCORE
+    },
+    interceptor: {
+        texture: 'enemy2',
+        verticalTexture: 'enemyDart',
+        speed: INTERCEPTOR_ENEMY_SPEED,
+        health: INTERCEPTOR_ENEMY_HEALTH,
+        tracksPlayer: true,
+        shotSpeed: INTERCEPTOR_SHOT_SPEED,
+        profile: 'interceptor'
+    },
+    splitter: {
+        texture: 'splitter',
+        verticalTexture: 'splitter',
+        speed: SPLITTER_PARENT_SPEED,
+        health: SPLITTER_PARENT_HEALTH,
+        killScore: SPLITTER_PARENT_SCORE,
+        boostRefillOffset: 4,
+        tracksPlayer: false,
+        canShootDefault: true,
+        usesMissile: true,
+        splitsOnDeath: true,
+        shotSpeed: SPLITTER_MISSILE_SPEED,
+        shotAimScale: 1.2,
+        shotMaxDy: 200,
+        shotMaxDx: 200,
+        shotCooldownMin: SPLITTER_MISSILE_COOLDOWN_MIN,
+        shotCooldownMax: SPLITTER_MISSILE_COOLDOWN_MAX
+    },
+    splitterDrone: {
+        texture: 'splitterDrone',
+        verticalTexture: 'splitterDrone',
+        speed: SPLITTER_DRONE_SPEED,
+        health: SPLITTER_DRONE_HEALTH,
+        killScore: SPLITTER_DRONE_SCORE,
+        boostRefillScale: 0.45,
+        tracksPlayer: false,
+        canShootDefault: false,
+        flipX: true
+    },
+    dart: {
+        texture: 'enemyDart',
+        verticalTexture: 'enemyDart',
+        upright: true,
+        speed: -245,
+        health: 2,
+        killScore: 160,
+        tracksPlayer: true,
+        shotSpeed: INTERCEPTOR_SHOT_SPEED,
+        shotAimScale: 1.35,
+        shotMaxDx: 200,
+        shotCooldownMin: 900,
+        shotCooldownMax: 1600,
+        canShootDefault: true
+    },
+    riser: {
+        texture: 'enemyRiser',
+        verticalTexture: 'enemyRiser',
+        upright: true,
+        speed: -180,
+        health: 2,
+        killScore: 150,
+        tracksPlayer: false,
+        shotAimScale: 1.0,
+        shotMaxDx: 120,
+        shotCooldownMin: 1100,
+        shotCooldownMax: 1800,
+        canShootDefault: true,
+        move: 'riser'
+    },
+    strafer: {
+        texture: 'enemyStrafer',
+        verticalTexture: 'enemyStrafer',
+        upright: true,
+        speed: -90,
+        health: 3,
+        killScore: 180,
+        tracksPlayer: false,
+        shotCooldownMin: 700,
+        shotCooldownMax: 1200,
+        shotMaxDx: 80,
+        canShootDefault: true,
+        move: 'strafer'
+    },
+    mineDropper: {
+        texture: 'enemyMineDropper',
+        verticalTexture: 'enemyMineDropper',
+        upright: true,
+        speed: -70,
+        health: 4,
+        killScore: 220,
+        boostRefillOffset: 2,
+        tracksPlayer: false,
+        canShootDefault: false,
+        move: 'mineDropper'
+    },
+    orbiter: {
+        texture: 'enemyOrbiter',
+        verticalTexture: 'enemyOrbiter',
+        upright: true,
+        health: 5,
+        killScore: 250,
+        boostRefillOffset: 4,
+        tracksPlayer: false,
+        canShootDefault: true,
+        usesRadialShot: true,
+        shotCooldownMin: 1300,
+        shotCooldownMax: 1600,
+        move: 'orbiter'
+    }
+};
 
 let player;
 let cursors;
@@ -532,6 +648,7 @@ let levelStartShotsHit = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
 let victoryPending = false;
+let awaitingNextLevel = false;
 let playerInvulnerableUntil = 0;
 let gamePhase = 'waves';
 // Orientation surface (PR1): L1/L2 stay horizontal/right; L3 top-down sets vertical/up.
@@ -539,6 +656,12 @@ let scrollMode = 'horizontal'; // 'horizontal' | 'vertical'
 let combatOrientation = 'right'; // 'right' | 'up'
 // Segment machine (PR2): null for classic L1/L2 waves→boss; L3 uses segment ids.
 let levelSegment = null;
+let currentLevelArt = {
+    wall: 'wall',
+    boss: 'bossShip',
+    bossVertical: 'bossVertical',
+    playerVertical: 'playerVertical'
+};
 let bossMaxHealth = BOSS_MAX_HEALTH;
 let bossEncounterKey = null; // null | 'intro' | 'final' | 'standard'
 let bossEscapeTimeoutAt = 0;
@@ -578,6 +701,10 @@ let leaderboardStatus = 'Loading online leaderboard...';
 let leaderboardLoadPromises = new Map();
 let campaignRunState = null;
 let levelRunState = null;
+// Bumped on every scene create() so in-flight fetch callbacks ignore stale scenes.
+let runtimeSessionGen = 0;
+// Set by L-skip / debug boss jumps so those sessions cannot write public boards.
+let leaderboardDebugTainted = false;
 
 function preload() {
     SPRITE_KEYS.forEach(key => {
@@ -661,6 +788,22 @@ function createCombatTextures(scene) {
     bossLaserGfx.lineBetween(0, 20, 800, 20);
     bossLaserGfx.generateTexture('bossLaser', 800, 40);
     bossLaserGfx.destroy();
+
+    // Dedicated upright strip so L3 phase-3 lanes are not a rotated 800×40 texture
+    // (setDisplaySize + 90° left a ~1px-wide / wrongly-oriented hitbox).
+    const bossLaserVGfx = scene.add.graphics();
+    bossLaserVGfx.fillStyle(0xff3355, 0.22);
+    bossLaserVGfx.fillRect(0, 0, 40, 620);
+    bossLaserVGfx.fillStyle(0xff5577, 0.55);
+    bossLaserVGfx.fillRect(8, 0, 24, 620);
+    bossLaserVGfx.fillStyle(0xfff0aa, 0.95);
+    bossLaserVGfx.fillRect(14, 0, 12, 620);
+    bossLaserVGfx.fillStyle(0xffffff, 0.9);
+    bossLaserVGfx.fillRect(17, 0, 6, 620);
+    bossLaserVGfx.lineStyle(1, 0xffffff, 0.5);
+    bossLaserVGfx.lineBetween(20, 0, 20, 620);
+    bossLaserVGfx.generateTexture('bossLaserVertical', 40, 620);
+    bossLaserVGfx.destroy();
 
     // Soft additive particles
     const sparkGfx = scene.add.graphics();
@@ -1025,20 +1168,27 @@ function create() {
     createPlayerAnimations(this);
     applyBakedSpriteTextures(this);
     if (!sfx) {
+        const startStyle = loadAudioStyle();
         if (typeof createSfx === 'function') {
-            sfx = createSfx();
+            sfx = createSfx(startStyle);
         } else if (typeof window !== 'undefined' && window.NovaWingAudio &&
             typeof window.NovaWingAudio.createSfx === 'function') {
-            sfx = window.NovaWingAudio.createSfx();
+            sfx = window.NovaWingAudio.createSfx(startStyle);
         } else {
             // Soft no-op audio so missing audio.js never hard-crashes create().
             sfx = {
                 unlock() {},
                 setMuted() {},
                 isMuted() { return true; },
+                getStyle() { return 'genesis'; },
+                getStyleLabel() { return 'GENESIS'; },
+                listStyles() { return ['arcade', 'genesis', 'snes', 'n64']; },
+                setStyle() { return 'genesis'; },
+                cycleStyle() { return { id: 'genesis', label: 'GENESIS' }; },
                 startMusic() {},
                 stopMusic() {},
                 setEngine() {},
+                boostEngage() {},
                 shoot() {},
                 enemyShoot() {},
                 missile() {},
@@ -1100,6 +1250,8 @@ function create() {
     pathWarningHud = null;
     activePathWarningKey = null;
     currentLevel = getDebugStartLevel();
+    applyLevelArt(this, currentLevel);
+    logDifficultyQueryOverlay();
     levelTransitioning = false;
     lastFired = 0;
     levelEnded = false;
@@ -1132,7 +1284,10 @@ function create() {
     levelStartShotsHit = shotsHit;
     levelProgressMs = 0;
     victoryPending = false;
+    awaitingNextLevel = false;
     leaderboardLoadPromises = new Map();
+    runtimeSessionGen += 1;
+    leaderboardDebugTainted = false;
     leaderboardEntries = getLocalLeaderboard('campaign');
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer();
@@ -1166,7 +1321,7 @@ function create() {
 
     enemyBullets = this.physics.add.group({
         defaultKey: 'enemyBullet',
-        maxSize: 45
+        maxSize: 72
     });
 
     enemies = this.physics.add.group();
@@ -1220,9 +1375,9 @@ function create() {
         this.input.off('pointerdown', unlockAudioOnPointer);
     });
     // Extra pointers for multi-touch stick + fire + boost (Fire / Android).
-    if (this.input && typeof this.input.addPointer === 'function') {
-        this.input.addPointer(3);
-    }
+    // InputManager is game-scoped: only add up to the desired total so R-restart
+    // does not keep allocating until Phaser's 10-pointer cap.
+    ensureExtraPointers(this.input, 3);
     // Defer one frame: some WebViews (Silk / Chrome Android) report touch/UA
     // more reliably after the first paint than mid-create.
     applyMobileDeviceProfile();
@@ -1358,8 +1513,6 @@ function create() {
         showFloatingText(this, 400, 120, startLabel, '#66f6ff', { screenSpace: true });
         if (levelStartDef.introHint) {
             showFloatingText(this, 400, 160, levelStartDef.introHint, '#ffcc55', { screenSpace: true });
-        } else if (currentLevel >= 2) {
-            showFloatingText(this, 400, 160, 'FLY UP / DOWN TO REVEAL PATHS', '#ffcc55', { screenSpace: true });
         }
         const bossSkip = getDebugBossSkip();
         if (bossSkip) {
@@ -1378,14 +1531,14 @@ function create() {
                 }
             });
         } else {
-            scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
+            scheduleNextEnemyWave(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
         }
     }
 
     // Debug: press L to cycle levels (respects live getTotalLevels / ?level3=1).
     if (this.input.keyboard) {
         this.input.keyboard.on('keydown-L', () => {
-            if (levelEnded || victoryPending || levelTransitioning) return;
+            if (levelEnded || victoryPending || awaitingNextLevel || levelTransitioning) return;
             const max = totalLevels();
             const next = currentLevel >= max ? 1 : currentLevel + 1;
             debugSkipToLevel.call(this, next);
@@ -1409,7 +1562,7 @@ function create() {
 }
 
 function update(time, delta) {
-    if (levelEnded || victoryPending) return;
+    if (levelEnded || victoryPending || awaitingNextLevel) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
@@ -1428,8 +1581,12 @@ function update(time, delta) {
 
     isBoosting = wantsBoost && boostEnergy > 0 && (!boostLocked || wasBoosting);
 
+    if (isBoosting && !wasBoosting && sfx && sfx.boostEngage) {
+        sfx.boostEngage(player.x);
+    }
+
     if (isBoosting) {
-        boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN_PER_SECOND * (frameDelta / 1000));
+        boostEnergy = Math.max(0, boostEnergy - difficultyNumber('boostDrainPerSecond', BOOST_DRAIN_PER_SECOND) * (frameDelta / 1000));
         if (boostEnergy <= 0) {
             isBoosting = false;
             boostLocked = true;
@@ -1474,7 +1631,11 @@ function update(time, delta) {
         const progressDriven = !segmented || isProgressDrivenSegment();
         if (progressDriven) {
             const durationMs = getActiveDurationMs();
-            const progressMultiplier = Phaser.Math.Linear(1, BOOST_LEVEL_PROGRESS_MULTIPLIER, boostIntensity);
+            const progressMultiplier = Phaser.Math.Linear(
+                1,
+                difficultyNumber('boostProgressMultiplier', BOOST_LEVEL_PROGRESS_MULTIPLIER),
+                boostIntensity
+            );
             levelProgressMs = Math.min(
                 durationMs,
                 levelProgressMs + frameDelta * progressMultiplier
@@ -1607,7 +1768,9 @@ function destroyEnemy(enemy, options = {}) {
     const killScore = Number.isFinite(enemy.killScore) ? enemy.killScore : REGULAR_KILL_SCORE;
     const boostAmount = Number.isFinite(options.boostAmount)
         ? options.boostAmount
-        : (enemy.boostRefill || BOOST_REFILL_ON_KILL);
+        : (Number.isFinite(enemy.boostRefill)
+            ? enemy.boostRefill
+            : difficultyNumber('boostRefillOnKill', BOOST_REFILL_ON_KILL));
     const explosionSize = enemy.enemyType === 'splitter' ? 42 : (enemy.enemyType === 'splitterDrone' ? 18 : 34);
 
     enemy.dying = true;
@@ -1707,7 +1870,7 @@ function hitObstacle(player, obstacle) {
 function hitWall(playerSprite, wall) {
     // Collision is resolved in resolvePlayerWallCollisions; keep callback for safety.
     if (!wall || !wall.active || !playerSprite || !playerSprite.active) return;
-    resolvePlayerAgainstWall.call(this, wall, true);
+    resolvePlayerAgainstWall.call(this, wall, canApplyPlayerContactDamage(this));
 }
 
 function resolvePlayerWallCollisions() {
@@ -1723,7 +1886,7 @@ function resolvePlayerWallCollisions() {
         }
     });
 
-    if (scraped) {
+    if (scraped && canApplyPlayerContactDamage(this)) {
         createExplosion(this, player.x + 18, player.y, 12, { palette: 'orange', flash: false });
         damagePlayer.call(this);
     }
@@ -1810,6 +1973,7 @@ function hitWallWithBullet(bullet, wall) {
 }
 
 function hitPowerup(bullet, powerup) {
+    if (!bullet || !bullet.active || !powerup || !powerup.active) return;
     releaseSprite(bullet);
     collectPowerup.call(this, null, powerup);
 }
@@ -1916,19 +2080,19 @@ function detonateScreenBomb(scene, originX, originY) {
 
     // Snapshot first so newly spawned splitter drones are not re-processed mid-bomb.
     const liveEnemies = enemies.getChildren().filter(enemy => (
-        enemy.active && !enemy.dying && enemy.x >= -20 && enemy.x <= 860
+        enemy.active && !enemy.dying && !isOffscreen(enemy, 20)
     ));
     liveEnemies.forEach(enemy => {
         // Bomb vaporises the whole cluster — no post-death split clutter.
         destroyEnemy.call(scene, enemy, {
             allowSplit: false,
-            boostAmount: Math.floor(BOOST_REFILL_ON_KILL * 0.5)
+            boostAmount: Math.floor(difficultyNumber('boostRefillOnKill', BOOST_REFILL_ON_KILL) * 0.5)
         });
     });
 
     obstacles.getChildren().forEach(obstacle => {
         if (!obstacle.active) return;
-        if (obstacle.x < -20 || obstacle.x > 860) return;
+        if (isOffscreen(obstacle, 20)) return;
 
         const obstacleX = obstacle.x;
         const obstacleY = obstacle.y;
@@ -2006,7 +2170,7 @@ function damagePlayer() {
     if (now < playerInvulnerableUntil) return;
     const cooldown = isPlaytestBotSession()
         ? PLAYTEST_BOT_DAMAGE_COOLDOWN_MS
-        : PLAYER_DAMAGE_COOLDOWN_MS;
+        : difficultyNumber('playerIFramesMs', PLAYER_DAMAGE_COOLDOWN_MS);
     playerInvulnerableUntil = now + cooldown;
 
     if (hasShield) {
@@ -2108,7 +2272,10 @@ function scheduleNextEnemyWave(scene, delayMs) {
 
         spawnEnemyWave.call(scene);
         if (getLevelWavePatterns().length) {
-            scheduleNextEnemyWave(scene, Phaser.Math.Between(WAVE_INTERVAL_MIN_MS, WAVE_INTERVAL_MAX_MS));
+            scheduleNextEnemyWave(scene, Phaser.Math.Between(
+                difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS),
+                difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS)
+            ));
         }
     });
 }
@@ -2140,11 +2307,10 @@ function isSegmentedLevel(levelId) {
 
 function isProgressDrivenSegment() {
     const seg = getLevelSegmentDef();
-    return Boolean(seg && (
-        seg.progressDriven === true
-        || seg.id === 'topdown'
-        || seg.id === 'gauntletHorizontal'
-    ));
+    if (!seg) return false;
+    if (getSegmentKind(seg) !== 'waves') return false;
+    if (seg.progressDriven === false) return false;
+    return true;
 }
 
 function getActiveDurationMs() {
@@ -2192,11 +2358,155 @@ function getLevelWavePatterns() {
     return filtered;
 }
 
+function getLevelDifficultyTier() {
+    const def = typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null;
+    if (def && Number.isFinite(def.tier)) return def.tier;
+    if (currentLevel <= 1) return 1;
+    if (currentLevel === 2) return 2;
+    return 3;
+}
+
+let cachedDifficultyQueryOverlay;
+
+function getDifficultyQueryOverlay() {
+    if (cachedDifficultyQueryOverlay !== undefined) return cachedDifficultyQueryOverlay;
+    cachedDifficultyQueryOverlay = typeof readDifficultyQueryOverlay === 'function'
+        ? (readDifficultyQueryOverlay() || {})
+        : {};
+    return cachedDifficultyQueryOverlay;
+}
+
+function logDifficultyQueryOverlay() {
+    cachedDifficultyQueryOverlay = undefined;
+    const overlay = getDifficultyQueryOverlay();
+    if (overlay && Object.keys(overlay).length && typeof console !== 'undefined') {
+        console.info('[NovaWing] difficulty overlay', overlay);
+    }
+}
+
+function getActiveDifficulty() {
+    const def = typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null;
+    let bag = def && def.difficulty ? def.difficulty : null;
+    if (!bag && typeof resolveDifficulty === 'function') {
+        bag = resolveDifficulty({}, getLevelDifficultyTier());
+    }
+    bag = bag || {};
+    const overlayFn = typeof overlayDifficulty === 'function'
+        ? overlayDifficulty
+        : function (base, partial) { return Object.assign({}, base, partial); };
+    const seg = getLevelSegmentDef();
+    if (seg && seg.difficulty && typeof seg.difficulty === 'object') {
+        bag = overlayFn(bag, seg.difficulty);
+    }
+    const queryBag = getDifficultyQueryOverlay();
+    if (queryBag && Object.keys(queryBag).length) {
+        bag = overlayFn(bag, queryBag);
+    }
+    return bag;
+}
+
+function difficultyNumber(key, fallback) {
+    const bag = getActiveDifficulty();
+    const value = bag && bag[key];
+    return Number.isFinite(value) ? value : fallback;
+}
+
+function difficultyFlag(key, fallback) {
+    const bag = getActiveDifficulty();
+    if (!bag || !Object.prototype.hasOwnProperty.call(bag, key) || bag[key] == null) {
+        return Boolean(fallback);
+    }
+    return Boolean(bag[key]);
+}
+
+function scaleDelayRange(range, scale) {
+    const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    return {
+        min: Math.max(80, Math.round(range.min * s)),
+        max: Math.max(120, Math.round(range.max * s))
+    };
+}
+
+function cadenceMs(ms) {
+    if (!Number.isFinite(ms)) return ms;
+    const raw = difficultyNumber('enemyCadenceScale', 1);
+    if (!Number.isFinite(raw) || raw === 1) return ms;
+    return Math.max(80, Math.round(ms * Math.max(0.25, raw)));
+}
+
+function resolveEnemyBoostRefill(typeDef) {
+    const base = difficultyNumber('boostRefillOnKill', BOOST_REFILL_ON_KILL);
+    if (!typeDef) return base;
+    if (Number.isFinite(typeDef.boostRefillScale)) {
+        return Math.max(0, Math.round(base * typeDef.boostRefillScale));
+    }
+    if (Number.isFinite(typeDef.boostRefillOffset)) {
+        return Math.max(0, base + typeDef.boostRefillOffset);
+    }
+    if (Number.isFinite(typeDef.boostRefill)) return Math.max(0, typeDef.boostRefill);
+    return base;
+}
+
 /** How often unspecified spawns become blue interceptors (difficulty ramp). */
 function getInterceptorSpawnChance() {
-    if (currentLevel <= 1) return INTERCEPTOR_SPAWN_CHANCE_L1;
-    if (currentLevel === 2) return INTERCEPTOR_SPAWN_CHANCE_L2;
-    return INTERCEPTOR_SPAWN_CHANCE_DEFAULT;
+    return difficultyNumber('interceptorChance',
+        getLevelDifficultyTier() <= 1
+            ? INTERCEPTOR_SPAWN_CHANCE_L1
+            : (getLevelDifficultyTier() === 2
+                ? INTERCEPTOR_SPAWN_CHANCE_L2
+                : INTERCEPTOR_SPAWN_CHANCE_DEFAULT));
+}
+
+function getLevelEnemyFireChance() {
+    return difficultyNumber('enemyFireChance',
+        getLevelDifficultyTier() <= 1 ? ENEMY_FIRE_CHANCE_L1 : ENEMY_FIRE_CHANCE);
+}
+
+function applyLevelArt(scene, levelId) {
+    const def = typeof getLevelDef === 'function' ? getLevelDef(levelId) : null;
+    const art = (def && def.art) || {};
+    function pick(name, fallback) {
+        const requested = art[name];
+        if (requested && scene && scene.textures && scene.textures.exists(requested)) {
+            return requested;
+        }
+        return fallback;
+    }
+    currentLevelArt = {
+        wall: pick('wall', 'wall'),
+        boss: pick('boss', 'bossShip'),
+        bossVertical: pick('bossVertical', 'bossVertical'),
+        playerVertical: pick('playerVertical', 'playerVertical')
+    };
+}
+
+function getSegmentKind(segDef) {
+    if (!segDef) return 'waves';
+    if (segDef.kind === 'boss' || segDef.kind === 'waves' || segDef.kind === 'transition') {
+        return segDef.kind;
+    }
+    if (segDef.cinematic || segDef.id === 'transition') return 'transition';
+    if (segDef.bossEncounter || segDef.gamePhase === 'boss'
+        || segDef.id === 'introBoss' || segDef.id === 'finalBoss') {
+        return 'boss';
+    }
+    return 'waves';
+}
+
+function findSegmentIdForEncounter(encounterKey) {
+    const def = typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null;
+    if (!def || !Array.isArray(def.segments)) return null;
+    const wanted = encounterKey === 'intro' || encounterKey === 'final' || encounterKey === 'standard'
+        ? encounterKey
+        : 'final';
+    for (let i = 0; i < def.segments.length; i++) {
+        const seg = def.segments[i];
+        if (seg && seg.bossEncounter === wanted) return seg.id;
+    }
+    if (wanted === 'intro') return 'introBoss';
+    if (wanted === 'final') return 'finalBoss';
+    const last = def.segments[def.segments.length - 1];
+    return last && last.id ? last.id : null;
 }
 
 function scheduleWavePart(scene, delayMs, callback) {
@@ -2762,198 +3072,23 @@ function spawnEnemy(options = {}) {
     const y = options.skipPathClamp ? rawY : clampYToOpenBands(rawY);
     const x = ahead.x;
     const type = options.type || (Math.random() < getInterceptorSpawnChance() ? 'interceptor' : 'regular');
-    const isInterceptor = type === 'interceptor';
-    const isSplitter = type === 'splitter';
-    const isSplitterDrone = type === 'splitterDrone';
-    const useVerticalArt = isVerticalScroll()
-        && !isSplitter
-        && !isSplitterDrone
-        && (this.textures ? this.textures.exists('enemyDart') : true);
-    const key = options.key || (
-        isSplitterDrone ? 'splitterDrone'
-            : isSplitter ? 'splitter'
-                : useVerticalArt
-                    ? resolveVerticalEnemyTexture(type, options)
-                    : (isInterceptor ? 'enemy2' : 'enemy')
-    );
-
+    const typeDef = getEnemyTypeDef(type);
+    const key = options.key || resolveEnemyTexture(type, options, this);
     const enemy = enemies.get(x, y, key);
     if (!enemy) return null;
 
     enemy.setTexture(key);
     activateSprite(enemy, x, y);
+    resetPooledEnemyState(enemy);
     const spriteDef = SPRITES[key] || {};
     applyShipSize(
         enemy,
         spriteDef.displayWidth || 112,
         spriteDef.body
     );
-    enemy.enemyType = type;
-    enemy.splitsOnDeath = false;
-    enemy.usesMissile = false;
-    enemy.killScore = REGULAR_KILL_SCORE;
-    enemy.boostRefill = BOOST_REFILL_ON_KILL;
-    enemy.driftVelocityY = 0;
-    applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : REGULAR_ENEMY_SPEED);
-    enemy.tracksPlayer = options.tracksPlayer === undefined ? false : Boolean(options.tracksPlayer);
-    enemy.shotSpeed = ENEMY_SHOT_SPEED;
-    // Red regulars: straight-line shots (no aim / no diagonal "spread").
-    // Blue interceptors keep aim — see isInterceptor block below.
-    enemy.shotAimScale = 0;
-    enemy.shotMaxDy = 0;
-    enemy.shotMaxDx = 0;
-    enemy.shotCooldownMin = currentLevel <= 1 ? 1800 : 1400;
-    enemy.shotCooldownMax = currentLevel <= 1 ? 3200 : 2800;
-    enemy.health = Number.isFinite(options.health) ? options.health : REGULAR_ENEMY_HEALTH;
-    const fireChance = currentLevel <= 1 ? ENEMY_FIRE_CHANCE_L1 : ENEMY_FIRE_CHANCE;
-    enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < fireChance;
-    enemy.nextShotAt = this.time.now + (
-        Number.isFinite(options.nextShotDelay)
-            ? options.nextShotDelay
-            : Phaser.Math.Between(currentLevel <= 1 ? 1000 : 700, currentLevel <= 1 ? 2600 : 2200)
-    );
-    // Existing red/blue art faces left; drone concept art faces right.
-    enemy.setFlipX(isSplitterDrone);
+    applyEnemyTypeProfile.call(this, enemy, type, typeDef, options, x);
+    applyDifficultyToEnemy(enemy);
     applyEnemyOrientation(enemy);
-
-    if (isInterceptor) {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : INTERCEPTOR_ENEMY_SPEED);
-        // L1 blues still track a little, but aim softer than later levels.
-        enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
-        enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
-        if (currentLevel <= 1) {
-            enemy.shotAimScale = 0.55;
-            enemy.shotMaxDy = 90;
-            enemy.shotMaxDx = 90;
-            enemy.shotCooldownMin = 1200;
-            enemy.shotCooldownMax = 2100;
-            enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.55;
-            enemy.nextShotAt = this.time.now + (
-                Number.isFinite(options.nextShotDelay)
-                    ? options.nextShotDelay
-                    : Phaser.Math.Between(700, 1800)
-            );
-        } else {
-            enemy.shotAimScale = 1.45;
-            enemy.shotMaxDy = 230;
-            enemy.shotMaxDx = 230;
-            enemy.shotCooldownMin = 850;
-            enemy.shotCooldownMax = 1650;
-            enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : Math.random() < 0.78;
-            enemy.nextShotAt = this.time.now + (
-                Number.isFinite(options.nextShotDelay)
-                    ? options.nextShotDelay
-                    : Phaser.Math.Between(500, 1450)
-            );
-        }
-        enemy.health = Number.isFinite(options.health) ? options.health : INTERCEPTOR_ENEMY_HEALTH;
-    }
-
-    if (isSplitter) {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : SPLITTER_PARENT_SPEED);
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : SPLITTER_PARENT_HEALTH;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
-        enemy.usesMissile = true;
-        enemy.shotCooldownMin = SPLITTER_MISSILE_COOLDOWN_MIN;
-        enemy.shotCooldownMax = SPLITTER_MISSILE_COOLDOWN_MAX;
-        enemy.shotAimScale = 1.2;
-        enemy.shotMaxDy = 200;
-        enemy.shotMaxDx = 200;
-        enemy.shotSpeed = SPLITTER_MISSILE_SPEED;
-        enemy.splitsOnDeath = true;
-        enemy.killScore = SPLITTER_PARENT_SCORE;
-        enemy.boostRefill = BOOST_REFILL_ON_KILL + 4;
-        enemy.nextShotAt = this.time.now + (
-            Number.isFinite(options.nextShotDelay)
-                ? options.nextShotDelay
-                : Phaser.Math.Between(900, 1500)
-        );
-    }
-
-    if (isSplitterDrone) {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : SPLITTER_DRONE_SPEED);
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : SPLITTER_DRONE_HEALTH;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : false;
-        enemy.splitsOnDeath = false;
-        enemy.killScore = SPLITTER_DRONE_SCORE;
-        enemy.boostRefill = Math.floor(BOOST_REFILL_ON_KILL * 0.45);
-        enemy.nextShotAt = Infinity;
-    }
-
-    // --- L3 vertical roster (PR5) ---
-    if (type === 'dart') {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -245);
-        enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
-        enemy.health = Number.isFinite(options.health) ? options.health : 2;
-        enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
-        enemy.shotAimScale = 1.35;
-        enemy.shotMaxDx = 200;
-        enemy.shotCooldownMin = 900;
-        enemy.shotCooldownMax = 1600;
-        enemy.killScore = 160;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
-    }
-
-    if (type === 'riser') {
-        const mag = Math.abs(Number.isFinite(options.speed) ? options.speed : 180);
-        enemy.baseVelocityX = 0;
-        enemy.baseVelocityY = -mag; // fly upward from below
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : 2;
-        enemy.shotSpeed = ENEMY_SHOT_SPEED;
-        enemy.shotAimScale = 1.0;
-        enemy.shotMaxDx = 120;
-        enemy.shotCooldownMin = 1100;
-        enemy.shotCooldownMax = 1800;
-        enemy.killScore = 150;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
-    }
-
-    if (type === 'strafer') {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -90);
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : 3;
-        enemy.strafeAmplitude = 120;
-        enemy.strafePhase = Math.random() * Math.PI * 2;
-        enemy.homeX = x;
-        enemy.shotCooldownMin = 700;
-        enemy.shotCooldownMax = 1200;
-        enemy.shotMaxDx = 80;
-        enemy.killScore = 180;
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
-    }
-
-    if (type === 'mineDropper') {
-        applyApproachSpeed(enemy, Number.isFinite(options.speed) ? options.speed : -70);
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : 4;
-        enemy.canShoot = false;
-        enemy.nextMineAt = this.time.now + 500;
-        enemy.mineIntervalMs = 900;
-        enemy.killScore = 220;
-        enemy.boostRefill = BOOST_REFILL_ON_KILL + 2;
-    }
-
-    if (type === 'orbiter') {
-        enemy.baseVelocityX = 0;
-        enemy.baseVelocityY = 20; // slow drift down while orbiting
-        enemy.tracksPlayer = false;
-        enemy.health = Number.isFinite(options.health) ? options.health : 5;
-        enemy.orbitAngle = Number.isFinite(options.orbitAngle) ? options.orbitAngle : 0;
-        enemy.orbitRadius = Number.isFinite(options.orbitRadius) ? options.orbitRadius : 120;
-        enemy.orbitCenterX = Number.isFinite(options.orbitCenterX) ? options.orbitCenterX : 400;
-        enemy.orbitCenterY = Number.isFinite(options.orbitCenterY) ? options.orbitCenterY : 200;
-        enemy.orbitOmega = 1.2; // rad/s
-        enemy.orbitRadiusTarget = Math.max(70, enemy.orbitRadius - 50);
-        enemy.canShoot = typeof options.canShoot === 'boolean' ? options.canShoot : true;
-        enemy.usesRadialShot = true;
-        enemy.shotCooldownMin = 1300;
-        enemy.shotCooldownMax = 1600;
-        enemy.killScore = 250;
-        enemy.boostRefill = BOOST_REFILL_ON_KILL + 4;
-    }
 
     if (Number.isFinite(options.convergeVx)) {
         enemy.convergeVx = options.convergeVx;
@@ -2961,6 +3096,176 @@ function spawnEnemy(options = {}) {
 
     updateScrollVelocity(enemy);
     return enemy;
+}
+
+function getEnemyTypeDef(type) {
+    return ENEMY_TYPES[type] || ENEMY_TYPES.regular;
+}
+
+function resolveEnemyTexture(type, options, scene) {
+    const typeDef = getEnemyTypeDef(type);
+    if (options && options.verticalRole && ENEMY_TYPES[options.verticalRole]) {
+        const roleDef = ENEMY_TYPES[options.verticalRole];
+        if (isVerticalScroll()) {
+            return roleDef.verticalTexture || roleDef.texture;
+        }
+        return roleDef.texture;
+    }
+    if (isVerticalScroll()) {
+        const verticalKey = typeDef.verticalTexture || typeDef.texture;
+        if (!scene || !scene.textures || scene.textures.exists(verticalKey)) {
+            return verticalKey;
+        }
+    }
+    return typeDef.texture || 'enemy';
+}
+
+function applyDifficultyToEnemy(enemy) {
+    if (!enemy) return;
+    const healthScale = difficultyNumber('enemyHealthScale', 1);
+    const speedScale = difficultyNumber('enemySpeedScale', 1);
+    const shotScale = difficultyNumber('enemyShotSpeedScale', 1);
+    if (healthScale !== 1 && Number.isFinite(enemy.health)) {
+        enemy.health = typeof scaleCountedStat === 'function'
+            ? scaleCountedStat(enemy.health, healthScale)
+            : Math.max(1, Math.round(enemy.health * healthScale));
+    }
+    if (speedScale !== 1) {
+        if (Number.isFinite(enemy.baseVelocityX)) enemy.baseVelocityX *= speedScale;
+        if (Number.isFinite(enemy.baseVelocityY)) enemy.baseVelocityY *= speedScale;
+    }
+    if (shotScale !== 1 && Number.isFinite(enemy.shotSpeed)) {
+        enemy.shotSpeed *= shotScale;
+    }
+    if (Number.isFinite(enemy.shotCooldownMin)) {
+        enemy.shotCooldownMin = cadenceMs(enemy.shotCooldownMin);
+    }
+    if (Number.isFinite(enemy.shotCooldownMax)) {
+        enemy.shotCooldownMax = cadenceMs(enemy.shotCooldownMax);
+    }
+    if (Number.isFinite(enemy.mineIntervalMs)) {
+        enemy.mineIntervalMs = cadenceMs(enemy.mineIntervalMs);
+    }
+}
+
+function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
+    const opener = difficultyFlag('softInterceptorAim', getLevelDifficultyTier() <= 1);
+    enemy.enemyType = type;
+    enemy.splitsOnDeath = Boolean(typeDef.splitsOnDeath);
+    enemy.usesMissile = Boolean(typeDef.usesMissile);
+    enemy.usesRadialShot = Boolean(typeDef.usesRadialShot);
+    enemy.killScore = Number.isFinite(typeDef.killScore) ? typeDef.killScore : REGULAR_KILL_SCORE;
+    enemy.boostRefill = resolveEnemyBoostRefill(typeDef);
+    enemy.driftVelocityY = 0;
+    enemy.shotSpeed = Number.isFinite(typeDef.shotSpeed) ? typeDef.shotSpeed : ENEMY_SHOT_SPEED;
+    enemy.shotAimScale = Number.isFinite(typeDef.shotAimScale) ? typeDef.shotAimScale : 0;
+    enemy.shotMaxDy = Number.isFinite(typeDef.shotMaxDy) ? typeDef.shotMaxDy : 0;
+    enemy.shotMaxDx = Number.isFinite(typeDef.shotMaxDx) ? typeDef.shotMaxDx : 0;
+    enemy.shotCooldownMin = Number.isFinite(typeDef.shotCooldownMin)
+        ? typeDef.shotCooldownMin
+        : difficultyNumber('regularCooldownMinMs', opener ? 1800 : 1400);
+    enemy.shotCooldownMax = Number.isFinite(typeDef.shotCooldownMax)
+        ? typeDef.shotCooldownMax
+        : difficultyNumber('regularCooldownMaxMs', opener ? 3200 : 2800);
+    enemy.health = Number.isFinite(options.health)
+        ? options.health
+        : (Number.isFinite(typeDef.health) ? typeDef.health : REGULAR_ENEMY_HEALTH);
+    enemy.tracksPlayer = options.tracksPlayer === undefined
+        ? Boolean(typeDef.tracksPlayer)
+        : Boolean(options.tracksPlayer);
+    enemy.setFlipX(Boolean(typeDef.flipX));
+
+    if (typeDef.move === 'riser') {
+        const mag = Math.abs(Number.isFinite(options.speed) ? options.speed : (typeDef.speed || 180));
+        enemy.baseVelocityX = 0;
+        enemy.baseVelocityY = -mag;
+    } else if (typeDef.move === 'orbiter') {
+        enemy.baseVelocityX = 0;
+        enemy.baseVelocityY = 20;
+        enemy.orbitAngle = Number.isFinite(options.orbitAngle) ? options.orbitAngle : 0;
+        enemy.orbitRadius = Number.isFinite(options.orbitRadius) ? options.orbitRadius : 120;
+        enemy.orbitCenterX = Number.isFinite(options.orbitCenterX) ? options.orbitCenterX : 400;
+        enemy.orbitCenterY = Number.isFinite(options.orbitCenterY) ? options.orbitCenterY : 200;
+        enemy.orbitOmega = 1.2;
+        enemy.orbitRadiusTarget = Math.max(70, enemy.orbitRadius - 50);
+    } else {
+        applyApproachSpeed(enemy, Number.isFinite(options.speed)
+            ? options.speed
+            : (Number.isFinite(typeDef.speed) ? typeDef.speed : REGULAR_ENEMY_SPEED));
+    }
+
+    if (typeDef.move === 'strafer') {
+        enemy.strafeAmplitude = 120;
+        enemy.strafePhase = Math.random() * Math.PI * 2;
+        enemy.homeX = spawnX;
+    }
+    if (typeDef.move === 'mineDropper') {
+        enemy.nextMineAt = this.time.now + 500;
+        enemy.mineIntervalMs = 900;
+    }
+
+    const defaultFireChance = getLevelEnemyFireChance();
+    if (typeof options.canShoot === 'boolean') {
+        enemy.canShoot = options.canShoot;
+    } else if (typeof typeDef.canShootDefault === 'boolean') {
+        if (!typeDef.canShootDefault) {
+            enemy.canShoot = false;
+        } else {
+            const typedChance = difficultyNumber('typedFireChance', 1);
+            enemy.canShoot = typedChance >= 1 ? true : Math.random() < Math.max(0, typedChance);
+        }
+    } else {
+        enemy.canShoot = Math.random() < defaultFireChance;
+    }
+
+    if (typeDef.profile === 'interceptor') {
+        applyInterceptorTierProfile.call(this, enemy, options);
+        return;
+    }
+
+    if (type === 'splitterDrone') {
+        enemy.nextShotAt = Infinity;
+        return;
+    }
+
+    const defaultDelay = [
+        cadenceMs(difficultyNumber('regularShotDelayMinMs', opener ? 1000 : 700)),
+        cadenceMs(difficultyNumber('regularShotDelayMaxMs', opener ? 2600 : 2200))
+    ];
+    const splitterDelay = type === 'splitter'
+        ? [cadenceMs(900), cadenceMs(1500)]
+        : null;
+    const delayRange = splitterDelay || defaultDelay;
+    enemy.nextShotAt = this.time.now + (
+        Number.isFinite(options.nextShotDelay)
+            ? options.nextShotDelay
+            : Phaser.Math.Between(delayRange[0], delayRange[1])
+    );
+}
+
+function applyInterceptorTierProfile(enemy, options) {
+    const opener = difficultyFlag('softInterceptorAim', getLevelDifficultyTier() <= 1);
+    enemy.tracksPlayer = options.tracksPlayer === undefined ? true : Boolean(options.tracksPlayer);
+    enemy.shotSpeed = INTERCEPTOR_SHOT_SPEED;
+    enemy.shotAimScale = difficultyNumber('interceptorAimScale', opener ? 0.55 : 1.45);
+    const lead = difficultyNumber('interceptorShotLead', opener ? 90 : 230);
+    enemy.shotMaxDy = lead;
+    enemy.shotMaxDx = lead;
+    enemy.shotCooldownMin = difficultyNumber('interceptorCooldownMinMs', opener ? 1200 : 850);
+    enemy.shotCooldownMax = difficultyNumber('interceptorCooldownMaxMs', opener ? 2100 : 1650);
+    const fireChance = difficultyNumber('interceptorFireChance', opener ? 0.55 : 0.78);
+    enemy.canShoot = typeof options.canShoot === 'boolean'
+        ? options.canShoot
+        : Math.random() < fireChance;
+    enemy.nextShotAt = this.time.now + (
+        Number.isFinite(options.nextShotDelay)
+            ? options.nextShotDelay
+            : Phaser.Math.Between(
+                cadenceMs(difficultyNumber('interceptorShotDelayMinMs', opener ? 700 : 500)),
+                cadenceMs(difficultyNumber('interceptorShotDelayMaxMs', opener ? 1800 : 1450))
+            )
+    );
+    if (Number.isFinite(options.health)) enemy.health = options.health;
 }
 
 function spawnObstacle(options = {}) {
@@ -3225,7 +3530,11 @@ function scrollPathWarningMarkers(frameDelta) {
     if (!pathWarningMarkers.length) return;
 
     // Match wall scroll so dead-end markers stay glued to sealing faces.
-    const multiplier = Phaser.Math.Linear(1, BOOST_LEVEL_PROGRESS_MULTIPLIER, boostIntensity);
+    const multiplier = Phaser.Math.Linear(
+        1,
+        difficultyNumber('boostProgressMultiplier', BOOST_LEVEL_PROGRESS_MULTIPLIER),
+        boostIntensity
+    );
     const dx = WALL_SCROLL_SPEED * multiplier * ((frameDelta || 16.67) / 1000);
 
     pathWarningMarkers = pathWarningMarkers.filter(marker => {
@@ -3432,10 +3741,11 @@ function seedLevelPathWalls(scene) {
 function spawnWallBlock(x, y, width, height, options = {}) {
     if (!walls) return null;
 
-    const wall = walls.get(x, y, 'wall');
+    const wallKey = (currentLevelArt && currentLevelArt.wall) || 'wall';
+    const wall = walls.get(x, y, wallKey);
     if (!wall) return null;
 
-    wall.setTexture('wall');
+    wall.setTexture(wallKey);
     activateSprite(wall, x, y);
     wall.setOrigin(0.5, 0.5);
     const sourceW = Math.max(1, wall.frame ? wall.frame.width : WALL_TEXTURE_FALLBACK_SIZE);
@@ -3794,11 +4104,13 @@ function startBossFight(encounterKey) {
     bossNextLaserAt = Infinity;
 
     // Concept B biomechanical art is wider; keep a strong on-screen presence.
-    const hasBossVertical = this.textures && this.textures.exists('bossVertical');
+    const bossVertKey = currentLevelArt.bossVertical || 'bossVertical';
+    const bossHorizKey = currentLevelArt.boss || 'bossShip';
+    const hasBossVertical = this.textures && this.textures.exists(bossVertKey);
     const targetWidth = verticalBoss ? (hasBossVertical ? 220 : 280) : 340;
     if (verticalBoss) {
         // Park above player; prefer dedicated vertical boss art (PR4b).
-        const bossKey = hasBossVertical ? 'bossVertical' : 'bossShip';
+        const bossKey = hasBossVertical ? bossVertKey : bossHorizKey;
         boss = bosses.create(400, -40, bossKey);
         boss.arenaY = 130;
         boss.verticalMode = true;
@@ -3814,7 +4126,7 @@ function startBossFight(encounterKey) {
             ease: 'Sine.easeOut'
         });
     } else {
-        boss = bosses.create(920, bossArenaY, 'bossShip');
+        boss = bosses.create(920, bossArenaY, bossHorizKey);
         boss.arenaY = bossArenaY;
         boss.verticalMode = false;
         boss.entry = profile.entry || 'horizontal';
@@ -3827,9 +4139,11 @@ function startBossFight(encounterKey) {
     const aspect = boss.height > 0 ? boss.width / boss.height : 1.9;
     boss.setDisplaySize(targetWidth, Math.round(targetWidth / aspect));
     if (verticalBoss && hasBossVertical) {
-        applySpriteBody(boss, SPRITES.bossVertical.body);
+        const vertBody = (SPRITES[bossVertKey] && SPRITES[bossVertKey].body) || SPRITES.bossVertical.body;
+        applySpriteBody(boss, vertBody);
     } else {
-        applySpriteBody(boss, SPRITES.bossShip.body);
+        const horizBody = (SPRITES[bossHorizKey] && SPRITES[bossHorizKey].body) || SPRITES.bossShip.body;
+        applySpriteBody(boss, horizBody);
         if (verticalBoss && boss.body) {
             // Placeholder rotated boss: swap AABB axes.
             const bw = boss.body.width;
@@ -3926,7 +4240,10 @@ function updateBossFight(time, frameDelta) {
 function fireBossVolley(time) {
     if (!boss || !boss.active) return;
 
-    const volleyDelay = BOSS_VOLLEY_DELAYS[bossPhase] || BOSS_VOLLEY_DELAYS[1];
+    const volleyDelay = scaleDelayRange(
+        BOSS_VOLLEY_DELAYS[bossPhase] || BOSS_VOLLEY_DELAYS[1],
+        difficultyNumber('bossTempoScale', 1)
+    );
     const missileSpeed = BOSS_PHASE_MISSILE_SPEED[bossPhase] || BOSS_MISSILE_SPEED;
     bossNextVolleyAt = time + Phaser.Math.Between(volleyDelay.min, volleyDelay.max);
 
@@ -4045,7 +4362,10 @@ function getBossPhase() {
 function spawnBossDroneAdd(time) {
     if (!boss || !boss.active) return;
 
-    const droneDelay = BOSS_DRONE_DELAYS[bossPhase] || BOSS_DRONE_DELAYS[2];
+    const droneDelay = scaleDelayRange(
+        BOSS_DRONE_DELAYS[bossPhase] || BOSS_DRONE_DELAYS[2],
+        difficultyNumber('bossTempoScale', 1)
+    );
     bossNextDroneAt = time + Phaser.Math.Between(droneDelay.min, droneDelay.max);
     const useInterceptor = bossPhase >= 3 && Math.random() < 0.55;
 
@@ -4126,7 +4446,11 @@ function spawnBossDroneAdd(time) {
 function fireBossLaserLane(time) {
     if (!boss || !boss.active) return;
 
-    bossNextLaserAt = time + Phaser.Math.Between(BOSS_LASER_DELAY_MIN_MS, BOSS_LASER_DELAY_MAX_MS);
+    const laserDelay = scaleDelayRange(
+        { min: BOSS_LASER_DELAY_MIN_MS, max: BOSS_LASER_DELAY_MAX_MS },
+        difficultyNumber('bossTempoScale', 1)
+    );
+    bossNextLaserAt = time + Phaser.Math.Between(laserDelay.min, laserDelay.max);
 
     // Vertical mode (K15): constant-X strips (vertical lanes on screen).
     if (boss.verticalMode) {
@@ -4150,20 +4474,30 @@ function fireBossLaserLane(time) {
             if (warning.active) warning.destroy();
             if (!boss || !boss.active || victoryPending || levelEnded) return;
 
-            const laser = enemyBullets.get(laneX, 300, 'bossLaser');
+            const laserKey = (this.textures && this.textures.exists('bossLaserVertical'))
+                ? 'bossLaserVertical'
+                : 'bossLaser';
+            const laser = enemyBullets.get(laneX, 300, laserKey);
             if (!laser) return;
 
-            laser.setTexture('bossLaser');
+            laser.setTexture(laserKey);
             activateSprite(laser, laneX, 300);
             laser.isBossLaser = true;
             laser.nextHitEffectAt = 0;
             laser.setVelocity(0, 0);
-            laser.setAngle(90);
             laser.setDepth(5);
             laser.setAlpha(0.95);
-            // Rotated laser texture → tall vertical body.
-            laser.setDisplaySize(40, 620);
-            laser.body.setSize(28, 580, true);
+            if (laserKey === 'bossLaserVertical') {
+                laser.setAngle(0);
+                laser.body.setSize(28, 580, true);
+            } else {
+                // Fallback: 800×40 strip sized in source pixels so world AABB is a lane.
+                laser.setAngle(0);
+                laser.setDisplaySize(40, 620);
+                const sx = Math.abs(laser.scaleX) || 1;
+                const sy = Math.abs(laser.scaleY) || 1;
+                laser.body.setSize(28 / sx, 580 / sy, true);
+            }
             sfx.laserFire(laneX);
             flashVignette(this, 0xff3355, 0.22);
 
@@ -4265,7 +4599,7 @@ function defeatBoss(bossSprite) {
     if (victoryPending || levelTransitioning) return;
 
     // Intro encounters never die — escape instead (even on overkill).
-    if (bossEncounterKey === 'intro' || (bossSprite && bossSprite.escapeHpRatio != null && bossEncounterKey === 'intro')) {
+    if (bossEncounterKey === 'intro') {
         bossEscapes.call(this, 'overkill');
         return;
     }
@@ -4278,6 +4612,9 @@ function defeatBoss(bossSprite) {
     deactivateGroup(enemies);
     if (walls) deactivateGroup(walls);
     this.physics.pause();
+    // Freeze wave/wall/fire simulation during the clear beat (update() does not
+    // bail on physics.pause, and mid-campaign clears are not victoryPending).
+    levelTransitioning = true;
     bossSprite.destroy();
     boss = null;
     bossHealth = 0;
@@ -4297,7 +4634,11 @@ function defeatBoss(bossSprite) {
 
     // Award the boss kill before locking this level's stats on the server.
     enemiesKilled++;
-    score += isFinalLevel ? 2500 : 1500;
+    const levelDef = typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null;
+    const bossAward = levelDef && Number.isFinite(levelDef.bossScore)
+        ? levelDef.bossScore
+        : (isFinalLevel ? 2500 : 1500);
+    score += bossAward;
     refillBoost(this, BOOST_MAX, bossX, bossY);
     updateScoreText();
 
@@ -4308,8 +4649,13 @@ function defeatBoss(bossSprite) {
     const levelKills = Math.max(0, enemiesKilled - levelStartKills);
     const levelAccuracy = getLevelRunAccuracy();
     const scoreEligible = isLeaderboardEligibleSession();
+    const sessionGen = runtimeSessionGen;
+    const scene = this;
     let playerName = null;
 
+    // Kick the PATCH off the stack *before* window.prompt. The modal blocks
+    // the JS thread, so a same-turn complete+prompt would include name-entry
+    // time in the server-measured run clock.
     if (scoreEligible) {
         completeScopedRunOnServer(levelRunState, {
             score: levelScore,
@@ -4323,36 +4669,40 @@ function defeatBoss(bossSprite) {
                 accuracy: getRunAccuracy()
             });
         }
+    }
 
+    function promptAndSubmitLevel() {
+        if (sessionGen !== runtimeSessionGen) return Promise.resolve(null);
+        if (!scoreEligible) return Promise.resolve(null);
         playerName = promptForPlayerName(levelScope, isFinalLevel);
-        submitLeaderboard({
+        return submitLeaderboard({
             name: playerName,
             scope: levelScope,
             timeMs: levelTimeMs,
             score: levelScore,
             kills: levelKills,
             accuracy: levelAccuracy
-        }, levelRunState).then(result => {
-            const rank = Number(result && result.rank);
-            const rankText = Number.isFinite(rank) && rank > 0 ? '  RANK #' + rank : '';
-            const where = result && result.online ? 'ONLINE' : 'LOCALLY';
-            showFloatingText(
-                this,
-                400,
-                180,
-                'LEVEL ' + clearedLevel + ' SCORE SAVED ' + where + rankText,
-                result && result.online ? '#66f6ff' : '#ffcc55',
-                { screenSpace: true }
-            );
-        });
+        }, levelRunState);
     }
 
     if (!isFinalLevel) {
         sfx.victory();
-        showFloatingText(this, 400, 140, 'LEVEL ' + currentLevel + ' CLEAR', '#55ffaa', { screenSpace: true });
-        this.time.delayedCall(900, () => {
-            beginNextLevel.call(this);
-        });
+        window.setTimeout(() => {
+            const submitPromise = promptAndSubmitLevel();
+            if (sessionGen !== runtimeSessionGen || levelEnded || victoryPending) return;
+            endLevel.call(scene, 'LEVEL ' + clearedLevel + ' CLEAR', '#55ffaa', {
+                continueToNext: true,
+                completed: true,
+                completionTimeMs: levelTimeMs,
+                playerName,
+                skipLeaderboard: !scoreEligible,
+                scope: levelScope,
+                score: levelScore,
+                kills: levelKills,
+                accuracy: levelAccuracy,
+                submitPromise
+            });
+        }, 0);
         return;
     }
 
@@ -4360,26 +4710,34 @@ function defeatBoss(bossSprite) {
     const completionTimeMs = this.time.now - levelStartTime;
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
     sfx.victory();
-    this.time.delayedCall(650, () => {
-        endLevel.call(this, 'BOSS DESTROYED', '#55ffaa', {
-            completed: true,
-            completionTimeMs,
-            playerName,
-            skipLeaderboard: !scoreEligible
+    window.setTimeout(() => {
+        promptAndSubmitLevel();
+        if (sessionGen !== runtimeSessionGen) return;
+        scene.time.delayedCall(650, () => {
+            endLevel.call(scene, 'BOSS DESTROYED', '#55ffaa', {
+                completed: true,
+                completionTimeMs,
+                playerName,
+                skipLeaderboard: !scoreEligible
+            });
         });
-    });
+    }, 0);
 }
 
 function beginNextLevel() {
-    if (levelEnded || victoryPending) return;
+    if (victoryPending) return;
+    if (levelEnded && !awaitingNextLevel) return;
     if (currentLevel >= totalLevels()) return;
+    awaitingNextLevel = false;
+    levelEnded = false;
     startLevel.call(this, currentLevel + 1, { fromClear: true });
 }
 
 function debugSkipToLevel(levelId) {
-    if (levelEnded || victoryPending) return;
+    if (levelEnded || victoryPending || awaitingNextLevel) return;
     const target = Phaser.Math.Clamp(levelId, 1, totalLevels());
     if (target === currentLevel && gamePhase === 'waves' && !levelTransitioning && !levelSegment) return;
+    markSessionLeaderboardIneligible();
     startLevel.call(this, target, { fromClear: false, debugSkip: true });
 }
 
@@ -4389,6 +4747,7 @@ function startLevel(levelId, options = {}) {
     levelTransitioning = true;
     currentLevel = Phaser.Math.Clamp(levelId, 1, totalLevels());
     const levelDef = getLevelDef(currentLevel);
+    applyLevelArt(this, currentLevel);
     levelAttemptStartTime = this.time.now;
     levelStartScore = score;
     levelStartKills = enemiesKilled;
@@ -4499,7 +4858,7 @@ function startLevel(levelId, options = {}) {
         gamePhase = 'waves';
         levelSegment = null;
         levelTransitioning = false;
-        scheduleNextEnemyWave(this, FIRST_WAVE_DELAY_MS);
+        scheduleNextEnemyWave(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
     });
 }
 
@@ -4551,39 +4910,51 @@ function advanceLevelSegment(scene, nextId, reason) {
         scene.enemySpawnEvent = null;
     }
 
-    switch (nextId) {
-        case 'introBoss':
-            enterIntroBoss(scene, segDef);
-            break;
-        case 'gauntletHorizontal':
-        case 'topdown':
-            enterProgressWaves(scene, segDef);
-            break;
-        case 'transition':
-            enterTransition(scene, segDef);
-            break;
-        case 'finalBoss':
-            enterFinalBoss(scene, segDef);
-            break;
-        default:
-            // Generic progress-driven waves if authored with gamePhase waves.
-            if (segDef.gamePhase === 'boss' || segDef.bossEncounter) {
-                enterIntroBoss(scene, segDef);
-            } else {
-                enterProgressWaves(scene, segDef);
-            }
-            break;
+    const kind = getSegmentKind(segDef);
+    if (kind === 'boss') {
+        enterBossSegment(scene, segDef);
+    } else if (kind === 'transition') {
+        enterTransition(scene, segDef);
+    } else {
+        enterProgressWaves(scene, segDef);
     }
 }
 
-function enterIntroBoss(scene, segDef) {
+function enterBossSegment(scene, segDef) {
     levelTransitioning = false;
     gamePhase = 'waves'; // startBossFight expects waves unless already boss
-    const encounter = (segDef && segDef.bossEncounter) || 'intro';
+    const encounter = (segDef && segDef.bossEncounter)
+        || (segDef && segDef.id === 'finalBoss' ? 'final' : 'intro');
     if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
     if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
+
+    const levelDef = getLevelDef(currentLevel);
+    const profile = resolveBossEncounterProfile(encounter);
+    const wantsBh = profile.arena === 'blackHole' && levelDef && levelDef.blackHole;
+    if (wantsBh) {
+        blackHolePreview = false;
+        blackHoleActive = true;
+        blackHoleConfig = Object.assign({}, BLACK_HOLE_DEFAULTS, levelDef.blackHole);
+        ensureBlackHoleVisuals(scene);
+        hazardRingState = {
+            phase: 'idle',
+            mode: HAZARD_RING.modePrimary,
+            radius: 280,
+            targetRadius: 90,
+            telegraphEndsAt: 0,
+            lethalEndsAt: 0,
+            cooldownEndsAt: scene.time.now + 2500
+        };
+    } else {
+        clearBlackHoleState();
+    }
+
     sfx.startMusic('boss');
     startBossFight.call(scene, encounter);
+}
+
+function enterIntroBoss(scene, segDef) {
+    enterBossSegment(scene, segDef);
 }
 
 function enterProgressWaves(scene, segDef) {
@@ -4625,7 +4996,7 @@ function enterProgressWaves(scene, segDef) {
 
     applyLevelWorldBounds(scene, currentLevel);
     sfx.startMusic('waves');
-    scheduleNextEnemyWave(scene, FIRST_WAVE_DELAY_MS);
+    scheduleNextEnemyWave(scene, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
 }
 
 /**
@@ -4688,7 +5059,7 @@ function enterTransition(scene, segDef) {
 
     function transitionStillActive() {
         return enterGen === segmentEnterGen
-            && levelSegment === 'transition'
+            && getSegmentKind(getLevelSegmentDef()) === 'transition'
             && !levelEnded
             && !victoryPending;
     }
@@ -4765,36 +5136,7 @@ function enterTransition(scene, segDef) {
 }
 
 function enterFinalBoss(scene, segDef) {
-    levelTransitioning = false;
-    gamePhase = 'waves';
-    const encounter = (segDef && segDef.bossEncounter) || 'final';
-    if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
-    if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
-
-    // Always clear preview on final enter; enable full BH only when gated.
-    blackHolePreview = false;
-    const levelDef = getLevelDef(currentLevel);
-    const profile = resolveBossEncounterProfile(encounter);
-    const wantsBh = profile.arena === 'blackHole' && levelDef && levelDef.blackHole;
-    if (wantsBh) {
-        blackHoleActive = true;
-        blackHoleConfig = Object.assign({}, BLACK_HOLE_DEFAULTS, levelDef.blackHole);
-        ensureBlackHoleVisuals(scene);
-        hazardRingState = {
-            phase: 'idle',
-            mode: HAZARD_RING.modePrimary,
-            radius: 280,
-            targetRadius: 90,
-            telegraphEndsAt: 0,
-            lethalEndsAt: 0,
-            cooldownEndsAt: scene.time.now + 2500
-        };
-    } else {
-        clearBlackHoleState();
-    }
-
-    sfx.startMusic('boss');
-    startBossFight.call(scene, encounter);
+    enterBossSegment(scene, segDef);
 }
 
 // ---------------------------------------------------------------------------
@@ -5059,15 +5401,27 @@ function getDebugBossSkip() {
 
 /** Debug, bot, and direct-level sessions never write public leaderboard scores. */
 function isLeaderboardEligibleSession() {
+    if (leaderboardDebugTainted) return false;
     try {
         const params = new URLSearchParams(window.location.search || '');
+        const difficultyOverlay = getDifficultyQueryOverlay();
+        if (difficultyOverlay && Object.keys(difficultyOverlay).length) {
+            return false;
+        }
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
-            'boss', 'skip', 'phase', 'level', 'level3', 'speedrun'
+            'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
+            'diff', 'difficulty'
         ].some(key => params.has(key));
     } catch (error) {
         return true;
     }
+}
+
+function markSessionLeaderboardIneligible() {
+    leaderboardDebugTainted = true;
+    campaignRunState = null;
+    levelRunState = null;
 }
 
 /**
@@ -5093,6 +5447,7 @@ function applyBossPracticeLoadout() {
  */
 function debugSkipToBoss(scene, encounterKey) {
     if (!scene || levelEnded || victoryPending) return false;
+    markSessionLeaderboardIneligible();
     let key = encounterKey || getDebugBossSkip() || 'standard';
     if (key === true || key === 1) {
         key = isSegmentedLevel() ? 'final' : 'standard';
@@ -5102,7 +5457,8 @@ function debugSkipToBoss(scene, encounterKey) {
     applyBossPracticeLoadout();
 
     if (isSegmentedLevel()) {
-        const segId = key === 'intro' ? 'introBoss' : 'finalBoss';
+        const segId = findSegmentIdForEncounter(key === 'intro' ? 'intro' : 'final')
+            || (key === 'intro' ? 'introBoss' : 'finalBoss');
         if (levelSegment === segId && gamePhase === 'boss' && boss && boss.active) {
             return true;
         }
@@ -5266,7 +5622,7 @@ function updateShieldVisual(time) {
 
 function getWeaponName() {
     const names = ['Single', 'Twin', 'Spread'];
-    return names[weaponLevel - 1];
+    return names[weaponLevel - 1] || names[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -5282,7 +5638,8 @@ function isOffscreen(sprite, pad) {
     const edge = Number.isFinite(pad) ? pad : 40;
     const wh = getLevelWorldHeight(currentLevel);
     if (isVerticalScroll()) {
-        return sprite.y > wh + edge
+        // Extra pad on both ends: dives spawn at y≈-60, risers at y≈660.
+        return sprite.y > wh + edge + 80
             || sprite.y < -edge - 80
             || sprite.x < -edge
             || sprite.x > GAME_WIDTH + edge;
@@ -5370,10 +5727,12 @@ function getEnemyFireVector(enemy, options) {
         ? opts.speed
         : (enemy.shotSpeed || ENEMY_SHOT_SPEED);
     const speedMag = Math.abs(speed);
-    const aimScale = enemy.shotAimScale || 1.1;
+    const aimScale = Number.isFinite(enemy.shotAimScale) ? enemy.shotAimScale : 1.1;
 
     if (isVerticalScroll()) {
-        const maxDx = enemy.shotMaxDx || enemy.shotMaxDy || 150;
+        const maxDx = Number.isFinite(enemy.shotMaxDx)
+            ? enemy.shotMaxDx
+            : (Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150);
         let dx = Phaser.Math.Clamp(
             (player.x - enemy.x) * aimScale,
             -maxDx,
@@ -5396,7 +5755,7 @@ function getEnemyFireVector(enemy, options) {
         };
     }
 
-    const maxDy = enemy.shotMaxDy || 150;
+    const maxDy = Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150;
     let dy = Phaser.Math.Clamp(
         (player.y - enemy.y) * aimScale,
         -maxDy,
@@ -5463,8 +5822,8 @@ function updateScrollVelocity(sprite) {
 
     // Canyon walls must scroll at the same boost rate as path events, or gaps open.
     const boostCap = sprite.isWall
-        ? BOOST_LEVEL_PROGRESS_MULTIPLIER
-        : BOOST_WORLD_SPEED_MULTIPLIER;
+        ? difficultyNumber('boostProgressMultiplier', BOOST_LEVEL_PROGRESS_MULTIPLIER)
+        : difficultyNumber('boostWorldSpeedMultiplier', BOOST_WORLD_SPEED_MULTIPLIER);
     const multiplier = Phaser.Math.Linear(1, boostCap, boostIntensity);
     if (hasX) sprite.setVelocityX(sprite.baseVelocityX * multiplier);
     if (hasY) sprite.setVelocityY(sprite.baseVelocityY * multiplier);
@@ -5572,19 +5931,23 @@ function updateEnemyMovement(enemy, frameDelta) {
 
     if (isVerticalScroll()) {
         // Track on X while approach velocity remains on Y.
+        const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
+        const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
         const targetVelocityX = Phaser.Math.Clamp(
-            (player.x - enemy.x) * INTERCEPTOR_TRACK_RESPONSE,
-            -INTERCEPTOR_TRACK_SPEED,
-            INTERCEPTOR_TRACK_SPEED
+            (player.x - enemy.x) * trackResponse,
+            -trackSpeed,
+            trackSpeed
         );
         enemy.setVelocityX(targetVelocityX);
         return;
     }
 
+    const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
+    const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
     const targetVelocityY = Phaser.Math.Clamp(
-        (player.y - enemy.y) * INTERCEPTOR_TRACK_RESPONSE,
-        -INTERCEPTOR_TRACK_SPEED,
-        INTERCEPTOR_TRACK_SPEED
+        (player.y - enemy.y) * trackResponse,
+        -trackSpeed,
+        trackSpeed
     );
     enemy.setVelocityY(targetVelocityY);
 }
@@ -5609,6 +5972,12 @@ function handleKeyboardDown(event) {
         return;
     }
 
+    if (isAudioStyleInput(event)) {
+        cycleAudioStyle(event.code === 'BracketLeft' || event.key === '[' ? -1 : 1);
+        event.preventDefault();
+        return;
+    }
+
     const handledMovement = trackMovementInput(event, true);
     const handledBoost = trackBoostInput(event, true);
     const handledFire = trackFireInput(event, true);
@@ -5624,6 +5993,59 @@ function isMuteInput(event) {
     return MUTE_INPUT_CODES.has(code) || MUTE_INPUT_KEYS.has(key);
 }
 
+function isAudioStyleInput(event) {
+    const code = event.code || '';
+    const key = event.key || '';
+    return code === 'BracketLeft' || code === 'BracketRight' || key === '[' || key === ']';
+}
+
+function loadAudioStyle() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const fromQuery = params.get('sfx') || params.get('audio');
+        if (fromQuery) {
+            const id = (window.NovaWingAudio && window.NovaWingAudio.resolveStyleId)
+                ? window.NovaWingAudio.resolveStyleId(fromQuery)
+                : String(fromQuery).toLowerCase();
+            saveAudioStyle(id);
+            return id;
+        }
+        return window.localStorage.getItem(AUDIO_STYLE_KEY) || 'genesis';
+    } catch (err) {
+        return 'genesis';
+    }
+}
+
+function saveAudioStyle(id) {
+    try {
+        window.localStorage.setItem(AUDIO_STYLE_KEY, id);
+    } catch (err) {
+        // ignore
+    }
+}
+
+function cycleAudioStyle(dir) {
+    if (!sfx || typeof sfx.cycleStyle !== 'function') return;
+    const kit = sfx.cycleStyle(dir);
+    const id = kit && kit.id ? kit.id : sfx.getStyle();
+    saveAudioStyle(id);
+    updateMuteText();
+    const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
+    if (scene && scene.add) {
+        showFloatingText(
+            scene,
+            400,
+            90,
+            'AUDIO  ' + (kit && kit.label ? kit.label : String(id).toUpperCase()),
+            '#66f6ff',
+            { screenSpace: true }
+        );
+    }
+    if (!audioMuted && !levelEnded && sfx.startMusic) {
+        sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
+    }
+}
+
 function toggleMute() {
     audioMuted = !audioMuted;
     saveAudioMuted(audioMuted);
@@ -5633,13 +6055,16 @@ function toggleMute() {
         sfx.unlock();
         if (!levelEnded) sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
     }
-    showFloatingText(
-        game.scene.scenes[0],
-        400,
-        90,
-        audioMuted ? 'SOUND OFF' : 'SOUND ON',
-        audioMuted ? '#ff8877' : '#66f6ff'
-    );
+    const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
+    if (scene && scene.add) {
+        showFloatingText(
+            scene,
+            400,
+            90,
+            audioMuted ? 'SOUND OFF' : 'SOUND ON',
+            audioMuted ? '#ff8877' : '#66f6ff'
+        );
+    }
 }
 
 function loadAudioMuted() {
@@ -5660,8 +6085,9 @@ function saveAudioMuted(muted) {
 
 function updateMuteText() {
     if (!muteText) return;
-    const prefix = shouldShowTouchControls() ? '' : 'M: ';
-    muteText.setText(audioMuted ? prefix + 'SOUND OFF' : prefix + 'MUTE');
+    const kit = sfx && sfx.getStyleLabel ? sfx.getStyleLabel() : 'GENESIS';
+    const prefix = shouldShowTouchControls() ? '' : 'M  [ ]  ';
+    muteText.setText(audioMuted ? prefix + 'OFF  ' + kit : prefix + kit);
     muteText.setFill(audioMuted ? '#ff8877' : '#8aa0c8');
 }
 
@@ -5919,10 +6345,7 @@ function createTouchControls(scene) {
     applyMobileDeviceProfile();
     if (!shouldShowTouchControls()) return;
 
-    // Multi-touch: stick + fire + boost (and spare) for Fire / Android.
-    if (scene.input && typeof scene.input.addPointer === 'function') {
-        scene.input.addPointer(3);
-    }
+    ensureExtraPointers(scene.input, 3);
 
     const layout = getTouchLayout();
     const stick = layout.stick;
@@ -6148,23 +6571,34 @@ function createTouchControls(scene) {
         }
     };
 
+    const onGameOut = () => {
+        releaseStick();
+        controls.firePointerId = null;
+        controls.boostPointerId = null;
+        touchFireHeld = false;
+        touchBoostHeld = false;
+    };
+
     scene.input.on('pointermove', onPointerMove);
     scene.input.on('pointerup', onPointerUp);
     scene.input.on('pointerupoutside', onPointerUp);
     // Silk / some Androids cancel pointers mid-gesture.
-    if (scene.input.on) {
-        scene.input.on('gameout', () => {
-            releaseStick();
-            touchFireHeld = false;
-            touchBoostHeld = false;
-        });
-    }
+    scene.input.on('gameout', onGameOut);
 
     controls.cleanup = () => {
         scene.input.off('pointermove', onPointerMove);
         scene.input.off('pointerup', onPointerUp);
         scene.input.off('pointerupoutside', onPointerUp);
+        scene.input.off('gameout', onGameOut);
     };
+}
+
+function ensureExtraPointers(inputPlugin, extraCount) {
+    if (!inputPlugin || typeof inputPlugin.addPointer !== 'function') return;
+    const manager = inputPlugin.manager;
+    const have = manager && Number.isFinite(manager.pointersTotal) ? manager.pointersTotal : 1;
+    const want = 1 + extraCount;
+    if (have < want) inputPlugin.addPointer(want - have);
 }
 
 function trackMovementInput(event, isDown) {
@@ -6214,11 +6648,14 @@ function activateSprite(sprite, x, y) {
     sprite.setPosition(x, y);
     sprite.clearTint();
     sprite.setAlpha(1);
+    sprite.setScale(1);
+    sprite.setAngle(0);
     // Clear pooled projectile flags so recycled bullets never keep laser behavior.
     sprite.isBossLaser = false;
     sprite.nextHitEffectAt = null;
     sprite.damage = null;
     sprite.dying = false;
+    resetPooledEnemyState(sprite);
 
     if (sprite.body) {
         sprite.enableBody(true, x, y, true, true);
@@ -6232,6 +6669,8 @@ function releaseSprite(sprite) {
 
     sprite.clearTint();
     sprite.setAlpha(1);
+    sprite.setScale(1);
+    sprite.setAngle(0);
     sprite.baseVelocityX = null;
     sprite.baseVelocityY = null;
     sprite.tracksPlayer = false;
@@ -6251,6 +6690,7 @@ function releaseSprite(sprite) {
     sprite.enemyType = null;
     sprite.splitsOnDeath = false;
     sprite.usesMissile = false;
+    resetPooledEnemyState(sprite);
     sprite.killScore = null;
     sprite.boostRefill = null;
     sprite.driftVelocityY = null;
@@ -6282,7 +6722,25 @@ function releasePowerup(scene, powerup) {
     releaseSprite(powerup);
 }
 
+function resetPooledEnemyState(sprite) {
+    if (!sprite) return;
+    sprite.usesRadialShot = false;
+    sprite.convergeVx = null;
+    sprite.strafeAmplitude = null;
+    sprite.strafePhase = null;
+    sprite.homeX = null;
+    sprite.nextMineAt = null;
+    sprite.mineIntervalMs = null;
+    sprite.orbitAngle = null;
+    sprite.orbitRadius = null;
+    sprite.orbitCenterX = null;
+    sprite.orbitCenterY = null;
+    sprite.orbitOmega = null;
+    sprite.orbitRadiusTarget = null;
+}
+
 function deactivateGroup(group, releaseChild = releaseSprite) {
+    if (!group || typeof group.getChildren !== 'function') return;
     group.getChildren().forEach(child => {
         if (child.active) releaseChild(child);
     });
@@ -6524,13 +6982,24 @@ function padRight(value, minLength, fillChar) {
     return text;
 }
 
+function getLeaderboardScopes() {
+    const count = totalLevels();
+    const scopes = [];
+    for (let i = 1; i <= count; i++) scopes.push('level-' + i);
+    scopes.push('campaign');
+    return scopes;
+}
+
 function sanitizeLeaderboardScope(value) {
     const scope = String(value || 'campaign').toLowerCase();
-    return LEADERBOARD_SCOPES.includes(scope) ? scope : 'campaign';
+    if (scope === 'campaign') return 'campaign';
+    if (/^level-[1-9]\d*$/.test(scope)) return scope;
+    return 'campaign';
 }
 
 function getLevelLeaderboardScope(levelId) {
-    const level = Phaser.Math.Clamp(Math.floor(Number(levelId) || 1), 1, 3);
+    const max = Math.max(1, totalLevels());
+    const level = Phaser.Math.Clamp(Math.floor(Number(levelId) || 1), 1, max);
     return 'level-' + level;
 }
 
@@ -6681,6 +7150,7 @@ function recordLocalLeaderboard(entry, scope = entry && entry.scope) {
 
 function loadLeaderboardFromServer(scope = 'campaign') {
     const normalizedScope = sanitizeLeaderboardScope(scope);
+    const sessionGen = runtimeSessionGen;
     if (leaderboardLoadPromises.has(normalizedScope)) {
         return leaderboardLoadPromises.get(normalizedScope);
     }
@@ -6704,7 +7174,7 @@ function loadLeaderboardFromServer(scope = 'campaign') {
         })
         .then(payload => {
             const entries = normalizeLeaderboardEntries(payload.entries, normalizedScope);
-            if (normalizedScope === 'campaign') {
+            if (sessionGen === runtimeSessionGen && normalizedScope === 'campaign') {
                 leaderboardEntries = entries;
                 leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
             }
@@ -6712,7 +7182,7 @@ function loadLeaderboardFromServer(scope = 'campaign') {
         })
         .catch(() => {
             const entries = getLocalLeaderboard(normalizedScope);
-            if (normalizedScope === 'campaign') {
+            if (sessionGen === runtimeSessionGen && normalizedScope === 'campaign') {
                 leaderboardEntries = entries;
                 leaderboardStatus = entries.length ? 'Offline scores shown' : 'Leaderboard unavailable';
             }
@@ -6851,6 +7321,7 @@ function normalizeLeaderboardEntries(entries, scope = 'campaign') {
 }
 
 function submitLeaderboard(entry, state) {
+    const sessionGen = runtimeSessionGen;
     const scope = sanitizeLeaderboardScope((state && state.scope) || entry.scope);
     const scopedEntry = { ...entry, scope };
     if (!window.fetch) {
@@ -6864,6 +7335,9 @@ function submitLeaderboard(entry, state) {
         : completeScopedRunOnServer(state, scopedEntry);
 
     return completionPromise.then(completion => {
+        if (sessionGen !== runtimeSessionGen) {
+            return { rank: null, entries: [], entry: scopedEntry, online: false };
+        }
         if (!completion) {
             const result = recordLocalLeaderboard(scopedEntry, scope);
             leaderboardStatus = 'Saved locally; online run verification unavailable';
@@ -6891,11 +7365,13 @@ function submitLeaderboard(entry, state) {
             })
             .then(payload => {
                 const entries = normalizeLeaderboardEntries(payload.entries, scope);
-                if (scope === 'campaign') {
-                    leaderboardEntries = entries;
-                    leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
+                if (sessionGen === runtimeSessionGen) {
+                    if (scope === 'campaign') {
+                        leaderboardEntries = entries;
+                        leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
+                    }
+                    saveLocalLeaderboard(entries, scope);
                 }
-                saveLocalLeaderboard(entries, scope);
                 return {
                     rank: Number(payload.rank) || null,
                     entries,
@@ -6904,6 +7380,9 @@ function submitLeaderboard(entry, state) {
                 };
             })
             .catch(() => {
+                if (sessionGen !== runtimeSessionGen) {
+                    return { rank: null, entries: [], entry: verifiedEntry, online: false };
+                }
                 const result = recordLocalLeaderboard(verifiedEntry, scope);
                 leaderboardStatus = 'Saved locally; online leaderboard unavailable';
                 result.online = false;
@@ -6976,8 +7455,14 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
 }
 
 function endLevel(title, color, options = {}) {
-    if (levelEnded) return;
-    levelEnded = true;
+    const continueToNext = Boolean(options.continueToNext);
+    if (continueToNext) {
+        if (awaitingNextLevel) return;
+        awaitingNextLevel = true;
+    } else {
+        if (levelEnded) return;
+        levelEnded = true;
+    }
     levelTransitioning = false;
     clearPathDeadEndWarnings(this);
 
@@ -7002,15 +7487,19 @@ function endLevel(title, color, options = {}) {
     const completionTimeMs = options.completionTimeMs || Math.max(0, this.time.now - levelStartTime);
     const completed = Boolean(options.completed);
     const skipLeaderboard = Boolean(options.skipLeaderboard);
+    const displayScope = sanitizeLeaderboardScope(options.scope || 'campaign');
+    const displayScore = Number.isFinite(options.score) ? options.score : score;
+    const displayKills = Number.isFinite(options.kills) ? options.kills : enemiesKilled;
+    const displayAccuracy = Number.isFinite(options.accuracy) ? options.accuracy : accuracy;
     const playerName = completed && !skipLeaderboard
-        ? sanitizePlayerName(options.playerName || promptForPlayerName('campaign'))
+        ? sanitizePlayerName(options.playerName || promptForPlayerName(continueToNext ? displayScope : 'campaign'))
         : null;
-    const currentLeaderboard = leaderboardEntries.length
-        ? leaderboardEntries
-        : getLocalLeaderboard('campaign');
-    const resultLine = completed && !skipLeaderboard
-        ? 'Submitting campaign score...'
-        : (completed ? 'Debug run — leaderboard disabled' : 'Complete the boss fight to set a time');
+    const currentLeaderboard = getLocalLeaderboard(displayScope);
+    const resultLine = continueToNext
+        ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : 'Saving level score...')
+        : (completed && !skipLeaderboard
+            ? 'Submitting campaign score...'
+            : (completed ? 'Debug run — leaderboard disabled' : 'Complete the boss fight to set a time'));
     let submittedEntry = null;
     let submittedRank = null;
 
@@ -7024,7 +7513,7 @@ function endLevel(title, color, options = {}) {
     panel.setDepth(10);
     panel.setScrollFactor(0);
 
-    this.add.text(400, 68, title, {
+    const titleText = this.add.text(400, 68, title, {
         fontSize: '38px',
         fill: color,
         fontFamily: 'monospace'
@@ -7036,28 +7525,31 @@ function endLevel(title, color, options = {}) {
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    this.add.text(400, 202, [
+    const formatResultStats = (timeMs) => [
         'Pilot:          ' + (playerName || '--'),
-        'Time:           ' + (completed ? formatRunTime(completionTimeMs) : '--:--.--'),
-        'Enemies killed: ' + enemiesKilled,
-        'Shots fired:    ' + shotsFired,
-        'Accuracy:       ' + accuracy + '%',
+        'Time:           ' + (completed ? formatRunTime(timeMs) : '--:--.--'),
+        'Enemies killed: ' + displayKills,
+        'Shots fired:    ' + (continueToNext
+            ? Math.max(0, shotsFired - levelStartShotsFired)
+            : shotsFired),
+        'Accuracy:       ' + displayAccuracy + '%',
         'Weapon:         ' + getWeaponName(),
-        'Score:          ' + score
-    ], {
+        'Score:          ' + displayScore
+    ];
+    const statsText = this.add.text(400, 202, formatResultStats(completionTimeMs), {
         fontSize: '18px',
         fill: '#c7ddff',
         fontFamily: 'monospace',
         align: 'left'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    const leaderboardTitle = this.add.text(400, 318, 'CAMPAIGN FASTEST', {
+    const leaderboardTitle = this.add.text(400, 318, getLeaderboardScopeLabel(displayScope) + ' FASTEST', {
         fontSize: '22px',
         fill: '#ffffff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    let selectedLeaderboardScope = 'campaign';
+    let selectedLeaderboardScope = displayScope;
     const leaderboardText = this.add.text(400, 430, formatLeaderboardLines(currentLeaderboard), {
         fontSize: '14px',
         fill: '#c7ddff',
@@ -7065,16 +7557,21 @@ function endLevel(title, color, options = {}) {
         align: 'left'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    const tabDefs = [
-        { scope: 'level-1', label: 'L1', x: 235 },
-        { scope: 'level-2', label: 'L2', x: 335 },
-        { scope: 'level-3', label: 'L3', x: 435 },
-        { scope: 'campaign', label: 'CAMPAIGN', x: 565 }
-    ];
+    const tabScopes = getLeaderboardScopes();
+    const tabLeft = 220;
+    const tabRight = 580;
+    const tabDefs = tabScopes.map((scope, index) => {
+        const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
+        return {
+            scope: scope,
+            label: scope === 'campaign' ? 'CAMPAIGN' : 'L' + scope.slice('level-'.length),
+            x: tabLeft + t * (tabRight - tabLeft)
+        };
+    });
     const tabTexts = tabDefs.map(tab => {
         const text = this.add.text(tab.x, 349, tab.label, {
             fontSize: '15px',
-            fill: tab.scope === 'campaign' ? '#ffe66d' : '#8aa0c8',
+            fill: tab.scope === displayScope ? '#ffe66d' : '#8aa0c8',
             fontFamily: 'monospace'
         }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
         text.setInteractive({ useHandCursor: true });
@@ -7117,30 +7614,108 @@ function endLevel(title, color, options = {}) {
         shareScoreResult(submittedEntry, submittedRank, shareStatusText);
     });
 
-    const restartHint = shouldShowTouchControls()
-        ? 'Tap here or press R to restart'
-        : 'Press R or Enter to restart';
-    const restartText = this.add.text(400, 566, restartHint, {
+    const actionHint = continueToNext
+        ? (shouldShowTouchControls()
+            ? 'Tap here or press Enter to continue'
+            : 'Press Enter or Space to continue · R to restart')
+        : (shouldShowTouchControls()
+            ? 'Tap here or press R to restart'
+            : 'Press R or Enter to restart');
+    const actionText = this.add.text(400, 566, actionHint, {
         fontSize: '18px',
-        fill: '#aab2c8',
+        fill: continueToNext ? '#66f6ff' : '#aab2c8',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
-    restartText.setInteractive({ useHandCursor: true });
+    actionText.setInteractive({ useHandCursor: true });
 
     const restartScene = () => this.scene.restart();
-    restartText.on('pointerdown', restartScene);
-    if (this.input.keyboard) {
-        this.input.keyboard.once('keydown-R', restartScene);
-        this.input.keyboard.once('keydown-ENTER', restartScene);
+    let continued = false;
+    const overlayNodes = [
+        panel, titleText, resultLineText, statsText, leaderboardTitle, leaderboardText,
+        shareStatusText, shareText, actionText
+    ];
+
+    const goNext = () => {
+        if (!continueToNext || continued || !awaitingNextLevel) return;
+        continued = true;
+        awaitingNextLevel = false;
+        overlayNodes.forEach(node => {
+            if (node && node.destroy) node.destroy();
+        });
+        tabTexts.forEach(tab => {
+            if (tab.text && tab.text.destroy) tab.text.destroy();
+        });
+        if (touchControls && touchControls.container) {
+            touchControls.container.setVisible(true);
+        }
+        beginNextLevel.call(this);
+    };
+
+    if (continueToNext) {
+        actionText.on('pointerdown', goNext);
+        if (this.input.keyboard) {
+            this.input.keyboard.once('keydown-ENTER', goNext);
+            this.input.keyboard.once('keydown-SPACE', goNext);
+            this.input.keyboard.once('keydown-C', goNext);
+            this.input.keyboard.once('keydown-R', restartScene);
+        }
+        if (isPlaytestBotSession()) {
+            this.time.delayedCall(800, goNext);
+        }
+    } else {
+        actionText.on('pointerdown', restartScene);
+        if (this.input.keyboard) {
+            this.input.keyboard.once('keydown-R', restartScene);
+            this.input.keyboard.once('keydown-ENTER', restartScene);
+        }
     }
 
-    // Hide virtual controls under the end-game panel so taps hit restart/share.
+    // Hide virtual controls under the end-game panel so taps hit continue/share.
     if (touchControls && touchControls.container) {
         touchControls.container.setVisible(false);
     }
     clearTouchActionState();
 
-    if (completed && !skipLeaderboard) {
+    const applySubmitResult = (result, fallbackEntry) => {
+        if (!resultLineText.scene || !leaderboardText.scene) return;
+        if (!result) {
+            resultLineText.setText(skipLeaderboard
+                ? 'Debug run — leaderboard disabled'
+                : 'Score saved locally');
+            return;
+        }
+        const rank = Number(result.rank);
+        const rankedInTop = Number.isFinite(rank) && rank > 0 && rank <= LEADERBOARD_LIMIT;
+        submittedEntry = result.entry || (fallbackEntry ? normalizeLeaderboardEntry(fallbackEntry) : null);
+        submittedRank = rank;
+        if (submittedEntry && Number.isFinite(submittedEntry.timeMs) && submittedEntry.timeMs > 0) {
+            statsText.setText(formatResultStats(submittedEntry.timeMs));
+        }
+        resultLineText.setText(rankedInTop
+            ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
+            : 'Finished outside top ' + LEADERBOARD_LIMIT);
+        if (selectedLeaderboardScope === displayScope) {
+            leaderboardText.setText(formatLeaderboardLines(result.entries || []));
+        }
+        shareText.setVisible(true);
+        shareStatusText.setText(result.online ? 'Score posted online' : 'Score saved locally');
+    };
+
+    selectLeaderboardScope(displayScope);
+
+    if (continueToNext) {
+        const pending = options.submitPromise;
+        if (pending && typeof pending.then === 'function') {
+            pending.then(result => applySubmitResult(result, {
+                name: playerName,
+                scope: displayScope,
+                timeMs: completionTimeMs,
+                score: displayScore,
+                kills: displayKills,
+                accuracy: displayAccuracy
+            }));
+        }
+    } else if (completed && !skipLeaderboard) {
         const scoreEntry = {
             name: playerName,
             scope: 'campaign',
@@ -7151,25 +7726,7 @@ function endLevel(title, color, options = {}) {
         };
 
         submitLeaderboard(scoreEntry, campaignRunState).then(result => {
-            if (!resultLineText.scene || !leaderboardText.scene) return;
-
-            const rank = Number(result.rank);
-            const rankedInTop = Number.isFinite(rank) && rank > 0 && rank <= LEADERBOARD_LIMIT;
-            submittedEntry = result.entry || normalizeLeaderboardEntry(scoreEntry);
-            submittedRank = rank;
-            resultLineText.setText(rankedInTop
-                ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
-                : 'Finished outside top ' + LEADERBOARD_LIMIT);
-            if (selectedLeaderboardScope === 'campaign') {
-                leaderboardText.setText(formatLeaderboardLines(result.entries || []));
-            }
-            shareText.setVisible(true);
-            shareStatusText.setText(result.online ? 'Score posted online' : 'Score saved locally');
-        });
-    } else {
-        loadLeaderboardFromServer('campaign').then(result => {
-            if (!leaderboardText.scene) return;
-            leaderboardText.setText(formatLeaderboardLines(result.entries || []));
+            applySubmitResult(result, scoreEntry);
         });
     }
 }
@@ -7441,12 +7998,12 @@ function playPlayerAnimation(sprite, animationKey, restart = false) {
 function ensureVerticalPlayerTexture(sprite) {
     if (!sprite || !sprite.active) return;
     const scene = sprite.scene;
-    if (!scene || !scene.textures || !scene.textures.exists('playerVertical')) return;
-
-    const onVertical = sprite.texture && sprite.texture.key === 'playerVertical';
+    const verticalKey = (currentLevelArt && currentLevelArt.playerVertical) || 'playerVertical';
+    if (!scene || !scene.textures || !scene.textures.exists(verticalKey)) return;
+    const onVertical = sprite.texture && sprite.texture.key === verticalKey;
     if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
     if (!onVertical) {
-        sprite.setTexture('playerVertical');
+        sprite.setTexture(verticalKey);
         currentPlayerAnimation = null;
     }
     sprite.setFlipX(false);
@@ -7575,7 +8132,8 @@ function applyPlayerShipSize(sprite) {
 function applyPlayerOrientation(sprite, orientation) {
     if (!sprite) return;
     const scene = sprite.scene;
-    const hasVerticalArt = scene && scene.textures && scene.textures.exists('playerVertical');
+    const verticalKey = (currentLevelArt && currentLevelArt.playerVertical) || 'playerVertical';
+    const hasVerticalArt = scene && scene.textures && scene.textures.exists(verticalKey);
 
     if (orientation === 'up') {
         playerAnimationOverride = null;
@@ -7621,15 +8179,11 @@ function applyPlayerOrientation(sprite, orientation) {
  */
 function applyEnemyOrientation(enemy) {
     if (!enemy) return;
-    const verticalKeys = {
-        enemyDart: true,
-        enemyRiser: true,
-        enemyStrafer: true,
-        enemyMineDropper: true,
-        enemyOrbiter: true
-    };
-    if (verticalKeys[enemy.texture && enemy.texture.key]) {
-        enemy.setFlipX(false);
+    const texKey = enemy.texture && enemy.texture.key;
+    const spriteDef = texKey ? SPRITES[texKey] : null;
+    const typeDef = ENEMY_TYPES[enemy.enemyType];
+    if ((spriteDef && spriteDef.upright) || (typeDef && typeDef.upright)) {
+        enemy.setFlipX(Boolean(typeDef && typeDef.flipX));
         enemy.setAngle(0);
         enemy.setRotation(0);
         return;
@@ -7642,14 +8196,9 @@ function applyEnemyOrientation(enemy) {
     }
 }
 
-/** Pick L3 vertical texture key for a combat type. */
+/** Pick vertical texture key for a combat type (from ENEMY_TYPES). */
 function resolveVerticalEnemyTexture(type, options) {
-    if (type === 'riser' || options.verticalRole === 'riser') return 'enemyRiser';
-    if (type === 'strafer' || options.verticalRole === 'strafer') return 'enemyStrafer';
-    if (type === 'mineDropper' || options.verticalRole === 'mineDropper') return 'enemyMineDropper';
-    if (type === 'orbiter' || options.verticalRole === 'orbiter') return 'enemyOrbiter';
-    if (type === 'dart' || type === 'interceptor' || type === 'regular') return 'enemyDart';
-    return 'enemyDart';
+    return resolveEnemyTexture(type, options || {}, null);
 }
 
 // Procedural SFX lives in audio.js (loaded before this file).
@@ -7710,7 +8259,9 @@ function getBotSnapshot() {
         levelEnded: Boolean(levelEnded),
         levelTransitioning: Boolean(levelTransitioning),
         victoryPending: Boolean(victoryPending),
+        awaitingNextLevel: Boolean(awaitingNextLevel),
         playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,
+        difficulty: getActiveDifficulty(),
         level: typeof currentLevel === 'number' ? currentLevel : 1,
         totalLevels: totalLevels(),
         levelName: levelDef && levelDef.name ? levelDef.name : null,
@@ -7771,6 +8322,7 @@ function getBotSnapshot() {
                 x: b.x,
                 y: b.y,
                 vx: b.vx || wall.baseVelocityX || 0,
+                vy: b.vy || wall.baseVelocityY || 0,
                 w: b.w,
                 h: b.h,
                 danger: Boolean(wall.isDangerWall)
@@ -7794,6 +8346,7 @@ function getBotSnapshot() {
                 x: b.x,
                 y: b.y,
                 vx: b.vx || powerup.baseVelocityX || 0,
+                vy: b.vy || powerup.baseVelocityY || 0,
                 type: powerup.powerupType || 'weapon'
             };
         }),
@@ -7865,6 +8418,17 @@ window.__novawingDebug = {
     getCombatOrientation() {
         return combatOrientation;
     },
+    getAudioStyle() {
+        return sfx && sfx.getStyle ? sfx.getStyle() : null;
+    },
+    setAudioStyle(id) {
+        if (!sfx || !sfx.setStyle) return null;
+        const next = sfx.setStyle(id);
+        saveAudioStyle(next);
+        updateMuteText();
+        return next;
+    },
+    getDifficulty: getActiveDifficulty,
     getTotalLevels: totalLevels,
     /**
      * Skip waves → boss fight. encounter: 'standard' | 'intro' | 'final' | true.
@@ -7873,6 +8437,7 @@ window.__novawingDebug = {
     startBoss(encounter) {
         const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
         if (!scene) return false;
+        markSessionLeaderboardIneligible();
         return debugSkipToBoss(scene, encounter || getDebugBossSkip() || 'standard');
     },
     /**
@@ -7883,6 +8448,7 @@ window.__novawingDebug = {
     setSegment(id) {
         const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
         if (!scene || !id) return false;
+        markSessionLeaderboardIneligible();
         if (levelTransitioning || levelSegment === 'transition') {
             levelTransitioning = false;
             if (scene.cameras && scene.cameras.main) {

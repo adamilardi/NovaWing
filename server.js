@@ -16,12 +16,15 @@ const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
 // Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
 const MAX_PLAUSIBLE_KILLS = 300;
+// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
 const CAMPAIGN_BOSS_SCORE = 5500;
+const CAMPAIGN_BOSS_KILLS = 3;
 const FINAL_BOSS_SCORE = 2500;
 const LEVEL_BOSS_SCORE = 1500;
-// Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
-const MAX_KILL_SCORE = 200;
-const MAX_POWERUP_BONUS_SCORE = 2500;
+// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
+const MAX_KILL_SCORE = 250;
+// Campaign can bank overflow pickups on all three stages (~29 authored drops).
+const MAX_POWERUP_BONUS_SCORE = 6000;
 const MIN_MS_PER_KILL = 200;
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
@@ -38,7 +41,7 @@ function isPublicRequest(requestPath) {
     ) {
         return true;
     }
-    return /^\/assets\/[\w.-]+\.(png|jpe?g)$/i.test(requestPath);
+    return /^\/assets\/(?:[\w.-]+\/)*[\w.-]+\.(png|jpe?g)$/i.test(requestPath);
 }
 
 function sendJson(res, statusCode, payload) {
@@ -155,9 +158,9 @@ function sanitizeGameVersion(value) {
 
 function sanitizeLeaderboardScope(value) {
     const scope = String(value || 'campaign').toLowerCase();
-    return scope === 'level-1' || scope === 'level-2' || scope === 'level-3'
-        ? scope
-        : 'campaign';
+    if (scope === 'campaign') return 'campaign';
+    if (/^level-[1-9]\d*$/.test(scope)) return scope;
+    return 'campaign';
 }
 
 function sanitizeName(value) {
@@ -324,11 +327,13 @@ function inspectRunToken(payload) {
     if (!run) return { ok: false, error: 'Invalid or expired run token' };
     if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
     if (run.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
-    if (Date.now() > run.expiresAt) {
-        activeRuns.delete(runId);
-        return { ok: false, error: 'Run token expired' };
+    if (!run.completedAt) {
+        if (Date.now() > run.expiresAt) {
+            activeRuns.delete(runId);
+            return { ok: false, error: 'Run token expired' };
+        }
+        return { ok: false, error: 'Run is not complete' };
     }
-    if (!run.completedAt) return { ok: false, error: 'Run is not complete' };
     if (!Number.isFinite(run.score) || !Number.isFinite(run.kills) || !Number.isFinite(run.accuracy)) {
         return { ok: false, error: 'Run is missing locked stats' };
     }
@@ -352,7 +357,7 @@ function markRunTokenUsed(runId) {
     if (!run || !run.completedAt) {
         return { ok: false, error: 'Invalid or expired run token' };
     }
-    if (Date.now() > run.expiresAt) {
+    if (!run.completedAt && Date.now() > run.expiresAt) {
         activeRuns.delete(runId);
         return { ok: false, error: 'Run token expired' };
     }
@@ -371,12 +376,8 @@ function completeRunToken(payload) {
     if (!run) return { ok: false, error: 'Invalid or expired run token' };
     if (run.version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
     if (run.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
-    if (now > run.expiresAt) {
-        activeRuns.delete(runId);
-        return { ok: false, error: 'Run token expired' };
-    }
 
-    // Already completed: return locked stats; do not accept a rewrite.
+    // Already completed: return locked stats even after TTL; do not accept a rewrite.
     if (run.completedAt) {
         if (!Number.isFinite(run.score) || !Number.isFinite(run.kills) || !Number.isFinite(run.accuracy)) {
             return { ok: false, error: 'Run is missing locked stats' };
@@ -393,6 +394,11 @@ function completeRunToken(payload) {
             kills: run.kills,
             accuracy: run.accuracy
         };
+    }
+
+    if (now > run.expiresAt) {
+        activeRuns.delete(runId);
+        return { ok: false, error: 'Run token expired' };
     }
 
     const completedAt = now;
@@ -444,7 +450,15 @@ function parseRunStats(payload) {
 function pruneExpiredRuns() {
     const now = Date.now();
     activeRuns.forEach((run, runId) => {
-        if (now > run.expiresAt) activeRuns.delete(runId);
+        // Keep completed-but-unused tokens so the player can still POST a name
+        // after the original start TTL. Drop them one TTL after completion.
+        if (!run.completedAt && now > run.expiresAt) {
+            activeRuns.delete(runId);
+            return;
+        }
+        if (run.completedAt && now > run.completedAt + RUN_TOKEN_TTL_MS) {
+            activeRuns.delete(runId);
+        }
     });
 
     const windowStart = now - RUN_REQUEST_WINDOW_MS;
@@ -464,7 +478,7 @@ function isPlausibleCompletedRun(entry) {
     if (entry.kills < 1) return false;
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
     const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = entry.scope === 'campaign' ? 3 : 1;
+    const bossKills = getBossKillsForScope(entry.scope);
     if (entry.score < bossScore) return false;
 
     if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
@@ -482,6 +496,10 @@ function getBossScoreForScope(scope) {
     if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
     if (scope === 'level-3') return FINAL_BOSS_SCORE;
     return LEVEL_BOSS_SCORE;
+}
+
+function getBossKillsForScope(scope) {
+    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
 }
 
 function getClientKey(req) {

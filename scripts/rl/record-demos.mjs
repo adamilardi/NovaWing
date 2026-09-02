@@ -61,6 +61,7 @@ const BOSS_SKIP = Boolean(BOSS_RAW) && BOSS_RAW !== '0' && BOSS_RAW !== 'false';
 const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
     ? BOSS_RAW
     : (process.env.BOSS_ENCOUNTER || '1');
+const START_SEGMENT = (process.env.SEGMENT || '').trim() || null;
 
 /** Level-scoped or campaign victory. */
 function isEpisodeWin(snap, outcome) {
@@ -147,6 +148,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
     const speedrun = process.env.SPEEDRUN !== '0';
     if (speedrun) url.searchParams.set('speedrun', '1');
     if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
+    if (START_SEGMENT) url.searchParams.set('segment', START_SEGMENT);
 
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
@@ -185,6 +187,19 @@ async function recordEpisode(browser, episodeIndex, policy) {
         }, null, { timeout: 8000 });
         await page.waitForTimeout(100);
     }
+    if (START_SEGMENT && !BOSS_SKIP) {
+        await page.waitForTimeout(350);
+        const jumped = await page.evaluate((seg) => {
+            if (window.__novawingDebug && window.__novawingDebug.setSegment) {
+                return window.__novawingDebug.setSegment(seg);
+            }
+            return false;
+        }, START_SEGMENT);
+        if (!jumped) {
+            throw new Error(`setSegment(${START_SEGMENT}) failed`);
+        }
+        await page.waitForTimeout(200);
+    }
     const mode = await installExpert(page, policy);
 
     const steps = [];
@@ -213,7 +228,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
 
             if (snap && snap.ready && snap.player && status.input && !snap.levelTransitioning) {
                 const obs = encodeObservation(snap);
-                const action = encodeAction(status.input);
+                const action = encodeAction(status.input, snap);
                 const reward = stepReward(prevSnap, snap);
                 episodeReturn += reward;
                 const dur = snap.levelDurationMs || 60000;
@@ -288,6 +303,7 @@ async function main() {
     );
     console.log(`expert=${EXPERT} explore=${EXPLORE} obsSize=${OBS_SIZE}`);
     if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
+    if (START_SEGMENT) console.log(`start segment=${START_SEGMENT}`);
     if (BOSS_SKIP) console.log(`boss practice=ON encounter=${BOSS_ENCOUNTER}`);
 
     let policy = null;
@@ -315,7 +331,8 @@ async function main() {
             ep.won ? 'win' : null,
             EXPERT === 'policy' ? 'policy' : null,
             BOSS_SKIP ? 'boss' : null,
-            process.env.LEVEL ? `L${process.env.LEVEL}` : null
+            process.env.LEVEL ? `L${process.env.LEVEL}` : null,
+            START_SEGMENT ? START_SEGMENT : null
         ].filter(Boolean).join('-');
         const file = path.join(
             DEMO_DIR,
@@ -331,6 +348,7 @@ async function main() {
             obsSize: OBS_SIZE,
             actionSize: ACTION_SIZE,
             layout: OBS_LAYOUT,
+            canonicalAxes: true,
             episode: i,
             won: ep.won,
             bossPractice: BOSS_SKIP || false,

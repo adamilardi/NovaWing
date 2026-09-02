@@ -332,6 +332,20 @@ export function installInPagePilot() {
         if (minTtc < Infinity) score -= Math.min(minTtc, 2) * 40;
         else score -= 100;
 
+        if (vertical) {
+            // Penalize sitting in a dive / riser column even when TTC is still long.
+            let column = 0;
+            for (let i = 0; i < threats.length; i++) {
+                const t = threats[i];
+                if (t.kind !== 'enemy' && t.kind !== 'bullet' && t.kind !== 'obstacle') continue;
+                if (Math.abs((t.x || 0) - x) > 46) continue;
+                const closingDown = t.y < y - 20 && (t.vy || 0) > 8;
+                const closingUp = t.y > y + 20 && (t.vy || 0) < -8;
+                if (closingDown || closingUp) column += t.kind === 'bullet' ? 1.4 : 1;
+            }
+            score += column * 55;
+        }
+
         // Prefer corridor centers in canyon levels (strong).
         if (snap.openBands && snap.openBands.length) {
             const preferred = preferredOpenBands(snap) || snap.openBands;
@@ -346,6 +360,10 @@ export function installInPagePilot() {
                 return y >= b[0] + 45 && y <= b[1] - 45;
             });
             if (!inPref) score += 180;
+        } else if (vertical) {
+            // Stay in the aft pocket (bottom of screen), not mid-field into dives.
+            const homeY = snap.phase === 'boss' ? VERT_BOSS_Y : VERT_HOME_Y;
+            score += Math.abs(y - homeY) * 0.22;
         } else if ((snap.weaponLevel || 1) < 2) {
             // Early game: stay mid-screen, avoid top/bottom death traps.
             score += Math.abs(y - 300) * 0.25;
@@ -356,11 +374,19 @@ export function installInPagePilot() {
             const powerups = snap.powerups || [];
             for (let i = 0; i < powerups.length; i++) {
                 const pu = powerups[i];
+                const value = powerupValue(pu, snap);
+                if (vertical) {
+                    if (pu.y > y + 80 || pu.y < y - 560) continue;
+                    if (Math.abs(pu.x - x) > 240) continue;
+                    const ddy = Math.abs(pu.y - y);
+                    const ddx = Math.abs(pu.x - x);
+                    score -= value * clamp(1 - ddy / 420, 0, 1) * clamp(1 - ddx / 240, 0.35, 1);
+                    continue;
+                }
                 if (pu.x < x - 20 || pu.x > x + 500) continue;
                 if (snap.openBands && snap.openBands.length && !yInOpenBand(pu.y, snap, 14)) continue;
                 const dy = Math.abs(pu.y - y);
                 if (dy > 110) continue;
-                const value = powerupValue(pu, snap);
                 score -= value * clamp(1 - dy / 110, 0, 1) * clamp(1 - (pu.x - x) / 500, 0.35, 1);
             }
         }
@@ -369,8 +395,14 @@ export function installInPagePilot() {
             const enemies = snap.enemies || [];
             for (let i = 0; i < enemies.length; i++) {
                 const e = enemies[i];
-                if (e.x < x + 20 || e.x > x + 480) continue;
                 if (e.type === 'splitter' || (e.health || 1) >= 8) continue;
+                if (vertical) {
+                    if (e.y > y - 10 || e.y < y - 500) continue;
+                    const dxe = Math.abs(e.x - x);
+                    if (dxe < 26) score -= 10 * clamp(1 - (y - e.y) / 500, 0.2, 1);
+                    continue;
+                }
+                if (e.x < x + 20 || e.x > x + 480) continue;
                 const dy = Math.abs(e.y - y);
                 if (dy < 26) score -= 10 * clamp(1 - (e.x - x) / 480, 0.2, 1);
             }
@@ -378,10 +410,16 @@ export function installInPagePilot() {
 
         if (snap.phase === 'boss' && snap.boss) {
             const b = snap.boss;
-            const bodyHalf = (b.h || 150) * 0.22;
-            if (Math.abs(y - b.y) < bodyHalf + 20) score += 150;
-            const trackW = (snap.lives || 0) <= 1 ? 0.22 : 0.48;
-            score += Math.abs(y - b.y) * trackW;
+            if (vertical) {
+                const bodyHalf = (b.h || 150) * 0.22;
+                if (y < b.y + bodyHalf + 50) score += (b.y + bodyHalf + 50 - y) * 2.2;
+                score += Math.abs(x - b.x) * 0.12;
+            } else {
+                const bodyHalf = (b.h || 150) * 0.22;
+                if (Math.abs(y - b.y) < bodyHalf + 20) score += 150;
+                const trackW = (snap.lives || 0) <= 1 ? 0.22 : 0.48;
+                score += Math.abs(y - b.y) * trackW;
+            }
         }
 
         if (y < bounds.minY) score += (bounds.minY - y) * 1.6;
@@ -466,8 +504,23 @@ export function installInPagePilot() {
             for (let d = -220; d <= 220; d += 28) {
                 xs.push(clamp(homeX + d, bounds.minX, bounds.maxX));
             }
-            xs.push(p.x, clamp(p.x - 40, bounds.minX, bounds.maxX), clamp(p.x + 40, bounds.minX, bounds.maxX));
+            xs.push(
+                p.x,
+                clamp(p.x - 40, bounds.minX, bounds.maxX),
+                clamp(p.x + 40, bounds.minX, bounds.maxX),
+                300, 500, 250, 550
+            );
+            for (let d = -80; d <= 40; d += 20) {
+                ys.push(clamp(homeY + d, bounds.minY, bounds.maxY));
+            }
             ys.push(homeY, homeY - 30, homeY - 60, homeY + 20, p.y);
+            const incoming = snap.enemies || [];
+            for (let i = 0; i < incoming.length; i++) {
+                const e = incoming[i];
+                if (e.y < p.y + 40 && e.y > p.y - 520) {
+                    xs.push(clamp(e.x, bounds.minX, bounds.maxX));
+                }
+            }
             if (snap.phase === 'boss' && snap.boss) {
                 // Stay under boss; strafe on X with boss weave.
                 for (let d = -200; d <= 200; d += 25) {
@@ -488,8 +541,8 @@ export function installInPagePilot() {
                     const y = clamp(ys[yi], bounds.minY, bounds.maxY);
                     const x = clamp(xs[xi], bounds.minX, bounds.maxX);
                     const result = scoreLane(y, x, snap, threats);
-                    // Prefer bottom-center; slight pull toward under-boss X.
-                    let total = result.score + Math.abs(y - homeY) * 0.08 + Math.abs(x - homeX) * 0.03;
+                    // Prefer the aft pocket; do not glue to screen center (riser columns).
+                    let total = result.score + Math.abs(y - homeY) * 0.08 + Math.abs(x - homeX) * 0.012;
                     if (snap.phase === 'boss' && snap.boss) {
                         total += Math.abs(x - snap.boss.x) * 0.02;
                     }
@@ -554,6 +607,7 @@ export function installInPagePilot() {
         const pw = (p.w || 48) * 0.48;
         const ph = (p.h || 28) * 0.48;
         const threats = allThreats(snap);
+        const vertical = isVertical(snap);
         let minTtc = Infinity;
         let dodgeDir = 0;
         let bullets = 0;
@@ -567,7 +621,10 @@ export function installInPagePilot() {
                 expanded.w = (t.w || 16) + 14;
                 expanded.h = (t.h || 12) + 24;
             }
-            if (t.kind === 'laser') expanded.h = (t.h || 28) + 28;
+            if (t.kind === 'laser') {
+                if (vertical) expanded.w = (t.w || 28) + 28;
+                else expanded.h = (t.h || 28) + 28;
+            }
             if (t.kind === 'wall') {
                 expanded.w = (t.w || 96) + 12;
                 expanded.h = (t.h || 40) + 14;
@@ -577,14 +634,18 @@ export function installInPagePilot() {
                 minTtc = ttc;
                 kind = t.kind;
                 if (t.kind === 'laser' || t.kind === 'bullet' || t.kind === 'enemy' || t.kind === 'wall') {
-                    const predY = t.y + (t.vy || 0) * Math.min(ttc, 0.35);
-                    dodgeDir = predY >= p.y ? -1 : 1;
+                    if (vertical) {
+                        const predX = t.x + (t.vx || 0) * Math.min(ttc, 0.35);
+                        dodgeDir = predX >= p.x ? -1 : 1;
+                    } else {
+                        const predY = t.y + (t.vy || 0) * Math.min(ttc, 0.35);
+                        dodgeDir = predY >= p.y ? -1 : 1;
+                    }
                 }
             }
         }
 
         const bulletsList = snap.enemyBullets || [];
-        const vertical = isVertical(snap);
         for (let i = 0; i < bulletsList.length; i++) {
             const b = bulletsList[i];
             if (b.isLaser) {
@@ -603,9 +664,12 @@ export function installInPagePilot() {
                 continue;
             }
             if (vertical) {
-                const vy = b.vy || 380;
-                if (vy <= 20) continue;
-                if (b.y > p.y + 30 || b.y < p.y - 520) continue;
+                const vy = b.vy || 0;
+                const fromAbove = b.y < p.y - 8 && vy > 20;
+                const fromBelow = b.y > p.y + 8 && vy < -20;
+                if (!fromAbove && !fromBelow) continue;
+                if (fromAbove && b.y < p.y - 560) continue;
+                if (fromBelow && b.y > p.y + 280) continue;
                 const tHit = (p.y - b.y) / vy;
                 if (tHit < 0 || tHit > 0.95) continue;
                 const predX = b.x + (b.vx || 0) * tHit;
@@ -716,6 +780,70 @@ export function installInPagePilot() {
         return bestY;
     }
 
+    /**
+     * Vertical-boss gap finder: pick the X with max clearance from incoming
+     * dive bullets / vertical laser strips.
+     */
+    function safestBossX(snap, preferX) {
+        const p = snap.player;
+        const bounds = playBounds(snap);
+        const bullets = snap.enemyBullets || [];
+        const samples = [];
+        for (let x = bounds.minX; x <= bounds.maxX; x += 16) samples.push(x);
+        samples.push(preferX, p.x);
+        if (snap.boss) {
+            samples.push(snap.boss.x, snap.boss.x - 80, snap.boss.x + 80);
+        }
+
+        let bestX = preferX;
+        let bestScore = -Infinity;
+
+        for (let si = 0; si < samples.length; si++) {
+            const x = clamp(samples[si], bounds.minX, bounds.maxX);
+            let score = 0;
+            if (snap.boss) score -= Math.abs(x - snap.boss.x) * 0.15;
+            score -= Math.abs(x - p.x) * 0.05;
+            score -= Math.abs(x - preferX) * 0.08;
+
+            if (snap.boss) {
+                const bodyHalf = (snap.boss.w || 220) * 0.22;
+                const bodyDist = Math.abs(x - snap.boss.x);
+                if (bodyDist < bodyHalf + 16) score -= (bodyHalf + 16 - bodyDist) * 6;
+            }
+
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                if (b.isLaser) {
+                    const dx = Math.abs(b.x - x);
+                    if (dx < 40) score -= (40 - dx) * 14;
+                    continue;
+                }
+                const vy = b.vy || 380;
+                if (vy <= 20) continue;
+                if (b.y > p.y + 30 || b.y < p.y - 560) continue;
+                const tHit = (p.y - b.y) / vy;
+                if (tHit < 0 || tHit > 0.85) continue;
+                const predX = b.x + (b.vx || 0) * tHit;
+                const miss = Math.abs(predX - x);
+                if (miss < 48) {
+                    const urgency = 1 / (0.08 + tHit);
+                    score -= (48 - miss) * urgency * 1.6;
+                } else if (miss < 80) {
+                    score -= (80 - miss) * 0.15;
+                }
+            }
+
+            const edge = Math.min(x - bounds.minX, bounds.maxX - x);
+            if (edge < 35) score -= (35 - edge) * 0.8;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestX = x;
+            }
+        }
+        return bestX;
+    }
+
     function decide(snap) {
         if (!snap || !snap.ready || !snap.player || snap.levelEnded || snap.victoryPending) {
             return { x: 0, y: 0, fire: false, boost: false, note: 'idle' };
@@ -770,6 +898,9 @@ export function installInPagePilot() {
                 if (here.ttc < 0.28 && p.y < 500) ay = 1; // drop back
             } else if (ttc < 0.24 && Math.abs(dx) > 2) {
                 ax = dx < 0 ? -1 : 1;
+            } else if (ttc > 0.7 && snap.phase === 'waves' && Math.abs(p.x - 400) < 36) {
+                // Don't camp the 400 column — riser/V waves own it.
+                ax = p.x >= 400 ? 1 : -1;
             }
         } else if (here.ttc < 0.5 && here.dodgeDir !== 0) {
             if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
@@ -813,7 +944,8 @@ export function installInPagePilot() {
             if (p.x <= bounds.minX + 30) state.bossOrbitSign = 1;
             if (p.x >= bounds.maxX - 30) state.bossOrbitSign = -1;
 
-            const errX = preferX - p.x;
+            const safeX = safestBossX(snap, preferX);
+            const errX = safeX - p.x;
             if (Math.abs(errX) > 10) ax = errX > 0 ? 1 : -1;
             else ax = 0;
             // Hold low for DPS window; climb slightly when safe.

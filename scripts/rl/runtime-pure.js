@@ -85,6 +85,79 @@
         return 0;
     }
 
+    /**
+     * Vertical L3 uses the same control/obs frame as horizontal:
+     *   +x = ahead (travel), +y = strafe (screen-down / screen-right).
+     * A policy that learned "stay back, dodge on Y, shoot ahead" then
+     * transfers to top-down without treating +X as "fly into the dive lane".
+     */
+    function isVerticalSnap(snap) {
+        return Boolean(snap && (snap.scrollMode === 'vertical' || snap.combatOrientation === 'up'));
+    }
+
+    function toCanonicalDelta(dx, dy, vx, vy, vertical) {
+        if (!vertical) {
+            return { dx: dx || 0, dy: dy || 0, vx: vx || 0, vy: vy || 0 };
+        }
+        return {
+            dx: -(dy || 0),
+            dy: dx || 0,
+            vx: -(vy || 0),
+            vy: vx || 0
+        };
+    }
+
+    function toCanonicalPos(x, y, snap) {
+        var ww = (snap && snap.world && snap.world.width) || 800;
+        var wh = (snap && snap.world && snap.world.height) || 600;
+        if (!isVerticalSnap(snap)) {
+            return { x: x || 0, y: y || 0 };
+        }
+        // Bottom-center home (400, 480) → left-center home (120, 300).
+        return {
+            x: wh - (y || 0),
+            y: (x || 0) * (wh / ww)
+        };
+    }
+
+    function toCanonicalVel(vx, vy, snap) {
+        if (!isVerticalSnap(snap)) return { vx: vx || 0, vy: vy || 0 };
+        return { vx: -(vy || 0), vy: vx || 0 };
+    }
+
+    function toCanonicalAction(input, snap) {
+        var ax = clamp(Number(input && input.x) || 0, -1, 1);
+        var ay = clamp(Number(input && input.y) || 0, -1, 1);
+        var fire = input && input.fire === false ? 0 : 1;
+        var boost = input && input.boost ? 1 : 0;
+        if (!isVerticalSnap(snap)) return [ax, ay, fire, boost];
+        // screen up (ay=-1, forward) → canonical +x; screen right → canonical +y.
+        return [-ay, ax, fire, boost];
+    }
+
+    function fromCanonicalAction(vec, snap, threshold) {
+        threshold = threshold == null ? 0.5 : threshold;
+        var ax;
+        var ay;
+        var fire;
+        var boost;
+        if (vec && typeof vec === 'object' && !Array.isArray(vec) && !(vec instanceof Float32Array)) {
+            ax = clamp(Number(vec.x) || 0, -1, 1);
+            ay = clamp(Number(vec.y) || 0, -1, 1);
+            fire = vec.fire === false ? false : (vec.fire === true ? true : (Number(vec.fire) || 0) >= threshold);
+            boost = Boolean(vec.boost) && (vec.boost === true || (Number(vec.boost) || 0) >= threshold);
+        } else {
+            ax = clamp(Number(vec && vec[0]) || 0, -1, 1);
+            ay = clamp(Number(vec && vec[1]) || 0, -1, 1);
+            fire = (Number(vec && vec[2]) || 0) >= threshold;
+            boost = (Number(vec && vec[3]) || 0) >= threshold;
+        }
+        if (!isVerticalSnap(snap)) {
+            return { x: ax, y: ay, fire: fire, boost: boost };
+        }
+        return { x: ay, y: -ax, fire: fire, boost: boost };
+    }
+
     function writeSelf(out, o, snap) {
         var p = snap.player || { x: 120, y: 300, vx: 0, vy: 0 };
         var wh = (snap.world && snap.world.height) || 600;
@@ -93,10 +166,12 @@
         var dur = snap.levelDurationMs || 60000;
         var progress = dur > 0 ? clamp((snap.levelProgressMs || 0) / dur, 0, 1) : 0;
         var seg = snap.segment || null;
-        out[o++] = nrm(p.x, 800);
-        out[o++] = nrm(p.y, wh);
-        out[o++] = nrm(p.vx, 500);
-        out[o++] = nrm(p.vy, 500);
+        var pos = toCanonicalPos(p.x, p.y, snap);
+        var vel = toCanonicalVel(p.vx, p.vy, snap);
+        out[o++] = nrm(pos.x, 800);
+        out[o++] = nrm(pos.y, wh);
+        out[o++] = nrm(vel.vx, 500);
+        out[o++] = nrm(vel.vy, 500);
         out[o++] = clamp((snap.lives || 0) / 5, 0, 1);
         out[o++] = clamp((snap.weaponLevel || 1) / 3, 0, 1);
         out[o++] = snap.hasShield ? 1 : 0;
@@ -116,14 +191,15 @@
         return o;
     }
 
-    function writeEnemies(out, o, ranked, k) {
+    function writeEnemies(out, o, ranked, k, vertical) {
         for (var i = 0; i < k; i++) {
             if (i < ranked.length) {
                 var r = ranked[i];
-                out[o++] = nrm(r.dx, 400);
-                out[o++] = nrm(r.dy, 300);
-                out[o++] = nrm(r.e.vx, 400);
-                out[o++] = nrm(r.e.vy, 300);
+                var c = toCanonicalDelta(r.dx, r.dy, r.e.vx, r.e.vy, vertical);
+                out[o++] = nrm(c.dx, 400);
+                out[o++] = nrm(c.dy, 300);
+                out[o++] = nrm(c.vx, 400);
+                out[o++] = nrm(c.vy, 300);
                 out[o++] = ENEMY_TYPE_ID[r.e.type] != null ? ENEMY_TYPE_ID[r.e.type] : 0.2;
                 out[o++] = clamp((r.e.health || 1) / 12, 0, 1);
             } else {
@@ -134,14 +210,15 @@
         return o;
     }
 
-    function writeObstacles(out, o, ranked, k) {
+    function writeObstacles(out, o, ranked, k, vertical) {
         for (var i = 0; i < k; i++) {
             if (i < ranked.length) {
                 var r = ranked[i];
-                out[o++] = nrm(r.dx, 400);
-                out[o++] = nrm(r.dy, 300);
-                out[o++] = nrm(r.e.vx, 200);
-                out[o++] = nrm(r.e.vy, 200);
+                var c = toCanonicalDelta(r.dx, r.dy, r.e.vx, r.e.vy, vertical);
+                out[o++] = nrm(c.dx, 400);
+                out[o++] = nrm(c.dy, 300);
+                out[o++] = nrm(c.vx, 200);
+                out[o++] = nrm(c.vy, 200);
                 out[o++] = nrm(Math.max(r.e.w || 40, r.e.h || 40), 80);
             } else {
                 out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0;
@@ -150,14 +227,15 @@
         return o;
     }
 
-    function writeBullets(out, o, ranked, k) {
+    function writeBullets(out, o, ranked, k, vertical) {
         for (var i = 0; i < k; i++) {
             if (i < ranked.length) {
                 var r = ranked[i];
-                out[o++] = nrm(r.dx, 400);
-                out[o++] = nrm(r.dy, 300);
-                out[o++] = nrm(r.e.vx, 500);
-                out[o++] = nrm(r.e.vy, 400);
+                var c = toCanonicalDelta(r.dx, r.dy, r.e.vx, r.e.vy, vertical);
+                out[o++] = nrm(c.dx, 400);
+                out[o++] = nrm(c.dy, 300);
+                out[o++] = nrm(c.vx, 500);
+                out[o++] = nrm(c.vy, 400);
                 out[o++] = r.e.isLaser ? 1 : 0;
             } else {
                 out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0;
@@ -166,13 +244,14 @@
         return o;
     }
 
-    function writeWalls(out, o, ranked, k) {
+    function writeWalls(out, o, ranked, k, vertical) {
         for (var i = 0; i < k; i++) {
             if (i < ranked.length) {
                 var r = ranked[i];
-                out[o++] = nrm(r.dx, 400);
-                out[o++] = nrm(r.dy, 400);
-                out[o++] = nrm(r.e.vx, 200);
+                var c = toCanonicalDelta(r.dx, r.dy, r.e.vx, r.e.vy || 0, vertical);
+                out[o++] = nrm(c.dx, 400);
+                out[o++] = nrm(c.dy, 400);
+                out[o++] = nrm(c.vx, 200);
                 out[o++] = nrm(r.e.w || 96, 200);
                 out[o++] = nrm(r.e.h || 80, 400);
             } else {
@@ -182,12 +261,13 @@
         return o;
     }
 
-    function writePowerups(out, o, ranked, k) {
+    function writePowerups(out, o, ranked, k, vertical) {
         for (var i = 0; i < k; i++) {
             if (i < ranked.length) {
                 var r = ranked[i];
-                out[o++] = nrm(r.dx, 400);
-                out[o++] = nrm(r.dy, 300);
+                var c = toCanonicalDelta(r.dx, r.dy, r.e.vx, r.e.vy || 0, vertical);
+                out[o++] = nrm(c.dx, 400);
+                out[o++] = nrm(c.dy, 300);
                 out[o++] = POWERUP_TYPE_ID[r.e.type] != null ? POWERUP_TYPE_ID[r.e.type] : 0.2;
                 out[o++] = nrm(Math.sqrt(r.d2), 500);
             } else {
@@ -217,9 +297,10 @@
         var wh = (snap.world && snap.world.height) || 600;
         var b = snap.boss;
         if (b && snap.phase === 'boss') {
+            var bc = toCanonicalDelta((b.x || 0) - p.x, (b.y || 0) - p.y, 0, 0, isVerticalSnap(snap));
             out[o++] = 1;
-            out[o++] = nrm((b.x || 0) - p.x, 500);
-            out[o++] = nrm((b.y || 0) - p.y, wh);
+            out[o++] = nrm(bc.dx, 500);
+            out[o++] = nrm(bc.dy, wh);
             out[o++] = clamp((b.health || 0) / Math.max(1, b.maxHealth || 280), 0, 1);
             out[o++] = clamp((b.phase || 1) / 3, 0, 1);
             out[o++] = encounterId(b.encounter);
@@ -244,9 +325,12 @@
         var anchor = active
             ? { x: cfg.x != null ? cfg.x : 400, y: cfg.y != null ? cfg.y : 260 }
             : (cfg.previewAnchor || { x: 400, y: 40 });
-        var dx = (anchor.x || 0) - (p.x || 0);
-        var dy = (anchor.y || 0) - (p.y || 0);
-        var dist = Math.sqrt(dx * dx + dy * dy);
+        var rawDx = (anchor.x || 0) - (p.x || 0);
+        var rawDy = (anchor.y || 0) - (p.y || 0);
+        var c = toCanonicalDelta(rawDx, rawDy, 0, 0, isVerticalSnap(snap));
+        var dx = c.dx;
+        var dy = c.dy;
+        var dist = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
         var dangerR = cfg.dangerRadius != null ? cfg.dangerRadius : 48;
         var killR = cfg.killRadius != null ? cfg.killRadius : 28;
         out[o++] = active ? 1 : 0;
@@ -272,13 +356,14 @@
         }
         var px = snap.player.x || 0;
         var py = snap.player.y || 0;
+        var vertical = isVerticalSnap(snap);
         var o = 0;
         o = writeSelf(out, o, snap);
-        o = writeEnemies(out, o, sortByDist(snap.enemies, px, py), K_ENEMIES);
-        o = writeObstacles(out, o, sortByDist(snap.obstacles, px, py), K_OBSTACLES);
-        o = writeBullets(out, o, sortByDist(snap.enemyBullets, px, py), K_BULLETS);
-        o = writeWalls(out, o, sortByDist(snap.walls, px, py), K_WALLS);
-        o = writePowerups(out, o, sortByDist(snap.powerups, px, py), K_POWERUPS);
+        o = writeEnemies(out, o, sortByDist(snap.enemies, px, py), K_ENEMIES, vertical);
+        o = writeObstacles(out, o, sortByDist(snap.obstacles, px, py), K_OBSTACLES, vertical);
+        o = writeBullets(out, o, sortByDist(snap.enemyBullets, px, py), K_BULLETS, vertical);
+        o = writeWalls(out, o, sortByDist(snap.walls, px, py), K_WALLS, vertical);
+        o = writePowerups(out, o, sortByDist(snap.powerups, px, py), K_POWERUPS, vertical);
         o = writeBands(out, o, snap);
         o = writeBoss(out, o, snap);
         o = writeBlackHole(out, o, snap);
@@ -288,13 +373,8 @@
         return out;
     }
 
-    function encodeAction(input) {
-        return [
-            clamp(Number(input.x) || 0, -1, 1),
-            clamp(Number(input.y) || 0, -1, 1),
-            input.fire === false ? 0 : 1,
-            input.boost ? 1 : 0
-        ];
+    function encodeAction(input, snap) {
+        return toCanonicalAction(input || {}, snap);
     }
 
     function decodeAction(vec, threshold) {
@@ -410,8 +490,10 @@
                     return;
                 }
                 var obs = encodeObservation(snap);
-                var action = actionFromObs(obs);
+                var canonical = actionFromObs(obs);
+                var action = fromCanonicalAction(canonical, snap);
                 global.__novawingPolicyLastAction = action;
+                global.__novawingPolicyLastCanonical = canonical;
                 global.__novawingDebug.setBotInput(action);
             } catch (err) {
                 global.__novawingPolicyError = String(err && err.message ? err.message : err);
@@ -460,8 +542,15 @@
                 powerups: K_POWERUPS,
                 bands: K_BANDS
             },
-            notes: 'v2: +segment/orientation self feats + blackHole block; boss[5]=encounter'
+            notes: 'v2: +segment/orientation + BH; spatial/action axes remapped so vertical L3 matches horizontal frame',
+            canonicalAxes: true
         },
+        isVerticalSnap: isVerticalSnap,
+        toCanonicalDelta: toCanonicalDelta,
+        toCanonicalPos: toCanonicalPos,
+        toCanonicalVel: toCanonicalVel,
+        toCanonicalAction: toCanonicalAction,
+        fromCanonicalAction: fromCanonicalAction,
         encodeObservation: encodeObservation,
         encodeAction: encodeAction,
         decodeAction: decodeAction,

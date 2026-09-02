@@ -11,9 +11,15 @@ import {
     OBS_VERSION,
     OBS_SIZE,
     ACTION_SIZE,
+    OBS_LAYOUT,
     encodeObservation,
     encodeAction,
-    decodeAction
+    decodeAction,
+    isVerticalSnap,
+    toCanonicalAction,
+    fromCanonicalAction,
+    toCanonicalDelta,
+    toCanonicalPos
 } from '../obs-encode.mjs';
 import { forwardPolicy } from '../policy-infer.mjs';
 import {
@@ -67,6 +73,7 @@ describe('OBS contract', () => {
         assert.equal(OBS_VERSION, 2);
         assert.equal(OBS_SIZE, 176);
         assert.equal(ACTION_SIZE, 4);
+        assert.equal(OBS_LAYOUT.canonicalAxes, true);
     });
 
     it('encodeObservation fills exact OBS_SIZE', () => {
@@ -83,6 +90,72 @@ describe('OBS contract', () => {
         assert.equal(d.y, -1);
         assert.equal(d.fire, true);
         assert.equal(d.boost, false);
+    });
+});
+
+describe('canonical vertical frame', () => {
+    it('maps vertical home/ahead onto the horizontal frame', () => {
+        assert.equal(isVerticalSnap({ scrollMode: 'vertical' }), true);
+        assert.equal(isVerticalSnap({ combatOrientation: 'up' }), true);
+        assert.equal(isVerticalSnap({ scrollMode: 'horizontal' }), false);
+
+        const pos = toCanonicalPos(400, 480, {
+            scrollMode: 'vertical',
+            world: { width: 800, height: 600 }
+        });
+        assert.ok(Math.abs(pos.x - 120) < 1e-6);
+        assert.ok(Math.abs(pos.y - 300) < 1e-6);
+
+        const ahead = toCanonicalDelta(0, -200, 0, 80, true);
+        assert.ok(Math.abs(ahead.dx - 200) < 1e-6);
+        assert.ok(Math.abs(ahead.dy) < 1e-6);
+        assert.ok(Math.abs(ahead.vx + 80) < 1e-6);
+        assert.ok(Math.abs(ahead.vy) < 1e-6);
+    });
+
+    it('remaps screen actions into the policy frame and back', () => {
+        const snap = { scrollMode: 'vertical', combatOrientation: 'up' };
+        // Strafe right + fly forward (up).
+        const encoded = toCanonicalAction({ x: 1, y: -1, fire: true, boost: false }, snap);
+        assert.deepEqual(encoded, [1, 1, 1, 0]);
+        const screen = fromCanonicalAction(encoded, snap);
+        assert.equal(screen.x, 1);
+        assert.equal(screen.y, -1);
+        assert.equal(screen.fire, true);
+        assert.equal(screen.boost, false);
+
+        const dropBack = encodeAction({ x: 0, y: 1, fire: true, boost: true }, snap);
+        assert.deepEqual(dropBack, [-1, 0, 1, 1]);
+        const applied = fromCanonicalAction(dropBack, snap);
+        assert.equal(applied.x, 0);
+        assert.equal(applied.y, 1);
+    });
+
+    it('encodes a vertical dive the same as a horizontal approach', () => {
+        const horiz = fixtureSnap();
+        horiz.player = { x: 120, y: 300, vx: 0, vy: 0 };
+        horiz.enemies = [{ x: 320, y: 300, vx: -80, vy: 0, type: 'regular', health: 2 }];
+        horiz.enemyBullets = [];
+
+        const vert = fixtureSnap();
+        vert.scrollMode = 'vertical';
+        vert.combatOrientation = 'up';
+        vert.segment = 'topdown';
+        vert.level = 3;
+        vert.player = { x: 400, y: 480, vx: 0, vy: 0 };
+        vert.enemies = [{ x: 400, y: 280, vx: 0, vy: 80, type: 'regular', health: 2 }];
+        vert.enemyBullets = [];
+        vert.openBands = [];
+
+        const a = encodeObservation(horiz);
+        const b = encodeObservation(vert);
+        // Player pose + first enemy dx/dy/vx/vy should match after remap.
+        for (const i of [0, 1, 2, 3, 20, 21, 22, 23]) {
+            assert.ok(Math.abs(a[i] - b[i]) < 1e-5, `feat ${i}: ${a[i]} vs ${b[i]}`);
+        }
+        assert.equal(b[14], 1); // scrollMode vertical flag
+        assert.equal(b[15], 1); // combatOrientation up
+        assert.equal(a[14], 0);
     });
 });
 

@@ -6,11 +6,15 @@ const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
 const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
 const MAX_PLAUSIBLE_KILLS = 300;
+// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
 const CAMPAIGN_BOSS_SCORE = 5500;
+const CAMPAIGN_BOSS_KILLS = 3;
 const FINAL_BOSS_SCORE = 2500;
 const LEVEL_BOSS_SCORE = 1500;
-const MAX_KILL_SCORE = 200;
-const MAX_POWERUP_BONUS_SCORE = 2500;
+// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
+const MAX_KILL_SCORE = 250;
+// Campaign can bank overflow pickups on all three stages (~29 authored drops).
+const MAX_POWERUP_BONUS_SCORE = 6000;
 // Rough upper bound: more than ~1 kill per 200ms wall time is not plausible for this game.
 const MIN_MS_PER_KILL = 200;
 
@@ -100,12 +104,7 @@ async function readJson(request) {
         throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
     }
 
-    const body = await request.text();
-    // Compare UTF-8 byte length, not JS string length (multi-byte names can under-count).
-    if (new TextEncoder().encode(body).length > MAX_REQUEST_BODY_BYTES) {
-        throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
-    }
-
+    const body = await readBodyLimited(request, MAX_REQUEST_BODY_BYTES);
     if (!body) return {};
 
     try {
@@ -113,6 +112,42 @@ async function readJson(request) {
     } catch (err) {
         throw Object.assign(new Error('Invalid JSON'), { statusCode: 400 });
     }
+}
+
+async function readBodyLimited(request, maxBytes) {
+    if (!request.body || typeof request.body.getReader !== 'function') {
+        const text = await request.text();
+        if (new TextEncoder().encode(text).length > maxBytes) {
+            throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
+        }
+        return text;
+    }
+
+    const reader = request.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
+            }
+            chunks.push(value);
+        }
+    } finally {
+        try { await reader.cancel(); } catch (err) { /* already closed */ }
+    }
+
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+        bytes.set(chunks[i], offset);
+        offset += chunks[i].byteLength;
+    }
+    return new TextDecoder().decode(bytes);
 }
 
 async function pruneExpiredRuns(db, now) {
@@ -140,11 +175,10 @@ async function completeRun(db, payload) {
     if (!run || run.used_at) return { ok: false, error: 'Invalid or expired run token' };
     if (run.game_version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
     if (run.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
-    if (Date.parse(run.expires_at) <= now) return { ok: false, error: 'Run token expired' };
 
     const startedAt = Date.parse(run.created_at);
 
-    // Already completed: return locked stats; do not accept a rewrite.
+    // Already completed: return locked stats even after TTL; do not accept a rewrite.
     if (run.completed_at) {
         const completedAt = Date.parse(run.completed_at);
         const timeMs = completedAt - startedAt;
@@ -167,6 +201,8 @@ async function completeRun(db, payload) {
             accuracy
         };
     }
+
+    if (Date.parse(run.expires_at) <= now) return { ok: false, error: 'Run token expired' };
 
     const completedAt = now;
     const timeMs = completedAt - startedAt;
@@ -232,7 +268,7 @@ function isPlausibleCompletedRun(entry) {
     if (entry.kills < 1) return false;
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
     const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = entry.scope === 'campaign' ? 3 : 1;
+    const bossKills = getBossKillsForScope(entry.scope);
     if (entry.score < bossScore) return false;
 
     // Kill rate vs wall-clock (server-measured time).
@@ -252,6 +288,10 @@ function getBossScoreForScope(scope) {
     if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
     if (scope === 'level-3') return FINAL_BOSS_SCORE;
     return LEVEL_BOSS_SCORE;
+}
+
+function getBossKillsForScope(scope) {
+    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
 }
 
 async function checkRunRateLimit(db, clientKey) {
@@ -293,9 +333,9 @@ function sanitizeGameVersion(value) {
 
 function sanitizeLeaderboardScope(value) {
     const scope = String(value || 'campaign').toLowerCase();
-    return scope === 'level-1' || scope === 'level-2' || scope === 'level-3'
-        ? scope
-        : 'campaign';
+    if (scope === 'campaign') return 'campaign';
+    if (/^level-[1-9]\d*$/.test(scope)) return scope;
+    return 'campaign';
 }
 
 function jsonResponse(request, payload, status = 200) {

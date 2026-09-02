@@ -66,15 +66,17 @@ def train(args: argparse.Namespace) -> Path:
     )
     skipped_v = meta.get("skipped_version") or 0
     skipped_s = meta.get("skipped_size") or 0
+    skipped_vert = meta.get("skipped_vertical_uncanonical") or 0
     print(
         f"Loaded {meta['steps']} steps from {meta['episodes']} episodes "
         f"({meta['wins']} wins) speedrun={args.speedrun} "
         f"obs_v={OBS_VERSION} size={OBS_SIZE}"
     )
-    if skipped_v or skipped_s:
+    if skipped_v or skipped_s or skipped_vert:
         print(
-            f"  skipped demos: wrong_version={skipped_v} wrong_size={skipped_s} "
-            f"(re-record after OBS bump)"
+            f"  skipped: wrong_version={skipped_v} wrong_size={skipped_s} "
+            f"vertical_pre_canonical={skipped_vert} "
+            f"(re-record L3 after canonical-axis remap)"
         )
 
     wins = [e for e in meta.get("episodes_detail", []) if e["won"] and e["elapsed_ms"]]

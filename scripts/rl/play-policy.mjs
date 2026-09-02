@@ -122,6 +122,7 @@ async function main() {
         url.searchParams.set('policy', '1');
         if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
         if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
+        if (process.env.SEGMENT) url.searchParams.set('segment', String(process.env.SEGMENT));
 
         const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
         if (!resp || !resp.ok()) throw new Error(`load failed: ${resp && resp.status()}`);
@@ -149,6 +150,17 @@ async function main() {
                 return s && s.phase === 'boss' && s.boss;
             }, null, { timeout: 8000 });
             await page.waitForTimeout(100);
+        }
+        if (process.env.SEGMENT && !BOSS_SKIP) {
+            await page.waitForTimeout(350);
+            const jumped = await page.evaluate((seg) => {
+                if (window.__novawingDebug && window.__novawingDebug.setSegment) {
+                    return window.__novawingDebug.setSegment(seg);
+                }
+                return false;
+            }, process.env.SEGMENT);
+            if (!jumped) console.warn(`[play-policy] setSegment(${process.env.SEGMENT}) failed`);
+            await page.waitForTimeout(200);
         }
 
         await page.evaluate(installPolicyPilot, policy);

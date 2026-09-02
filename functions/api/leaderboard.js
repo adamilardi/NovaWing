@@ -4,12 +4,15 @@ const MIN_COMPLETION_TIME_MS = 24 * 1000;
 const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
 // Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
 const MAX_PLAUSIBLE_KILLS = 300;
+// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
 const CAMPAIGN_BOSS_SCORE = 5500;
+const CAMPAIGN_BOSS_KILLS = 3;
 const FINAL_BOSS_SCORE = 2500;
 const LEVEL_BOSS_SCORE = 1500;
-// Upper bound uses the highest per-enemy kill payout (splitter parent = 200).
-const MAX_KILL_SCORE = 200;
-const MAX_POWERUP_BONUS_SCORE = 2500;
+// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
+const MAX_KILL_SCORE = 250;
+// Campaign can bank overflow pickups on all three stages (~29 authored drops).
+const MAX_POWERUP_BONUS_SCORE = 6000;
 const MIN_MS_PER_KILL = 200;
 
 export async function onRequest(context) {
@@ -88,12 +91,7 @@ async function readJson(request) {
         throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
     }
 
-    const body = await request.text();
-    // Compare UTF-8 byte length, not JS string length (multi-byte names can under-count).
-    if (new TextEncoder().encode(body).length > MAX_REQUEST_BODY_BYTES) {
-        throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
-    }
-
+    const body = await readBodyLimited(request, MAX_REQUEST_BODY_BYTES);
     if (!body) return {};
 
     try {
@@ -101,6 +99,42 @@ async function readJson(request) {
     } catch (err) {
         throw Object.assign(new Error('Invalid JSON'), { statusCode: 400 });
     }
+}
+
+async function readBodyLimited(request, maxBytes) {
+    if (!request.body || typeof request.body.getReader !== 'function') {
+        const text = await request.text();
+        if (new TextEncoder().encode(text).length > maxBytes) {
+            throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
+        }
+        return text;
+    }
+
+    const reader = request.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                throw Object.assign(new Error('Request body too large'), { statusCode: 413 });
+            }
+            chunks.push(value);
+        }
+    } finally {
+        try { await reader.cancel(); } catch (err) { /* already closed */ }
+    }
+
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+        bytes.set(chunks[i], offset);
+        offset += chunks[i].byteLength;
+    }
+    return new TextDecoder().decode(bytes);
 }
 
 async function getLeaderboard(db, version, scope) {
@@ -162,8 +196,10 @@ async function inspectRunToken(db, payload) {
     if (!result || result.used_at) return { ok: false, error: 'Invalid or expired run token' };
     if (result.game_version !== requestedVersion) return { ok: false, error: 'Run token version mismatch' };
     if (result.scope !== requestedScope) return { ok: false, error: 'Run token scope mismatch' };
-    if (Date.parse(result.expires_at) <= now) return { ok: false, error: 'Run token expired' };
-    if (!result.completed_at) return { ok: false, error: 'Run is not complete' };
+    if (!result.completed_at) {
+        if (Date.parse(result.expires_at) <= now) return { ok: false, error: 'Run token expired' };
+        return { ok: false, error: 'Run is not complete' };
+    }
 
     const startedAt = Date.parse(result.created_at);
     const completedAt = Date.parse(result.completed_at);
@@ -291,7 +327,7 @@ function isPlausibleCompletedRun(entry) {
     if (entry.kills < 1) return false;
     if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
     const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = entry.scope === 'campaign' ? 3 : 1;
+    const bossKills = getBossKillsForScope(entry.scope);
     if (entry.score < bossScore) return false;
 
     if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
@@ -311,6 +347,10 @@ function getBossScoreForScope(scope) {
     return LEVEL_BOSS_SCORE;
 }
 
+function getBossKillsForScope(scope) {
+    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
+}
+
 function getRequestVersion(request) {
     const url = new URL(request.url);
     return sanitizeGameVersion(url.searchParams.get('version'));
@@ -323,9 +363,9 @@ function getRequestScope(request) {
 
 function sanitizeLeaderboardScope(value) {
     const scope = String(value || 'campaign').toLowerCase();
-    return scope === 'level-1' || scope === 'level-2' || scope === 'level-3'
-        ? scope
-        : 'campaign';
+    if (scope === 'campaign') return 'campaign';
+    if (/^level-[1-9]\d*$/.test(scope)) return scope;
+    return 'campaign';
 }
 
 function sanitizeName(value) {
