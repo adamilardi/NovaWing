@@ -135,6 +135,9 @@ const LOCAL_LEADERBOARD_KEY = 'novawing-fastest-runs';
 const PLAYER_NAME_KEY = 'novawing-player-name';
 const AUDIO_MUTE_KEY = 'novawing-muted';
 const AUDIO_STYLE_KEY = 'novawing-sfx-style';
+const ASSIST_STORAGE_KEY = 'novawing-assist';
+const DIFFICULTY_MODE_KEY = 'novawing-difficulty';
+const DIFFICULTY_MODES = ['easy', 'normal', 'hard'];
 const LEADERBOARD_API_URL = '/api/leaderboard';
 const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
@@ -161,6 +164,8 @@ const FIRE_INPUT_CODES = new Set(['Space']);
 const FIRE_INPUT_KEYS = new Set([' ', 'space', 'spacebar']);
 const MUTE_INPUT_CODES = new Set(['KeyM']);
 const MUTE_INPUT_KEYS = new Set(['m']);
+const PAUSE_INPUT_CODES = new Set(['KeyP', 'Escape']);
+const PAUSE_INPUT_KEYS = new Set(['p', 'escape']);
 const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.UP,
     Phaser.Input.Keyboard.KeyCodes.DOWN,
@@ -174,7 +179,9 @@ const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.SHIFT,
     Phaser.Input.Keyboard.KeyCodes.X,
     Phaser.Input.Keyboard.KeyCodes.Z,
-    Phaser.Input.Keyboard.KeyCodes.M
+    Phaser.Input.Keyboard.KeyCodes.M,
+    Phaser.Input.Keyboard.KeyCodes.P,
+    Phaser.Input.Keyboard.KeyCodes.ESC
 ];
 // Extra world / boss / powerup textures. Add a key here to load it, then
 // point levelDef.art.wall / .boss / .bossVertical / .playerVertical at that key.
@@ -693,7 +700,16 @@ let livesIcon;
 let weaponText;
 let boostText;
 let muteText;
+let pauseText;
 let boostSegments = [];
+let assistEnabled = false;
+let difficultyMode = 'normal';
+let assistCheckpoint = null;
+let assistContinuePending = false;
+let gamePaused = false;
+let pauseOverlay = null;
+let pauseRestartArmed = false;
+let pauseClosedPhysics = false;
 let sfx;
 let audioMuted = false;
 let leaderboardEntries = [];
@@ -1212,6 +1228,14 @@ function create() {
     }
     audioMuted = loadAudioMuted();
     sfx.setMuted(audioMuted);
+    gamePaused = false;
+    pauseRestartArmed = false;
+    pauseClosedPhysics = false;
+    hidePauseOverlay();
+    assistCheckpoint = null;
+    assistContinuePending = false;
+    assistEnabled = resolveAssistEnabledAtBoot();
+    difficultyMode = resolveDifficultyModeAtBoot();
     score = 0;
     // Automated play-test sessions (`?bot=…`) get a small life buffer so the
     // pilot can clear the campaign without changing normal player balance.
@@ -1361,6 +1385,8 @@ function create() {
         window.removeEventListener('blur', clearBoostInput);
         document.removeEventListener('visibilitychange', clearInputWhenHidden);
         destroyTouchControls();
+        pauseOverlay = null;
+        gamePaused = false;
         clearBoostInput();
         if (sfx && sfx.stopMusic) sfx.stopMusic();
         if (sfx && sfx.setEngine) sfx.setEngine(0);
@@ -1471,6 +1497,16 @@ function create() {
         toggleMute();
     });
 
+    pauseText = this.add.text(400, 54, '', {
+        ...hudTextStyle,
+        fontSize: '12px',
+        fill: '#8aa0c8'
+    }).setOrigin(0.5, 0).setDepth(10).setScrollFactor(0);
+    pauseText.setInteractive({ useHandCursor: true });
+    pauseText.on('pointerdown', () => {
+        togglePause(this);
+    });
+
     boostSegments = [];
     const boostMeterWidth = BOOST_SEGMENT_COUNT * BOOST_SEGMENT_WIDTH +
         (BOOST_SEGMENT_COUNT - 1) * BOOST_SEGMENT_GAP;
@@ -1499,6 +1535,7 @@ function create() {
     updateStatusText();
     updateMuteText();
     updateLevelText();
+    updateAssistHud();
 
     // Spawn authored enemy and obstacle waves (segmented levels own scheduling).
     this.obstacleSpawnEvent = null;
@@ -1538,7 +1575,7 @@ function create() {
     // Debug: press L to cycle levels (respects live getTotalLevels / ?level3=1).
     if (this.input.keyboard) {
         this.input.keyboard.on('keydown-L', () => {
-            if (levelEnded || victoryPending || awaitingNextLevel || levelTransitioning) return;
+            if (levelEnded || victoryPending || awaitingNextLevel || levelTransitioning || gamePaused) return;
             const max = totalLevels();
             const next = currentLevel >= max ? 1 : currentLevel + 1;
             debugSkipToLevel.call(this, next);
@@ -1562,7 +1599,7 @@ function create() {
 }
 
 function update(time, delta) {
-    if (levelEnded || victoryPending || awaitingNextLevel) return;
+    if (levelEnded || victoryPending || awaitingNextLevel || gamePaused) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
@@ -2201,9 +2238,15 @@ function damagePlayer() {
     });
 
     if (lives <= 0) {
+        if (tryAssistContinue(this)) {
+            holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
+            return;
+        }
         holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
         sfx.gameOver();
-        endLevel.call(this, 'GAME OVER', '#ff5555');
+        endLevel.call(this, 'GAME OVER', '#ff5555', {
+            skipLeaderboard: !isLeaderboardEligibleSession()
+        });
     } else {
         holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
     }
@@ -2397,6 +2440,15 @@ function getActiveDifficulty() {
     const seg = getLevelSegmentDef();
     if (seg && seg.difficulty && typeof seg.difficulty === 'object') {
         bag = overlayFn(bag, seg.difficulty);
+    }
+    const mode = getDifficultyMode();
+    if (mode === 'easy' || mode === 'hard') {
+        const modeBag = typeof getDifficultyPreset === 'function'
+            ? getDifficultyPreset(mode)
+            : null;
+        if (modeBag && Object.keys(modeBag).length) {
+            bag = overlayFn(bag, modeBag);
+        }
     }
     const queryBag = getDifficultyQueryOverlay();
     if (queryBag && Object.keys(queryBag).length) {
@@ -4799,6 +4851,8 @@ function startLevel(levelId, options = {}) {
     previousOpenBands = null;
     clearPathDeadEndWarnings(this);
     lastWavePatternKey = null;
+    assistCheckpoint = null;
+    assistContinuePending = false;
     playerInvulnerableUntil = this.time.now + 1500;
 
     // Play-test bot: top up lives between stages so mid-campaign deaths after a
@@ -4950,6 +5004,7 @@ function enterBossSegment(scene, segDef) {
     }
 
     sfx.startMusic('boss');
+    maybeArmAssistCheckpoint(segDef);
     startBossFight.call(scene, encounter);
 }
 
@@ -4996,6 +5051,7 @@ function enterProgressWaves(scene, segDef) {
 
     applyLevelWorldBounds(scene, currentLevel);
     sfx.startMusic('waves');
+    maybeArmAssistCheckpoint(segDef);
     scheduleNextEnemyWave(scene, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
 }
 
@@ -5408,6 +5464,8 @@ function isLeaderboardEligibleSession() {
         if (difficultyOverlay && Object.keys(difficultyOverlay).length) {
             return false;
         }
+        if (isAssistEnabled()) return false;
+        if (getDifficultyMode() !== 'normal') return false;
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
             'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
@@ -5961,9 +6019,45 @@ function approachValue(current, target, maxStep) {
 function handleKeyboardDown(event) {
     if (sfx) {
         sfx.unlock();
-        if (sfx.startMusic && !levelEnded) {
+        if (sfx.startMusic && !levelEnded && !gamePaused) {
             sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
         }
+    }
+
+    if (isPauseInput(event)) {
+        togglePause();
+        event.preventDefault();
+        return;
+    }
+
+    if (gamePaused) {
+        if (isMuteInput(event)) {
+            toggleMute();
+            event.preventDefault();
+            return;
+        }
+        if (isAssistMenuInput(event)) {
+            setAssistEnabled(!isAssistEnabled());
+            event.preventDefault();
+            return;
+        }
+        if (isDifficultyMenuInput(event)) {
+            cycleDifficultyMode(event.shiftKey || event.code === 'ArrowLeft' || event.key === 'ArrowLeft' ? -1 : 1);
+            event.preventDefault();
+            return;
+        }
+        if (isPauseRestartInput(event)) {
+            confirmPauseRestart();
+            event.preventDefault();
+            return;
+        }
+        if (isPauseResumeInput(event)) {
+            togglePause();
+            event.preventDefault();
+            return;
+        }
+        event.preventDefault();
+        return;
     }
 
     if (isMuteInput(event)) {
@@ -5985,6 +6079,37 @@ function handleKeyboardDown(event) {
     if (handledMovement || handledBoost || handledFire) {
         event.preventDefault();
     }
+}
+
+function isPauseInput(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    return PAUSE_INPUT_CODES.has(code) || PAUSE_INPUT_KEYS.has(key);
+}
+
+function isAssistMenuInput(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    return code === 'KeyA' || key === 'a';
+}
+
+function isDifficultyMenuInput(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    return code === 'KeyD' || key === 'd' || code === 'ArrowLeft' || code === 'ArrowRight'
+        || key === 'arrowleft' || key === 'arrowright';
+}
+
+function isPauseRestartInput(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    return code === 'KeyR' || key === 'r';
+}
+
+function isPauseResumeInput(event) {
+    const code = event.code || '';
+    const key = String(event.key || '').toLowerCase();
+    return code === 'Enter' || key === 'enter';
 }
 
 function isMuteInput(event) {
@@ -6055,6 +6180,7 @@ function toggleMute() {
         sfx.unlock();
         if (!levelEnded) sfx.startMusic(gamePhase === 'boss' ? 'boss' : 'waves');
     }
+    if (gamePaused) return;
     const scene = game && game.scene && game.scene.scenes && game.scene.scenes[0];
     if (scene && scene.add) {
         showFloatingText(
@@ -6089,6 +6215,485 @@ function updateMuteText() {
     const prefix = shouldShowTouchControls() ? '' : 'M  [ ]  ';
     muteText.setText(audioMuted ? prefix + 'OFF  ' + kit : prefix + kit);
     muteText.setFill(audioMuted ? '#ff8877' : '#8aa0c8');
+}
+
+function parseAssistQueryValue(value) {
+    if (value == null) return null;
+    const s = String(value).trim().toLowerCase();
+    if (s === '' || s === '1' || s === 'true' || s === 'on' || s === 'yes') return true;
+    if (s === '0' || s === 'false' || s === 'off' || s === 'no') return false;
+    return null;
+}
+
+function loadAssistEnabled() {
+    try {
+        return window.localStorage.getItem(ASSIST_STORAGE_KEY) === '1';
+    } catch (err) {
+        return false;
+    }
+}
+
+function saveAssistEnabled(enabled) {
+    try {
+        window.localStorage.setItem(ASSIST_STORAGE_KEY, enabled ? '1' : '0');
+    } catch (err) {
+        // Ignore storage failures (private mode, etc).
+    }
+}
+
+function resolveAssistEnabledAtBoot() {
+    if (isPlaytestBotSession()) return false;
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        if (params.has('assist')) {
+            const parsed = parseAssistQueryValue(params.get('assist'));
+            if (parsed != null) return parsed;
+        }
+    } catch (err) {
+        // ignore
+    }
+    return loadAssistEnabled();
+}
+
+function isAssistEnabled() {
+    if (isPlaytestBotSession()) return false;
+    return Boolean(assistEnabled);
+}
+
+function parseDifficultyModeName(name) {
+    if (typeof normalizeDifficultyMode === 'function') {
+        return normalizeDifficultyMode(name);
+    }
+    const s = String(name || '').trim().toLowerCase();
+    if (s === 'easy' || s === 'casual' || s === 'e') return 'easy';
+    if (s === 'hard' || s === 'expert' || s === 'h') return 'hard';
+    if (s === 'normal' || s === 'mid' || s === 'medium' || s === 'standard' || s === 'n') {
+        return 'normal';
+    }
+    return null;
+}
+
+function loadDifficultyMode() {
+    try {
+        return parseDifficultyModeName(window.localStorage.getItem(DIFFICULTY_MODE_KEY)) || 'normal';
+    } catch (err) {
+        return 'normal';
+    }
+}
+
+function saveDifficultyMode(mode) {
+    try {
+        window.localStorage.setItem(DIFFICULTY_MODE_KEY, mode);
+    } catch (err) {
+        // Ignore storage failures (private mode, etc).
+    }
+}
+
+function resolveDifficultyModeAtBoot() {
+    if (isPlaytestBotSession()) return 'normal';
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const fromQuery = parseDifficultyModeName(params.get('diff') || params.get('difficulty'));
+        if (fromQuery) return fromQuery;
+    } catch (err) {
+        // ignore
+    }
+    return loadDifficultyMode();
+}
+
+function getDifficultyMode() {
+    if (isPlaytestBotSession()) return 'normal';
+    const mode = parseDifficultyModeName(difficultyMode);
+    return mode || 'normal';
+}
+
+function isRankedDifficultyMode(mode) {
+    return (mode || getDifficultyMode()) === 'normal';
+}
+
+function formatDifficultyModeName(mode) {
+    const id = mode || getDifficultyMode();
+    if (id === 'easy') return 'EASY';
+    if (id === 'hard') return 'HARD';
+    return 'NORMAL';
+}
+
+function difficultyModeFill(mode) {
+    const id = mode || getDifficultyMode();
+    if (id === 'easy') return '#55ffaa';
+    if (id === 'hard') return '#ff8877';
+    return '#66f6ff';
+}
+
+function formatDifficultyToggleLabel() {
+    const mode = getDifficultyMode();
+    const ranked = isRankedDifficultyMode(mode) && !isAssistEnabled();
+    return 'DIFFICULTY   <  ' + formatDifficultyModeName(mode) + '  >   ·  '
+        + (ranked ? 'ranked' : 'unranked');
+}
+
+function formatUnrankedReasonLine() {
+    if (isAssistEnabled()) return 'Assist run — public leaderboard disabled';
+    if (getDifficultyMode() !== 'normal') {
+        return formatDifficultyModeName() + ' run — public leaderboard disabled';
+    }
+    return 'Debug run — leaderboard disabled';
+}
+
+function setDifficultyMode(next) {
+    if (isPlaytestBotSession()) return getDifficultyMode();
+    const mode = parseDifficultyModeName(next) || 'normal';
+    difficultyMode = mode;
+    saveDifficultyMode(mode);
+    if (mode !== 'normal') markSessionLeaderboardIneligible();
+    updateAssistHud();
+    refreshPauseOverlay();
+    if (!gamePaused) {
+        const scene = getActiveScene();
+        if (scene && scene.add) {
+            showFloatingText(
+                scene,
+                400,
+                90,
+                'DIFFICULTY  ' + formatDifficultyModeName(mode)
+                    + (mode === 'normal' && !isAssistEnabled() ? '' : '  ·  UNRANKED'),
+                difficultyModeFill(mode),
+                { screenSpace: true }
+            );
+        }
+    }
+    return mode;
+}
+
+function cycleDifficultyMode(dir) {
+    const step = dir < 0 ? -1 : 1;
+    const current = getDifficultyMode();
+    const index = Math.max(0, DIFFICULTY_MODES.indexOf(current));
+    const next = DIFFICULTY_MODES[(index + step + DIFFICULTY_MODES.length) % DIFFICULTY_MODES.length];
+    return setDifficultyMode(next);
+}
+
+function formatAssistToggleLabel() {
+    return isAssistEnabled()
+        ? 'ASSIST ON  ·  unranked  ·  L3 continues'
+        : 'ASSIST OFF · extra continues after the L3 flip';
+}
+
+function updateAssistHud() {
+    if (!pauseText) return;
+    const touch = shouldShowTouchControls();
+    const modeName = formatDifficultyModeName();
+    const prefix = touch ? '' : 'P  ';
+    if (isAssistEnabled()) {
+        pauseText.setText(modeName + '  ASSIST  ' + prefix + 'II');
+        pauseText.setFill('#ffe66d');
+    } else if (getDifficultyMode() !== 'normal') {
+        pauseText.setText(modeName + '  ' + prefix + 'II');
+        pauseText.setFill(difficultyModeFill());
+    } else {
+        pauseText.setText(prefix + 'II');
+        pauseText.setFill('#8aa0c8');
+    }
+}
+
+function setAssistEnabled(next) {
+    if (isPlaytestBotSession()) return isAssistEnabled();
+    const on = Boolean(next);
+    assistEnabled = on;
+    saveAssistEnabled(on);
+    if (on) {
+        markSessionLeaderboardIneligible();
+        maybeArmAssistCheckpoint();
+    } else {
+        assistCheckpoint = null;
+    }
+    updateAssistHud();
+    refreshPauseOverlay();
+    if (!gamePaused) {
+        const scene = getActiveScene();
+        if (scene && scene.add) {
+            showFloatingText(
+                scene,
+                400,
+                90,
+                on ? 'ASSIST ON  ·  UNRANKED' : 'ASSIST OFF',
+                on ? '#ffe66d' : '#8aa0c8',
+                { screenSpace: true }
+            );
+        }
+    }
+    return on;
+}
+
+function assistCheckpointIdForSegment(seg) {
+    if (!seg) return null;
+    const kind = getSegmentKind(seg);
+    if (kind === 'waves' && (seg.scrollMode === 'vertical' || seg.combatOrientation === 'up')) {
+        return seg.id || null;
+    }
+    if (kind === 'boss' && (seg.bossEncounter === 'final' || seg.id === 'finalBoss')) {
+        return seg.id || null;
+    }
+    return null;
+}
+
+function maybeArmAssistCheckpoint(segDef) {
+    if (!isAssistEnabled()) return;
+    const seg = segDef || getLevelSegmentDef();
+    const id = assistCheckpointIdForSegment(seg);
+    if (!id) return;
+    assistCheckpoint = { segmentId: id };
+}
+
+function tryAssistContinue(scene) {
+    if (!scene || !isAssistEnabled()) return false;
+    if (!assistCheckpoint || !assistCheckpoint.segmentId) return false;
+    if (assistContinuePending || levelEnded || victoryPending || awaitingNextLevel) return false;
+
+    assistContinuePending = true;
+    lives = 3;
+    updateLivesText();
+    playerInvulnerableUntil = scene.time.now + 2500;
+    if (sfx && sfx.warning) sfx.warning();
+    scene.time.delayedCall(80, () => restoreAssistCheckpoint(scene));
+    return true;
+}
+
+function restoreAssistCheckpoint(scene) {
+    assistContinuePending = false;
+    if (!scene || levelEnded || victoryPending) return;
+    if (!isAssistEnabled() || !assistCheckpoint || !assistCheckpoint.segmentId) {
+        holdPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
+        if (sfx && sfx.gameOver) sfx.gameOver();
+        endLevel.call(scene, 'GAME OVER', '#ff5555');
+        return;
+    }
+
+    lives = 3;
+    hasShield = true;
+    boostEnergy = BOOST_MAX;
+    boostLocked = false;
+    isBoosting = false;
+    playerInvulnerableUntil = scene.time.now + 2500;
+    updateLivesText();
+    updateStatusText();
+    updateBoostUi();
+
+    deactivateGroup(enemyBullets);
+    deactivateGroup(enemies);
+    deactivateGroup(obstacles);
+    if (boss) {
+        if (boss.active) boss.destroy();
+        boss = null;
+    }
+    bossHealth = 0;
+    bossEncounterKey = null;
+    if (bossHealthBar) {
+        bossHealthBar.destroy();
+        bossHealthBar = null;
+    }
+    if (bossHealthFill) {
+        bossHealthFill.destroy();
+        bossHealthFill = null;
+    }
+    if (bosses) deactivateGroup(bosses);
+    gamePhase = 'waves';
+
+    if (player && player.active) {
+        player.clearTint();
+        playPlayerAnimation(player, PLAYER_ANIMATION_KEYS.flight);
+    }
+    if (scene.physics && scene.physics.world && scene.physics.world.isPaused) {
+        scene.physics.resume();
+    }
+
+    showFloatingText(scene, 400, 140, 'ASSIST CONTINUE', '#ffe66d', { screenSpace: true });
+    flashVignette(scene, 0xffe66d, 0.35);
+    advanceLevelSegment(scene, assistCheckpoint.segmentId, 'assistContinue');
+}
+
+function getActiveScene() {
+    return game && game.scene && game.scene.scenes && game.scene.scenes[0]
+        ? game.scene.scenes[0]
+        : null;
+}
+
+function canPause() {
+    if (isPlaytestBotSession()) return false;
+    if (levelEnded || victoryPending || awaitingNextLevel) return false;
+    if (assistContinuePending) return false;
+    return true;
+}
+
+function togglePause(scene) {
+    setPaused(scene || getActiveScene(), !gamePaused);
+}
+
+function setPaused(scene, paused, options = {}) {
+    if (!scene) return;
+    const wantPaused = Boolean(paused);
+    if (wantPaused === gamePaused) return;
+    if (wantPaused && !canPause()) return;
+
+    if (wantPaused) {
+        gamePaused = true;
+        pauseRestartArmed = false;
+        pauseClosedPhysics = Boolean(scene.physics && scene.physics.world && scene.physics.world.isPaused);
+        if (player && player.body) player.setVelocity(0, 0);
+        clearBoostInput();
+        if (sfx && sfx.setEngine) sfx.setEngine(0);
+        if (!pauseClosedPhysics && scene.physics) scene.physics.pause();
+        if (scene.tweens && scene.tweens.pauseAll) scene.tweens.pauseAll();
+        if (scene.time) scene.time.paused = true;
+        if (touchControls && touchControls.container) touchControls.container.setVisible(false);
+        showPauseOverlay(scene);
+        return;
+    }
+
+    gamePaused = false;
+    pauseRestartArmed = false;
+    hidePauseOverlay();
+    if (scene.time) scene.time.paused = false;
+    if (scene.tweens && scene.tweens.resumeAll) scene.tweens.resumeAll();
+    if (!options.skipResumePhysics && !pauseClosedPhysics &&
+        !levelEnded && !awaitingNextLevel && !victoryPending && scene.physics) {
+        scene.physics.resume();
+    }
+    pauseClosedPhysics = false;
+    if (touchControls && touchControls.container && !levelEnded && !awaitingNextLevel) {
+        touchControls.container.setVisible(true);
+    }
+    updateAssistHud();
+}
+
+function showPauseOverlay(scene) {
+    hidePauseOverlay();
+    if (!scene || !scene.add) return;
+
+    const nodes = [];
+    const dim = scene.add.rectangle(400, 300, 800, 600, 0x050814, 0.82);
+    dim.setDepth(50).setScrollFactor(0);
+    dim.setInteractive();
+    nodes.push(dim);
+
+    const title = scene.add.text(400, 92, 'PAUSED', {
+        fontFamily: 'monospace',
+        fontSize: '36px',
+        fill: '#e8f0ff',
+        stroke: '#050816',
+        strokeThickness: 6
+    }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
+    nodes.push(title);
+
+    const difficultyBtn = addPauseMenuButton(scene, 160, formatDifficultyToggleLabel(), difficultyModeFill(), () => {
+        pauseRestartArmed = false;
+        cycleDifficultyMode(1);
+    });
+    nodes.push(difficultyBtn.bg, difficultyBtn.label);
+
+    const assistBtn = addPauseMenuButton(scene, 218, formatAssistToggleLabel(), isAssistEnabled() ? '#ffe66d' : '#c7ddff', () => {
+        pauseRestartArmed = false;
+        setAssistEnabled(!isAssistEnabled());
+    });
+    nodes.push(assistBtn.bg, assistBtn.label);
+
+    const muteBtn = addPauseMenuButton(scene, 276, audioMuted ? 'SOUND OFF' : 'SOUND ON', audioMuted ? '#ff8877' : '#8aa0c8', () => {
+        pauseRestartArmed = false;
+        toggleMute();
+        refreshPauseOverlay();
+    });
+    nodes.push(muteBtn.bg, muteBtn.label);
+
+    const resumeBtn = addPauseMenuButton(scene, 334, 'RESUME', '#66f6ff', () => {
+        setPaused(scene, false);
+    });
+    nodes.push(resumeBtn.bg, resumeBtn.label);
+
+    const restartBtn = addPauseMenuButton(scene, 392, 'RESTART', '#ffcc55', () => {
+        confirmPauseRestart(scene);
+    });
+    nodes.push(restartBtn.bg, restartBtn.label);
+
+    const hint = scene.add.text(400, 468, shouldShowTouchControls()
+        ? 'Only NORMAL without Assist writes the public leaderboard'
+        : 'P/Esc resume  ·  D difficulty  ·  A assist  ·  R restart', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        fill: '#8aa0c8',
+        stroke: '#050816',
+        strokeThickness: 4,
+        align: 'center'
+    }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
+    nodes.push(hint);
+
+    pauseOverlay = {
+        nodes: nodes,
+        difficultyLabel: difficultyBtn.label,
+        assistLabel: assistBtn.label,
+        muteLabel: muteBtn.label,
+        restartLabel: restartBtn.label
+    };
+}
+
+function addPauseMenuButton(scene, y, label, fill, onClick) {
+    const bg = scene.add.rectangle(400, y, 520, 56, 0x102038, 0.92);
+    bg.setStrokeStyle(2, 0x8aa4ff, 0.7);
+    bg.setDepth(51).setScrollFactor(0);
+    bg.setInteractive({ useHandCursor: true });
+    const text = scene.add.text(400, y, label, {
+        fontFamily: 'monospace',
+        fontSize: '15px',
+        fill: fill,
+        stroke: '#050816',
+        strokeThickness: 4,
+        align: 'center'
+    }).setOrigin(0.5).setDepth(52).setScrollFactor(0);
+    const handle = () => onClick();
+    bg.on('pointerdown', handle);
+    text.setInteractive({ useHandCursor: true });
+    text.on('pointerdown', handle);
+    return { bg: bg, label: text };
+}
+
+function refreshPauseOverlay() {
+    if (!pauseOverlay) return;
+    if (pauseOverlay.difficultyLabel && pauseOverlay.difficultyLabel.active) {
+        pauseOverlay.difficultyLabel.setText(formatDifficultyToggleLabel());
+        pauseOverlay.difficultyLabel.setFill(difficultyModeFill());
+    }
+    if (pauseOverlay.assistLabel && pauseOverlay.assistLabel.active) {
+        pauseOverlay.assistLabel.setText(formatAssistToggleLabel());
+        pauseOverlay.assistLabel.setFill(isAssistEnabled() ? '#ffe66d' : '#c7ddff');
+    }
+    if (pauseOverlay.muteLabel && pauseOverlay.muteLabel.active) {
+        pauseOverlay.muteLabel.setText(audioMuted ? 'SOUND OFF' : 'SOUND ON');
+        pauseOverlay.muteLabel.setFill(audioMuted ? '#ff8877' : '#8aa0c8');
+    }
+    if (pauseOverlay.restartLabel && pauseOverlay.restartLabel.active) {
+        pauseOverlay.restartLabel.setText(pauseRestartArmed ? 'CONFIRM RESTART' : 'RESTART');
+        pauseOverlay.restartLabel.setFill(pauseRestartArmed ? '#ff8877' : '#ffcc55');
+    }
+}
+
+function hidePauseOverlay() {
+    if (!pauseOverlay) return;
+    const nodes = pauseOverlay.nodes || [];
+    nodes.forEach(node => {
+        if (node && node.destroy) node.destroy();
+    });
+    pauseOverlay = null;
+}
+
+function confirmPauseRestart(scene) {
+    const active = scene || getActiveScene();
+    if (!active) return;
+    if (!pauseRestartArmed) {
+        pauseRestartArmed = true;
+        refreshPauseOverlay();
+        return;
+    }
+    setPaused(active, false, { skipResumePhysics: true });
+    active.scene.restart();
 }
 
 function panFromX(x) {
@@ -6165,6 +6770,7 @@ function isBoostHeld() {
 }
 
 function isFireHeld() {
+    if (gamePaused) return false;
     if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
     // Touch devices auto-fire so one thumb can stay on the stick (A11 / Fire).
     if (mobileAutoFire && !levelEnded && !victoryPending) return true;
@@ -6426,12 +7032,23 @@ function createTouchControls(scene) {
     }).setOrigin(0.5);
 
     // Mute is hard on touch — add a small tap target.
-    const muteBtn = scene.add.circle(400, 560, 28, 0x202838, 0.55);
+    const muteBtn = scene.add.circle(470, 560, 26, 0x202838, 0.55);
     muteBtn.setStrokeStyle(2, 0x8aa0c8, 0.8);
     muteBtn.setInteractive();
-    const muteLabel = scene.add.text(400, 560, 'MUTE', {
+    const muteLabel = scene.add.text(470, 560, 'MUTE', {
         fontFamily: 'monospace',
         fontSize: '11px',
+        fill: '#c7ddff',
+        stroke: '#050816',
+        strokeThickness: 3
+    }).setOrigin(0.5);
+
+    const pauseBtn = scene.add.circle(330, 560, 26, 0x202838, 0.55);
+    pauseBtn.setStrokeStyle(2, 0x8aa0c8, 0.8);
+    pauseBtn.setInteractive();
+    const pauseLabel = scene.add.text(330, 560, 'II', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
         fill: '#c7ddff',
         stroke: '#050816',
         strokeThickness: 3
@@ -6446,7 +7063,9 @@ function createTouchControls(scene) {
         boostBtn,
         boostLabel,
         muteBtn,
-        muteLabel
+        muteLabel,
+        pauseBtn,
+        pauseLabel
     ]);
 
     const controls = {
@@ -6544,6 +7163,11 @@ function createTouchControls(scene) {
 
     muteBtn.on('pointerdown', () => {
         toggleMute();
+        if (sfx) sfx.unlock();
+    });
+
+    pauseBtn.on('pointerdown', () => {
+        togglePause(scene);
         if (sfx) sfx.unlock();
     });
 
@@ -7495,11 +8119,14 @@ function endLevel(title, color, options = {}) {
         ? sanitizePlayerName(options.playerName || promptForPlayerName(continueToNext ? displayScope : 'campaign'))
         : null;
     const currentLeaderboard = getLocalLeaderboard(displayScope);
+    const unrankedLine = formatUnrankedReasonLine();
     const resultLine = continueToNext
-        ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : 'Saving level score...')
+        ? (skipLeaderboard ? unrankedLine : 'Saving level score...')
         : (completed && !skipLeaderboard
             ? 'Submitting campaign score...'
-            : (completed ? 'Debug run — leaderboard disabled' : 'Complete the boss fight to set a time'));
+            : (completed || skipLeaderboard || isAssistEnabled() || getDifficultyMode() !== 'normal'
+                ? unrankedLine
+                : 'Complete the boss fight to set a time'));
     let submittedEntry = null;
     let submittedRank = null;
 
@@ -7507,6 +8134,8 @@ function endLevel(title, color, options = {}) {
     if (this.cameras && this.cameras.main) {
         this.cameras.main.setScroll(0, 0);
     }
+
+    if (gamePaused) setPaused(this, false, { skipResumePhysics: true });
 
     const panel = this.add.rectangle(400, 300, 650, 550, 0x050814, 0.92);
     panel.setStrokeStyle(2, 0x8aa4ff, 0.75);
@@ -7536,12 +8165,51 @@ function endLevel(title, color, options = {}) {
         'Weapon:         ' + getWeaponName(),
         'Score:          ' + displayScore
     ];
-    const statsText = this.add.text(400, 202, formatResultStats(completionTimeMs), {
+    const statsText = this.add.text(400, 242, formatResultStats(completionTimeMs), {
         fontSize: '18px',
         fill: '#c7ddff',
         fontFamily: 'monospace',
         align: 'left'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+
+    const difficultyHint = this.add.text(400, 140, formatDifficultyToggleLabel(), {
+        fontSize: '14px',
+        fill: difficultyModeFill(),
+        fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    difficultyHint.setInteractive({ useHandCursor: true });
+
+    const assistHint = this.add.text(400, 162, formatAssistToggleLabel(), {
+        fontSize: '14px',
+        fill: isAssistEnabled() ? '#ffe66d' : '#8aa0c8',
+        fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    assistHint.setInteractive({ useHandCursor: true });
+
+    const refreshResultModeLines = () => {
+        difficultyHint.setText(formatDifficultyToggleLabel());
+        difficultyHint.setFill(difficultyModeFill());
+        assistHint.setText(formatAssistToggleLabel());
+        assistHint.setFill(isAssistEnabled() ? '#ffe66d' : '#8aa0c8');
+        if (!continueToNext && resultLineText && resultLineText.active) {
+            const rankedNext = getDifficultyMode() === 'normal' && !isAssistEnabled();
+            resultLineText.setText(rankedNext
+                ? (completed
+                    ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : resultLine)
+                    : 'Complete the boss fight to set a time')
+                : (isAssistEnabled()
+                    ? 'Assist next run — public leaderboard disabled'
+                    : formatDifficultyModeName() + ' next run — public leaderboard disabled'));
+        }
+    };
+    difficultyHint.on('pointerdown', () => {
+        cycleDifficultyMode(1);
+        refreshResultModeLines();
+    });
+    assistHint.on('pointerdown', () => {
+        setAssistEnabled(!isAssistEnabled());
+        refreshResultModeLines();
+    });
 
     const leaderboardTitle = this.add.text(400, 318, getLeaderboardScopeLabel(displayScope) + ' FASTEST', {
         fontSize: '22px',
@@ -7631,7 +8299,7 @@ function endLevel(title, color, options = {}) {
     const restartScene = () => this.scene.restart();
     let continued = false;
     const overlayNodes = [
-        panel, titleText, resultLineText, statsText, leaderboardTitle, leaderboardText,
+        panel, titleText, resultLineText, difficultyHint, assistHint, statsText, leaderboardTitle, leaderboardText,
         shareStatusText, shareText, actionText
     ];
 
@@ -8260,6 +8928,12 @@ function getBotSnapshot() {
         levelTransitioning: Boolean(levelTransitioning),
         victoryPending: Boolean(victoryPending),
         awaitingNextLevel: Boolean(awaitingNextLevel),
+        paused: Boolean(gamePaused),
+        assist: isAssistEnabled(),
+        assistCheckpoint: assistCheckpoint && assistCheckpoint.segmentId
+            ? assistCheckpoint.segmentId
+            : null,
+        difficultyMode: getDifficultyMode(),
         playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,
         difficulty: getActiveDifficulty(),
         level: typeof currentLevel === 'number' ? currentLevel : 1,
@@ -8429,6 +9103,45 @@ window.__novawingDebug = {
         return next;
     },
     getDifficulty: getActiveDifficulty,
+    getDifficultyMode: getDifficultyMode,
+    setDifficultyMode: setDifficultyMode,
+    cycleDifficultyMode: cycleDifficultyMode,
+    getAssist() {
+        return {
+            enabled: isAssistEnabled(),
+            difficulty: getDifficultyMode(),
+            checkpoint: assistCheckpoint && assistCheckpoint.segmentId
+                ? assistCheckpoint.segmentId
+                : null,
+            paused: Boolean(gamePaused)
+        };
+    },
+    setAssist(on) {
+        setAssistEnabled(Boolean(on));
+        return window.__novawingDebug.getAssist();
+    },
+    togglePause() {
+        togglePause();
+        return Boolean(gamePaused);
+    },
+    applyPlayerHit(options) {
+        const scene = getActiveScene();
+        if (!scene) return null;
+        const opts = options && typeof options === 'object' ? options : {};
+        if (opts.lethal) lives = 1;
+        hasShield = false;
+        playerInvulnerableUntil = 0;
+        damagePlayer.call(scene);
+        return {
+            lives: lives,
+            levelEnded: Boolean(levelEnded),
+            assistContinuePending: Boolean(assistContinuePending),
+            checkpoint: assistCheckpoint && assistCheckpoint.segmentId
+                ? assistCheckpoint.segmentId
+                : null,
+            segment: levelSegment
+        };
+    },
     getTotalLevels: totalLevels,
     /**
      * Skip waves → boss fight. encounter: 'standard' | 'intro' | 'final' | true.

@@ -46,9 +46,13 @@
  *   2. TIER_DIFFICULTY[1|2|3]  — opener / mid / late
  *   3. levelDef.difficulty     — one level, every segment
  *   4. segment.difficulty      — that segment only (waves vs boss)
- *   5. URL overlay             — playtest; does not write the leaderboard
- *        ?diff=easy | ?diff=hard
- *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4
+ *   5. Player difficulty       — Easy / Normal / Hard from pause / results.
+ *        Easy/Hard reuse DIFFICULTY_PRESETS. Only Normal is ranked.
+ *        ?diff=easy|normal|hard (mid = normal) sets the mode for this session.
+ *   6. URL overlay             — playtest knobs on top of the selected mode.
+ *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4  (also unranked)
+ *   7. Assist mode             — L3 continues after the flip. Unranked.
+ *        Force with ?assist=1. Does not replace Easy/Normal/Hard combat.
  *
  * Put only the keys you want to change. Omitted keys inherit the layer above.
  *
@@ -173,6 +177,13 @@
             bossTempoScale: 0.85
         }
     };
+    // Casual overlay: same knobs as easy, plus opener-soft interceptor aim.
+    // Ranked boards never see this — Assist sessions are leaderboard-ineligible.
+    DIFFICULTY_PRESETS.assist = Object.assign({}, DIFFICULTY_PRESETS.easy, {
+        softInterceptorAim: true,
+        interceptorAimScale: 0.55,
+        interceptorShotLead: 90
+    });
 
     function parseDifficultyBoolean(value) {
         if (typeof value === 'string') {
@@ -222,6 +233,21 @@
         if (!name || typeof name !== 'string') return {};
         const preset = DIFFICULTY_PRESETS[name.toLowerCase()];
         return preset ? copyDifficultyPartial(preset) : {};
+    }
+
+    /**
+     * Player-facing mode name → 'easy' | 'normal' | 'hard'.
+     * Accepts mid/medium as Normal. Returns null when unrecognized.
+     */
+    function normalizeDifficultyMode(name) {
+        if (name == null || name === '') return null;
+        const s = String(name).trim().toLowerCase();
+        if (s === 'easy' || s === 'casual' || s === 'e') return 'easy';
+        if (s === 'hard' || s === 'expert' || s === 'h') return 'hard';
+        if (s === 'normal' || s === 'mid' || s === 'medium' || s === 'standard' || s === 'n') {
+            return 'normal';
+        }
+        return null;
     }
 
     /**
@@ -745,6 +771,7 @@
         copyDifficultyPartial: copyDifficultyPartial,
         readDifficultyQueryOverlay: readDifficultyQueryOverlay,
         getDifficultyPreset: getDifficultyPreset,
+        normalizeDifficultyMode: normalizeDifficultyMode,
         scaleCountedStat: scaleCountedStat,
         DIFFICULTY_DEFAULTS: DIFFICULTY_DEFAULTS,
         TIER_DIFFICULTY: TIER_DIFFICULTY,
@@ -782,6 +809,7 @@
     root.copyDifficultyPartial = copyDifficultyPartial;
     root.readDifficultyQueryOverlay = readDifficultyQueryOverlay;
     root.getDifficultyPreset = getDifficultyPreset;
+    root.normalizeDifficultyMode = normalizeDifficultyMode;
     root.scaleCountedStat = scaleCountedStat;
     root.getLevelBossScore = getLevelBossScore;
     root.getCampaignBossScore = getCampaignBossScore;
