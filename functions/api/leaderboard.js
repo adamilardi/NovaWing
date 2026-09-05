@@ -1,19 +1,8 @@
+import RunRules from '../../shared/run-rules.cjs';
+const { isPlausibleCompletedRun, isPlausibleTime } = RunRules;
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
-const MIN_COMPLETION_TIME_MS = 24 * 1000;
-const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
-// Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
-const MAX_PLAUSIBLE_KILLS = 300;
-// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
-const CAMPAIGN_BOSS_SCORE = 5500;
-const CAMPAIGN_BOSS_KILLS = 3;
-const FINAL_BOSS_SCORE = 2500;
-const LEVEL_BOSS_SCORE = 1500;
-// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
-const MAX_KILL_SCORE = 250;
-// Campaign can bank overflow pickups on all three stages (~29 authored drops).
-const MAX_POWERUP_BONUS_SCORE = 6000;
-const MIN_MS_PER_KILL = 200;
+
 
 export async function onRequest(context) {
     const { request, env } = context;
@@ -207,7 +196,7 @@ async function inspectRunToken(db, payload) {
     const score = Number(result.score);
     const kills = Number(result.kills);
     const accuracy = Number(result.accuracy);
-    if (!Number.isFinite(timeMs) || timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
+    if (!isPlausibleTime(timeMs, result.scope)) {
         return { ok: false, error: 'Implausible run completion time' };
     }
     if (!Number.isFinite(score) || !Number.isFinite(kills) || !Number.isFinite(accuracy)) {
@@ -294,7 +283,7 @@ function normalizeEntry(entry) {
     const kills = Math.round(Number(entry.kills));
     const accuracy = Math.round(Number(entry.accuracy));
 
-    if (!Number.isFinite(timeMs) || timeMs <= 0 || timeMs > 10 * 60 * 1000) return null;
+    if (!isPlausibleTime(timeMs, scope)) return null;
     if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
     if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
     if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
@@ -321,35 +310,6 @@ function sanitizeGameVersion(value) {
     return cleaned || '1.0.0';
 }
 
-function isPlausibleCompletedRun(entry) {
-    if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
-    if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
-    if (entry.kills < 1) return false;
-    if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
-    const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = getBossKillsForScope(entry.scope);
-    if (entry.score < bossScore) return false;
-
-    if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
-
-    const regularKills = Math.max(0, entry.kills - bossKills);
-    const maxScore = bossScore + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
-    if (entry.score > maxScore) return false;
-
-    if (entry.kills === bossKills && entry.score > bossScore + MAX_POWERUP_BONUS_SCORE) return false;
-
-    return true;
-}
-
-function getBossScoreForScope(scope) {
-    if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
-    if (scope === 'level-3') return FINAL_BOSS_SCORE;
-    return LEVEL_BOSS_SCORE;
-}
-
-function getBossKillsForScope(scope) {
-    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
-}
 
 function getRequestVersion(request) {
     const url = new URL(request.url);

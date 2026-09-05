@@ -1,3 +1,5 @@
+const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs } = require('./shared/run-rules.cjs');
+const { build, OUTPUT: PUBLIC_ROOT } = require('./scripts/build.cjs');
 // Simple HTTP server for NovaWing
 const http = require('http');
 const fs = require('fs');
@@ -12,20 +14,7 @@ const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
 // A full campaign opens one campaign token plus one token per level.
 const RUN_REQUEST_LIMIT = 120;
 const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
-const MIN_COMPLETION_TIME_MS = 24 * 1000;
-const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
-// Waves + splitter drones + long boss drone phases can legitimately exceed 80 kills.
-const MAX_PLAUSIBLE_KILLS = 300;
-// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
-const CAMPAIGN_BOSS_SCORE = 5500;
-const CAMPAIGN_BOSS_KILLS = 3;
-const FINAL_BOSS_SCORE = 2500;
-const LEVEL_BOSS_SCORE = 1500;
-// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
-const MAX_KILL_SCORE = 250;
-// Campaign can bank overflow pickups on all three stages (~29 authored drops).
-const MAX_POWERUP_BONUS_SCORE = 6000;
-const MIN_MS_PER_KILL = 200;
+
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const activeRuns = new Map();
@@ -33,15 +22,8 @@ const runRequestLog = new Map();
 let leaderboardWriteQueue = Promise.resolve();
 
 function isPublicRequest(requestPath) {
-    if (
-        requestPath === '/index.html' ||
-        requestPath === '/game.js' ||
-        requestPath === '/levels.js' ||
-        requestPath === '/audio.js'
-    ) {
-        return true;
-    }
-    return /^\/assets\/(?:[\w.-]+\/)*[\w.-]+\.(png|jpe?g)$/i.test(requestPath);
+    return !requestPath.split('/').some(part => part.startsWith('.')) &&
+        /^\/(?:[\w.-]+\/)*[\w.-]+\.(html|css|m?js|json|png|jpe?g|webp|avif|svg|ogg|mp3|wav|m4a|woff2?)$/i.test(requestPath);
 }
 
 function sendJson(res, statusCode, payload) {
@@ -129,7 +111,7 @@ function normalizeEntry(entry) {
     const kills = Math.round(Number(entry.kills));
     const accuracy = Math.round(Number(entry.accuracy));
 
-    if (!Number.isFinite(timeMs) || timeMs <= 0 || timeMs > 10 * 60 * 1000) return null;
+    if (!isPlausibleTime(timeMs, scope)) return null;
     if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
     if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
     if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
@@ -296,12 +278,13 @@ async function handleRunRequest(req, res) {
     const scope = sanitizeLeaderboardScope(payload.scope);
     const runId = crypto.randomUUID();
     const now = Date.now();
+    const expiresAt = now + runTokenTtlMs(scope);
     activeRuns.set(runId, {
         version,
         scope,
         clientKey,
         startedAt: now,
-        expiresAt: now + RUN_TOKEN_TTL_MS,
+        expiresAt,
         completedAt: null,
         score: null,
         kills: null,
@@ -314,7 +297,7 @@ async function handleRunRequest(req, res) {
         version,
         scope,
         startedAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + RUN_TOKEN_TTL_MS).toISOString()
+        expiresAt: new Date(expiresAt).toISOString()
     });
 }
 
@@ -403,7 +386,7 @@ function completeRunToken(payload) {
 
     const completedAt = now;
     const timeMs = completedAt - run.startedAt;
-    if (timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
+    if (!isPlausibleTime(timeMs, run.scope)) {
         return { ok: false, error: 'Implausible run completion time' };
     }
 
@@ -472,35 +455,6 @@ function pruneExpiredRuns() {
     });
 }
 
-function isPlausibleCompletedRun(entry) {
-    if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
-    if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
-    if (entry.kills < 1) return false;
-    if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
-    const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = getBossKillsForScope(entry.scope);
-    if (entry.score < bossScore) return false;
-
-    if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
-
-    const regularKills = Math.max(0, entry.kills - bossKills);
-    const maxScore = bossScore + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
-    if (entry.score > maxScore) return false;
-
-    if (entry.kills === bossKills && entry.score > bossScore + MAX_POWERUP_BONUS_SCORE) return false;
-
-    return true;
-}
-
-function getBossScoreForScope(scope) {
-    if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
-    if (scope === 'level-3') return FINAL_BOSS_SCORE;
-    return LEVEL_BOSS_SCORE;
-}
-
-function getBossKillsForScope(scope) {
-    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
-}
 
 function getClientKey(req) {
     // Only honor X-Forwarded-For when explicitly behind a trusted reverse proxy.
@@ -584,8 +538,8 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    const filePath = path.resolve(__dirname, `.${requestPath}`);
-    const relativePath = path.relative(__dirname, filePath);
+    const filePath = path.resolve(PUBLIC_ROOT, `.${requestPath}`);
+    const relativePath = path.relative(PUBLIC_ROOT, filePath);
 
     if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
         res.writeHead(403);
@@ -593,8 +547,8 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    fs.access(filePath, fs.constants.F_OK, (err) => {
-        if (err) {
+    fs.stat(filePath, (err, stat) => {
+        if (err || !stat.isFile()) {
             res.writeHead(404);
             res.end('File not found');
             return;
@@ -606,21 +560,36 @@ const server = http.createServer((req, res) => {
             case '.html': contentType = 'text/html'; break;
             case '.css': contentType = 'text/css'; break;
             case '.js': contentType = 'application/javascript'; break;
+            case '.mjs': contentType = 'application/javascript'; break;
+            case '.json': contentType = 'application/json'; break;
+            case '.webp': contentType = 'image/webp'; break;
+            case '.avif': contentType = 'image/avif'; break;
+            case '.svg': contentType = 'image/svg+xml'; break;
+            case '.ogg': contentType = 'audio/ogg'; break;
+            case '.mp3': contentType = 'audio/mpeg'; break;
+            case '.wav': contentType = 'audio/wav'; break;
+            case '.m4a': contentType = 'audio/mp4'; break;
+            case '.woff': contentType = 'font/woff'; break;
+            case '.woff2': contentType = 'font/woff2'; break;
             case '.png': contentType = 'image/png'; break;
             case '.jpg':
             case '.jpeg': contentType = 'image/jpeg'; break;
             default: contentType = 'text/plain';
         }
 
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                res.end('Server error');
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(data);
-        });
+        const etag = '"' + stat.size + '-' + stat.mtimeMs + '"';
+        const headers = { 'Content-Type': contentType, 'Cache-Control': 'no-cache', ETag: etag };
+        if (req.headers['if-none-match'] === etag) {
+            res.writeHead(304, headers);
+            res.end();
+            return;
+        }
+        res.writeHead(200, { ...headers, 'Content-Length': stat.size });
+        if (req.method === 'HEAD') { res.end(); return; }
+        const stream = fs.createReadStream(filePath);
+        stream.on('error', () => res.destroy());
+        res.on('close', () => stream.destroy());
+        stream.pipe(res);
     });
 });
 
@@ -633,7 +602,12 @@ server.on('error', (err) => {
     throw err;
 });
 
-server.listen(PORT, HOST, () => {
-    console.log(`NovaWing running at http://${HOST}:${PORT}`);
-    console.log(`🎮 From Windows: http://localhost:${PORT}`);
+build().then(() => {
+    server.listen(PORT, HOST, () => {
+        console.log(`NovaWing running at http://${HOST}:${PORT}`);
+        console.log(`🎮 From Windows: http://localhost:${PORT}`);
+    });
+}).catch(error => {
+    console.error(error);
+    process.exitCode = 1;
 });

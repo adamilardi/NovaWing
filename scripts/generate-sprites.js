@@ -7,7 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const ASSETS = path.join(__dirname, '..', 'assets');
+const SOURCE_ASSETS = path.join(__dirname, '..', 'assets');
+const ASSETS = path.join(__dirname, '..', 'dist', 'assets');
 
 function powerupSvg({ ring, ring2, core, accent, symbol }) {
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -214,23 +215,26 @@ async function main() {
     fs.mkdirSync(ASSETS, { recursive: true });
 
     for (const [filename, svg] of Object.entries(powerups)) {
-        await writePng(filename, svg, 96, 96);
+        const source = path.join(SOURCE_ASSETS, filename);
+        const output = path.join(ASSETS, filename);
+        if (fs.existsSync(source)) fs.copyFileSync(source, output);
+        else if (!fs.existsSync(output)) await writePng(filename, svg, 96, 96);
     }
 
     // Keep hand-authored boss art (concept B). Only fall back to the SVG boss
     // if no biomechanical/source boss asset is present.
-    const authoredBoss = path.join(ASSETS, 'boss-biomechanical.png');
+    const authoredBoss = path.join(SOURCE_ASSETS, 'boss-ship.png');
     const bossOut = path.join(ASSETS, 'boss-ship.png');
     if (fs.existsSync(authoredBoss)) {
         fs.copyFileSync(authoredBoss, bossOut);
-        console.log('kept authored boss-ship.png from boss-biomechanical.png');
+        console.log('copied authored boss-ship.png');
     } else if (!fs.existsSync(bossOut)) {
         await writePng('boss-ship.png', bossSvg, 360, 196);
     } else {
         console.log('kept existing boss-ship.png');
     }
 
-    console.log('Sprite assets ready in assets/');
+    console.log('Sprite assets ready in dist/assets/; source assets preserved');
 }
 
 main().catch(err => {

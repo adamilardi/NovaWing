@@ -1,22 +1,10 @@
+import RunRules from '../../shared/run-rules.cjs';
+const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs } = RunRules;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
-const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
 // A full campaign opens one campaign token plus one token per level.
 const RUN_REQUEST_LIMIT = 120;
 const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
-const MIN_COMPLETION_TIME_MS = 24 * 1000;
-const MAX_COMPLETION_TIME_MS = 10 * 60 * 1000;
-const MAX_PLAUSIBLE_KILLS = 300;
-// Keep campaign totals in sync with levels.js getCampaignBossScore/Kills().
-const CAMPAIGN_BOSS_SCORE = 5500;
-const CAMPAIGN_BOSS_KILLS = 3;
-const FINAL_BOSS_SCORE = 2500;
-const LEVEL_BOSS_SCORE = 1500;
-// Upper bound uses the highest per-enemy kill payout (orbiter = 250).
-const MAX_KILL_SCORE = 250;
-// Campaign can bank overflow pickups on all three stages (~29 authored drops).
-const MAX_POWERUP_BONUS_SCORE = 6000;
-// Rough upper bound: more than ~1 kill per 200ms wall time is not plausible for this game.
-const MIN_MS_PER_KILL = 200;
+
 
 export async function onRequest(context) {
     const { request, env } = context;
@@ -62,7 +50,7 @@ export async function onRequest(context) {
     const scope = sanitizeLeaderboardScope(payload.scope);
     const runId = crypto.randomUUID();
     const now = Date.now();
-    const expiresAt = now + RUN_TOKEN_TTL_MS;
+    const expiresAt = now + runTokenTtlMs(scope);
 
     // Insert first, then verify the client is within the window. Concurrent
     // callers that slip past a pre-check count are pruned back under the limit.
@@ -206,7 +194,7 @@ async function completeRun(db, payload) {
 
     const completedAt = now;
     const timeMs = completedAt - startedAt;
-    if (!Number.isFinite(timeMs) || timeMs < MIN_COMPLETION_TIME_MS || timeMs > MAX_COMPLETION_TIME_MS) {
+    if (!isPlausibleTime(timeMs, run.scope)) {
         return { ok: false, error: 'Implausible run completion time' };
     }
 
@@ -262,37 +250,6 @@ function parseRunStats(payload) {
     return { score, kills, accuracy };
 }
 
-function isPlausibleCompletedRun(entry) {
-    if (entry.timeMs < MIN_COMPLETION_TIME_MS) return false;
-    if (entry.timeMs > MAX_COMPLETION_TIME_MS) return false;
-    if (entry.kills < 1) return false;
-    if (entry.kills > MAX_PLAUSIBLE_KILLS) return false;
-    const bossScore = getBossScoreForScope(entry.scope);
-    const bossKills = getBossKillsForScope(entry.scope);
-    if (entry.score < bossScore) return false;
-
-    // Kill rate vs wall-clock (server-measured time).
-    if (entry.kills > Math.floor(entry.timeMs / MIN_MS_PER_KILL) + 1) return false;
-
-    const regularKills = Math.max(0, entry.kills - bossKills);
-    const maxScore = bossScore + regularKills * MAX_KILL_SCORE + MAX_POWERUP_BONUS_SCORE;
-    if (entry.score > maxScore) return false;
-
-    // Even a bare boss clear should not exceed boss + powerup ceiling with 1 kill.
-    if (entry.kills === bossKills && entry.score > bossScore + MAX_POWERUP_BONUS_SCORE) return false;
-
-    return true;
-}
-
-function getBossScoreForScope(scope) {
-    if (scope === 'campaign') return CAMPAIGN_BOSS_SCORE;
-    if (scope === 'level-3') return FINAL_BOSS_SCORE;
-    return LEVEL_BOSS_SCORE;
-}
-
-function getBossKillsForScope(scope) {
-    return scope === 'campaign' ? CAMPAIGN_BOSS_KILLS : 1;
-}
 
 async function checkRunRateLimit(db, clientKey) {
     const windowStart = new Date(Date.now() - RUN_REQUEST_WINDOW_MS).toISOString();

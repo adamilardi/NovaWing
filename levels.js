@@ -14,20 +14,20 @@
  * 5. Powerups are scheduled by level progressMs (boost-warped time).
  * 6. Tune feel in DIFFICULTY_DEFAULTS / TIER_DIFFICULTY (see HOW TO TUNE
  *    DIFFICULTY). A level or segment may overlay a partial `difficulty` bag.
- * 7. Optional art bag swaps textures already registered in game.js:
+ * 7. Optional level/segment art bag swaps textures registered in src/assets.js:
  *      art: { wall, boss, bossVertical, playerVertical }
  * 8. Debug start: ?level=N (legacy ?level3=1 still works for N=3).
- * 9. If the new level awards a boss kill, set bossScore / bossKills and update
- *    CAMPAIGN_BOSS_SCORE + CAMPAIGN_BOSS_KILLS in server.js and
- *    functions/api/*.js so campaign plausibility stays in sync.
+ * 9. Set bossScore / bossKills, with optional score/kills per boss encounter.
+ *    shared/run-rules.cjs derives server completion rules from this catalog.
+ *    See docs/CONTENT_AUTHORING.md for level, art and recorded music examples.
  *
  * HOW TO ADD ART
  * --------------
  * 1. Drop a PNG/JPG in assets/ (subfolders allowed; served by server.js).
- * 2. Ships / enemies: add a row to SPRITES in game.js (path, body, upright?).
+ * 2. Ships / enemies: add a row to SPRITES in src/assets.js (path, body, upright?).
  * 3. New combat type: add a row to ENEMY_TYPES (texture + stats + move).
  *    Then reference that type from a wave spawner or a new wavePatternKeys entry.
- * 4. World / boss / powerup swaps: add to BAKED_SPRITE_ASSETS, then point
+ * 4. World / boss / powerup textures: add to BAKED_SPRITE_ASSETS in src/assets.js, then point
  *    levelDef.art at the texture key.
  * 5. Player action sheets stay in PLAYER_SHEETS (shared across the campaign).
  *
@@ -61,6 +61,8 @@
  *   enemySpeedScale       approach / track speed
  *   enemyShotSpeedScale   bullet speed
  *   enemyCadenceScale     >1 = slower first shot + cooldowns (easier)
+ *   bossHealthScale       boss HP multiplier
+ *   bossShotSpeedScale    boss projectile speed
  *   interceptorChance     blues when a wave omits type
  *   enemyFireChance       untyped regulars that roll a gun
  *   interceptorFireChance blues that roll a gun
@@ -81,6 +83,8 @@
  */
 (function (root) {
     'use strict';
+    const Flow = typeof module === 'object' && module.exports
+        ? require('./src/level-flow.js') : root.NovaWingFlow;
 
     const GAME_HEIGHT = 600;
     const DEFAULT_DURATION_MS = 60000;
@@ -100,6 +104,8 @@
         enemySpeedScale: 1,
         enemyShotSpeedScale: 1,
         enemyCadenceScale: 1,
+        bossHealthScale: 1,
+        bossShotSpeedScale: 1,
         interceptorTrackSpeed: 175,
         interceptorTrackResponse: 2.35,
         interceptorAimScale: 1.45,
@@ -140,7 +146,10 @@
         },
         2: {
             interceptorChance: 0.26,
-            enemyFireChance: 0.42
+            enemyFireChance: 0.42,
+            // Bridge the opener's soft 0.55 aim to the late-game 1.45 aim.
+            interceptorAimScale: 0.95,
+            interceptorShotLead: 170
         },
         3: {
             interceptorChance: 0.3,
@@ -149,6 +158,10 @@
     };
 
     const DIFFICULTY_PRESETS = {
+        // Hotshot is the authored tier progression, so it intentionally has
+        // no mode overlay. Keeping an explicit entry makes its public name
+        // resolve through the same preset API as the other modes.
+        normal: {},
         easy: {
             interceptorChance: 0.08,
             enemyFireChance: 0.18,
@@ -158,23 +171,56 @@
             waveIntervalMaxMs: 2800,
             enemyHealthScale: 0.7,
             enemySpeedScale: 0.9,
+            enemyShotSpeedScale: 0.78,
             enemyCadenceScale: 1.35,
+            interceptorTrackSpeed: 135,
+            interceptorTrackResponse: 1.65,
+            interceptorAimScale: 0.45,
+            interceptorShotLead: 70,
+            interceptorShotDelayMinMs: 900,
+            interceptorShotDelayMaxMs: 2200,
+            interceptorCooldownMinMs: 1400,
+            interceptorCooldownMaxMs: 2400,
+            softInterceptorAim: true,
             playerIFramesMs: 1400,
+            boostDrainPerSecond: 30,
             boostRefillOnKill: 24,
-            bossTempoScale: 1.25
+            bossTempoScale: 1.25,
+            bossHealthScale: 0.8,
+            bossShotSpeedScale: 0.8
         },
         hard: {
             interceptorChance: 0.4,
-            enemyFireChance: 0.55,
-            interceptorFireChance: 0.9,
-            waveIntervalMinMs: 1300,
-            waveIntervalMaxMs: 1800,
-            enemyHealthScale: 1.25,
+            enemyFireChance: 0.62,
+            interceptorFireChance: 0.95,
+            waveIntervalMinMs: 1250,
+            waveIntervalMaxMs: 1700,
+            // Supernova raises pressure through speed and density, not HP.
+            enemyHealthScale: 1,
             enemySpeedScale: 1.12,
-            enemyCadenceScale: 0.8,
+            enemyShotSpeedScale: 1.12,
+            enemyCadenceScale: 0.78,
             playerIFramesMs: 700,
             boostRefillOnKill: 10,
-            bossTempoScale: 0.85
+            bossTempoScale: 0.82,
+            bossHealthScale: 1,
+            bossShotSpeedScale: 1.12
+        }
+    };
+
+    // Display names stay separate from the canonical IDs persisted by game.js.
+    const DIFFICULTY_MODE_METADATA = {
+        easy: {
+            label: 'Space Cadet',
+            description: 'Slower shots. Room to recover.'
+        },
+        normal: {
+            label: 'Hotshot',
+            description: 'A fair fight. A little swagger.'
+        },
+        hard: {
+            label: 'Supernova',
+            description: 'Fast shots. Crowded skies. Bring it.'
         }
     };
     // Casual overlay: same knobs as easy, plus opener-soft interceptor aim.
@@ -231,7 +277,9 @@
 
     function getDifficultyPreset(name) {
         if (!name || typeof name !== 'string') return {};
-        const preset = DIFFICULTY_PRESETS[name.toLowerCase()];
+        const raw = name.trim().toLowerCase();
+        const canonical = normalizeDifficultyMode(raw) || raw;
+        const preset = DIFFICULTY_PRESETS[canonical];
         return preset ? copyDifficultyPartial(preset) : {};
     }
 
@@ -241,10 +289,13 @@
      */
     function normalizeDifficultyMode(name) {
         if (name == null || name === '') return null;
-        const s = String(name).trim().toLowerCase();
-        if (s === 'easy' || s === 'casual' || s === 'e') return 'easy';
-        if (s === 'hard' || s === 'expert' || s === 'h') return 'hard';
-        if (s === 'normal' || s === 'mid' || s === 'medium' || s === 'standard' || s === 'n') {
+        const s = String(name).trim().toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
+        if (s === 'easy' || s === 'casual' || s === 'e' || s === 'space cadet' || s === 'spacecadet') {
+            return 'easy';
+        }
+        if (s === 'hard' || s === 'expert' || s === 'h' || s === 'supernova') return 'hard';
+        if (s === 'normal' || s === 'mid' || s === 'medium' || s === 'standard' || s === 'n'
+            || s === 'hotshot' || s === 'hot shot') {
             return 'normal';
         }
         return null;
@@ -342,6 +393,7 @@
             interceptorChance: difficulty.interceptorChance,
             enemyFireChance: difficulty.enemyFireChance,
             art: def.art && typeof def.art === 'object' ? Object.assign({}, def.art) : null,
+            music: Object.assign({ waves: 'waves', boss: 'boss', transition: null }, def.music),
             // Multi-segment levels (null = classic waves → boss flow)
             segments: Array.isArray(def.segments) ? def.segments : null,
             scrollMode: def.scrollMode === 'vertical' ? 'vertical' : 'horizontal',
@@ -552,6 +604,7 @@
         powerups: [],
         bossEncounters: {
             intro: {
+                outcome: 'escape',
                 health: Math.round(DEFAULT_BOSS_HEALTH * 0.45),
                 maxPhase: 1,
                 escapeHpRatio: 0.55,
@@ -598,6 +651,7 @@
             {
                 id: 'transition',
                 kind: 'transition',
+                cinematic: 'perspectiveFlip',
                 durationMs: 3500,
                 scrollMode: 'horizontal',
                 combatOrientation: 'right',
@@ -733,24 +787,22 @@
     }
 
     function getLevelBossScore(levelId) {
-        const def = getLevelDef(levelId);
-        return Number.isFinite(def.bossScore) ? def.bossScore : 1500;
+        return Flow.totals(getLevelDef(levelId)).score;
     }
 
     function getLevelBossKills(levelId) {
-        const def = getLevelDef(levelId);
-        return Number.isFinite(def.bossKills) ? def.bossKills : 1;
+        return Flow.totals(getLevelDef(levelId)).kills;
     }
 
     function getCampaignBossScore() {
         return getEffectiveLevelDefs().reduce(function (sum, def) {
-            return sum + (Number.isFinite(def.bossScore) ? def.bossScore : 1500);
+            return sum + Flow.totals(def).score;
         }, 0);
     }
 
     function getCampaignBossKills() {
         return getEffectiveLevelDefs().reduce(function (sum, def) {
-            return sum + (Number.isFinite(def.bossKills) ? def.bossKills : 1);
+            return sum + Flow.totals(def).kills;
         }, 0);
     }
 
@@ -776,6 +828,7 @@
         DIFFICULTY_DEFAULTS: DIFFICULTY_DEFAULTS,
         TIER_DIFFICULTY: TIER_DIFFICULTY,
         DIFFICULTY_PRESETS: DIFFICULTY_PRESETS,
+        DIFFICULTY_MODE_METADATA: DIFFICULTY_MODE_METADATA,
         pathHelpers: pathHelpers,
         buildPathEvents: buildPathEvents,
         getLevelDef: getLevelDef,
@@ -811,6 +864,7 @@
     root.getDifficultyPreset = getDifficultyPreset;
     root.normalizeDifficultyMode = normalizeDifficultyMode;
     root.scaleCountedStat = scaleCountedStat;
+    root.DIFFICULTY_MODE_METADATA = DIFFICULTY_MODE_METADATA;
     root.getLevelBossScore = getLevelBossScore;
     root.getCampaignBossScore = getCampaignBossScore;
     root.getCampaignBossKills = getCampaignBossKills;

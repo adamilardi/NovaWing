@@ -5,7 +5,7 @@
  *   ?sfx=arcade | genesis | snes | n64
  *
  *  arcade   80s cabinet: raw squares, short zaps, no echo
- *  genesis  YM-style FM body + slammed mix (current default)
+ *  genesis  crisp FM weapons + warm synth score (default)
  *  snes     warm, band-limited, SPC echo
  *  n64      muffled samples + hangar reverb
  */
@@ -19,14 +19,9 @@
             id: 'arcade',
             label: 'ARCADE',
             drive: 0.6,
-            musicWaves: 0.18,
-            musicBoss: 0.24,
-            musicMs: { waves: 220, boss: 170 },
+            musicWaves: 0.58,
+            musicBoss: 0.64,
             echo: null,
-            waveArp: [196, 247, 294, 247, 220, 294, 196, 247],
-            bossArp: [155, 185, 207, 185, 165, 207, 155, 185],
-            waveBass: [98, 98, 110, 98, 87, 87, 98, 110],
-            bossBass: [73, 73, 82, 73, 65, 65, 73, 92],
             engine: {
                 carrier: 55, mod: 110, modIndex: 22, body: 82,
                 filter: 320, q: 1.4, lfo: 7, noiseType: 'bandpass', noiseHz: 900
@@ -35,15 +30,10 @@
         genesis: {
             id: 'genesis',
             label: 'GENESIS',
-            drive: 1.15,
-            musicWaves: 0.2,
-            musicBoss: 0.26,
-            musicMs: { waves: 360, boss: 280 },
-            echo: { time: 0.045, feedback: 0.18, wet: 0.12, filter: 1400 },
-            waveArp: [110, 165, 131, 165, 110, 147, 98, 165],
-            bossArp: [82, 123, 98, 110, 73, 110, 82, 92],
-            waveBass: [55, 55, 58, 55, 49, 49, 55, 52],
-            bossBass: [41, 41, 46, 41, 37, 37, 41, 44],
+            drive: 0.22,
+            musicWaves: 0.68,
+            musicBoss: 0.72,
+            echo: { time: 0.125, feedback: 0.16, wet: 0.07, filter: 2400 },
             engine: {
                 carrier: 38, mod: 19, modIndex: 8, body: 57,
                 filter: 180, q: 0.8, lfo: 2.2, noiseType: 'lowpass', noiseHz: 420
@@ -53,14 +43,9 @@
             id: 'snes',
             label: 'SNES',
             drive: 0.35,
-            musicWaves: 0.22,
-            musicBoss: 0.28,
-            musicMs: { waves: 400, boss: 320 },
+            musicWaves: 0.7,
+            musicBoss: 0.74,
             echo: { time: 0.095, feedback: 0.38, wet: 0.28, filter: 2200 },
-            waveArp: [147, 175, 196, 220, 196, 175, 165, 196],
-            bossArp: [110, 131, 147, 165, 147, 131, 123, 147],
-            waveBass: [73, 73, 82, 73, 65, 65, 73, 82],
-            bossBass: [55, 55, 61, 55, 49, 49, 55, 61],
             engine: {
                 carrier: 46, mod: 23, modIndex: 5, body: 69,
                 filter: 260, q: 0.5, lfo: 1.4, noiseType: 'lowpass', noiseHz: 500
@@ -70,14 +55,9 @@
             id: 'n64',
             label: 'N64',
             drive: 0.8,
-            musicWaves: 0.17,
-            musicBoss: 0.22,
-            musicMs: { waves: 480, boss: 380 },
+            musicWaves: 0.68,
+            musicBoss: 0.72,
             echo: { time: 0.2, feedback: 0.46, wet: 0.36, filter: 900 },
-            waveArp: [98, 123, 110, 147, 98, 131, 87, 123],
-            bossArp: [73, 92, 82, 110, 73, 98, 65, 92],
-            waveBass: [49, 49, 55, 49, 41, 41, 49, 44],
-            bossBass: [37, 37, 41, 37, 33, 33, 37, 41],
             engine: {
                 carrier: 32, mod: 16, modIndex: 4, body: 48,
                 filter: 140, q: 0.4, lfo: 0.8, noiseType: 'lowpass', noiseHz: 320
@@ -111,6 +91,10 @@
         let noiseBuffer = null;
         let engine = null;
         let echo = null;
+        let mixNodes = [];
+        let nextMusicTime = 0;
+        const musicVoices = new Set();
+        const lastEvents = Object.create(null);
         let musicTimer = null;
         let musicMode = 'waves';
         let musicStep = 0;
@@ -128,8 +112,21 @@
                 if (!AudioContext) return null;
                 context = new AudioContext();
                 master = context.createGain();
-                master.gain.value = muted ? 0.0001 : 0.92;
-                master.connect(context.destination);
+                master.gain.value = muted ? 0 : 0.8;
+                // Leave headroom and catch simultaneous impacts on the entire mix.
+                const highpass = context.createBiquadFilter();
+                highpass.type = 'highpass';
+                highpass.frequency.value = 32;
+                highpass.Q.value = 0.5;
+                const limiter = context.createDynamicsCompressor();
+                limiter.threshold.value = -6;
+                limiter.knee.value = 6;
+                limiter.ratio.value = 12;
+                limiter.attack.value = 0.002;
+                limiter.release.value = 0.16;
+                master.connect(highpass);
+                highpass.connect(limiter);
+                limiter.connect(context.destination);
 
                 sfxBus = context.createGain();
                 sfxBus.gain.value = 0.95;
@@ -153,22 +150,22 @@
         function rebuildMixChain() {
             if (!context || !sfxBus || !master) return;
             try { sfxBus.disconnect(); } catch (err) { /* first build */ }
-            if (echo) {
-                try { echo.input.disconnect(); } catch (err) { /* stale */ }
-                echo = null;
-            }
+            mixNodes.forEach(node => node.disconnect());
+            mixNodes = [];
+            echo = null;
 
             const kit = style();
             const drive = createDrive(context, kit.drive);
             const crush = context.createDynamicsCompressor();
-            crush.threshold.value = kit.id === 'arcade' ? -12 : -16;
-            crush.knee.value = 8;
-            crush.ratio.value = kit.id === 'n64' ? 3.2 : 5;
+            crush.threshold.value = -10;
+            crush.knee.value = 12;
+            crush.ratio.value = 2.5;
             crush.attack.value = 0.003;
             crush.release.value = 0.14;
             sfxBus.connect(drive);
             drive.connect(crush);
             crush.connect(master);
+            mixNodes.push(drive, crush);
 
             if (kit.echo) {
                 const input = context.createGain();
@@ -188,6 +185,7 @@
                 feedback.connect(delay);
                 wet.connect(master);
                 echo = { input: input };
+                mixNodes.push(input, delay, feedback, wet, filter);
             }
         }
 
@@ -223,6 +221,7 @@
                 try { node.stop(); } catch (err) { /* already stopped */ }
                 try { node.disconnect(); } catch (err2) { /* */ }
             });
+            engine.nodes.forEach(node => node.disconnect());
             engine = null;
         }
 
@@ -251,7 +250,7 @@
             filter.type = 'lowpass';
             filter.frequency.value = kit.filter;
             filter.Q.value = kit.q;
-            gain.gain.value = 0.0001;
+            gain.gain.value = 0;
             modulator.connect(modGain);
             modGain.connect(carrier.frequency);
             carrier.connect(filter);
@@ -267,7 +266,7 @@
             noiseFilter.frequency.value = kit.noiseHz;
             noiseFilter.Q.value = 0.55;
             const noiseGain = audio.createGain();
-            noiseGain.gain.value = 0.0001;
+            noiseGain.gain.value = 0;
             noise.connect(noiseFilter);
             noiseFilter.connect(noiseGain);
             noiseGain.connect(mix);
@@ -286,6 +285,7 @@
             noise.start();
             lfo.start();
             engine = {
+                nodes: [mix, panner, modGain, filter, gain, noiseFilter, noiseGain, lfoGain],
                 carrier: carrier,
                 modulator: modulator,
                 modGain: modGain,
@@ -310,7 +310,7 @@
 
         function setPannerValue(panner, pan) {
             if (!panner || !panner.pan) return;
-            panner.pan.setValueAtTime(clamp(Number.isFinite(pan) ? pan : 0, -1, 1), context.currentTime);
+            panner.pan.setValueAtTime(clamp(Number.isFinite(pan) ? pan : 0, -1, 1) * 0.65, context.currentTime);
         }
 
         function resolvePan(panOrX) {
@@ -324,6 +324,26 @@
             if (echo && echo.input) node.connect(echo.input);
         }
 
+        function retireVoice(source, nodes, bus) {
+            if (bus === musicBus) musicVoices.add(source);
+            source.onended = function () {
+                nodes.forEach(node => node.disconnect());
+                musicVoices.delete(source);
+            };
+        }
+
+        function envelope(param, now, duration, volume, attack, sustain) {
+            const peak = Math.max(0.0001, volume);
+            param.setValueAtTime(0, now);
+            param.linearRampToValueAtTime(peak, now + attack);
+            if (sustain) {
+                param.linearRampToValueAtTime(peak * 0.7, now + Math.min(duration * 0.3, attack + 0.05));
+                param.setValueAtTime(peak * 0.7, now + duration * 0.6);
+            }
+            param.exponentialRampToValueAtTime(0.0001, now + duration);
+            param.linearRampToValueAtTime(0, now + duration + 0.01);
+        }
+
         function tone({
             frequency,
             endFrequency,
@@ -333,12 +353,16 @@
             bus = null,
             detune = 0,
             filterFreq = null,
-            pan = 0
+            pan = 0,
+            when = null,
+            attack = 0.004,
+            sustain = false
         }) {
             const audio = getContext();
             if (!audio || !sfxBus) return;
 
-            const now = audio.currentTime;
+            const now = when == null ? audio.currentTime : when;
+            const nodes = [];
             const oscillator = audio.createOscillator();
             const gain = audio.createGain();
             const panner = createPanner(audio);
@@ -354,14 +378,13 @@
                 const filter = audio.createBiquadFilter();
                 filter.type = 'lowpass';
                 filter.frequency.setValueAtTime(filterFreq, now);
-                filter.Q.value = styleId === 'snes' ? 0.8 : 2;
+                filter.Q.value = 0.65;
+                nodes.push(filter);
                 oscillator.connect(filter);
                 node = filter;
             }
 
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), now + 0.008);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            envelope(gain.gain, now, duration, volume, attack, sustain);
             setPannerValue(panner, resolvePan(pan));
             node.connect(gain);
             gain.connect(panner);
@@ -370,6 +393,7 @@
             } else {
                 connectVoice(panner);
             }
+            retireVoice(oscillator, [oscillator, gain, panner, ...nodes], bus);
             oscillator.start(now);
             oscillator.stop(now + duration + 0.02);
         }
@@ -384,12 +408,13 @@
             volume = 0.06,
             pan = 0,
             filterFreq = 1800,
-            bus = null
+            bus = null,
+            when = null
         }) {
             const audio = getContext();
             if (!audio || !sfxBus) return;
 
-            const now = audio.currentTime;
+            const now = when == null ? audio.currentTime : when;
             const car = audio.createOscillator();
             const mod = audio.createOscillator();
             const modGain = audio.createGain();
@@ -409,10 +434,8 @@
             }
             filter.type = 'lowpass';
             filter.frequency.setValueAtTime(Math.max(80, filterFreq), now);
-            filter.Q.value = 1.2;
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), now + 0.004);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            filter.Q.value = 0.65;
+            envelope(gain.gain, now, duration, volume, 0.003, false);
             setPannerValue(panner, resolvePan(pan));
             mod.connect(modGain);
             modGain.connect(car.frequency);
@@ -424,35 +447,37 @@
             } else {
                 connectVoice(panner);
             }
+            retireVoice(car, [car, mod, modGain, filter, gain, panner], bus);
             car.start(now);
             mod.start(now);
             car.stop(now + duration + 0.03);
             mod.stop(now + duration + 0.03);
         }
 
-        function noiseBurst({ duration = 0.18, volume = 0.08, filterFreq = 900, endFilter = 120, pan = 0, type = 'bandpass' }) {
+        function noiseBurst({ duration = 0.18, volume = 0.08, filterFreq = 900, endFilter = 120, pan = 0, type = 'bandpass', bus = null, when = null }) {
             const audio = getContext();
             if (!audio || !noiseBuffer || !sfxBus) return;
 
-            const now = audio.currentTime;
+            const now = when == null ? audio.currentTime : when;
             const source = audio.createBufferSource();
             const filter = audio.createBiquadFilter();
             const gain = audio.createGain();
             const panner = createPanner(audio);
             source.buffer = noiseBuffer;
-            filter.type = type === 'lowpass' ? 'lowpass' : 'bandpass';
+            filter.type = type;
             filter.frequency.setValueAtTime(filterFreq, now);
             filter.frequency.exponentialRampToValueAtTime(Math.max(40, endFilter), now + duration);
             filter.Q.value = 0.8;
-            gain.gain.setValueAtTime(volume, now);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            envelope(gain.gain, now, duration, volume, 0.002, false);
             setPannerValue(panner, resolvePan(pan));
             source.connect(filter);
             filter.connect(gain);
             gain.connect(panner);
-            connectVoice(panner);
-            source.start(now);
-            source.stop(now + duration);
+            if (bus) panner.connect(bus);
+            else connectVoice(panner);
+            retireVoice(source, [source, filter, gain, panner], bus);
+            source.start(now, Math.random() * 0.3);
+            source.stop(now + duration + 0.02);
         }
 
         function chord(freqs, duration, volume, type, pan) {
@@ -469,123 +494,95 @@
             });
         }
 
-        function playMusicStep() {
-            const audio = getContext();
-            if (!audio || !musicBus || !musicStarted) return;
-
-            const kit = style();
+        function playMusicStep(when) {
             const isBoss = musicMode === 'boss';
-            const arp = isBoss ? kit.bossArp : kit.waveArp;
-            const bass = isBoss ? kit.bossBass : kit.waveBass;
-            const step = musicStep % arp.length;
-            const note = arp[step];
-            const bassNote = bass[step];
-            const pan = Math.sin(step * 0.9) * (isBoss ? 0.28 : 0.16);
+            const sixteenth = 60 / (isBoss ? 136 : 112) / 4;
+            const step = musicStep % 16;
+            const bar = Math.floor(musicStep / 16) % 8;
+            // A minor / F / C / G, with a darker pedal progression for bosses.
+            const roots = isBoss ? [45, 45, 41, 43, 45, 48, 41, 40] : [45, 41, 48, 43, 45, 41, 48, 43];
+            const rootNote = roots[bar];
+            const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
+            const minor = rootNote === 45 || (isBoss && rootNote === 40);
+            const third = minor ? 3 : 4;
+            const common = { bus: musicBus, when };
+            const warm = styleId === 'n64' || styleId === 'snes';
 
-            if (styleId === 'arcade') {
-                tone({
-                    frequency: bassNote,
-                    duration: 0.18,
-                    type: 'square',
-                    volume: isBoss ? 0.04 : 0.03,
-                    bus: musicBus,
-                    filterFreq: 700,
-                    pan: 0
-                });
-                if (step % 2 === 0) {
-                    tone({
-                        frequency: note,
-                        duration: 0.1,
-                        type: 'square',
-                        volume: 0.018,
-                        bus: musicBus,
-                        filterFreq: 2200,
-                        pan: pan
-                    });
-                }
-            } else if (styleId === 'snes') {
-                tone({
-                    frequency: bassNote,
-                    duration: 0.42,
-                    type: 'triangle',
-                    volume: isBoss ? 0.038 : 0.03,
-                    bus: musicBus,
-                    filterFreq: 420,
-                    pan: 0
-                });
-                if (step % 2 === 0 || isBoss) {
-                    tone({
-                        frequency: note,
-                        duration: 0.24,
-                        type: 'sine',
-                        volume: 0.016,
-                        bus: musicBus,
-                        filterFreq: 1400,
-                        pan: pan
-                    });
-                }
-            } else if (styleId === 'n64') {
-                tone({
-                    frequency: bassNote,
-                    duration: 0.55,
-                    type: 'sine',
-                    volume: isBoss ? 0.034 : 0.026,
-                    bus: musicBus,
-                    filterFreq: 240,
-                    pan: 0
-                });
-                if (step % 4 === 0) {
-                    tone({
-                        frequency: note,
-                        duration: 0.4,
-                        type: 'triangle',
-                        volume: 0.012,
-                        bus: musicBus,
-                        filterFreq: 700,
-                        pan: pan
-                    });
-                }
-            } else {
-                tone({
-                    frequency: bassNote,
-                    duration: isBoss ? 0.38 : 0.46,
-                    type: 'triangle',
-                    volume: isBoss ? 0.042 : 0.032,
-                    bus: musicBus,
-                    filterFreq: 280,
-                    pan: 0
-                });
-                if (step % 4 === 0 || (isBoss && step % 2 === 0)) {
-                    tone({
-                        frequency: note,
-                        duration: isBoss ? 0.22 : 0.28,
-                        type: 'triangle',
-                        volume: isBoss ? 0.016 : 0.011,
-                        bus: musicBus,
-                        filterFreq: isBoss ? 700 : 620,
-                        pan: pan
-                    });
-                }
+            if (step === 0) {
+                [12, 12 + third, 19].forEach((interval, i) => tone({
+                    ...common, frequency: hz(rootNote + interval), duration: sixteenth * 15,
+                    type: 'triangle', volume: 0.022, filterFreq: warm ? 1400 : 2200,
+                    attack: 0.08, sustain: true, pan: (i - 1) * 0.65
+                }));
             }
-
+            if ([0, 3, 6, 8, 10, 14].includes(step)) {
+                tone({ ...common, frequency: hz(rootNote + (step === 14 ? 12 : 0)),
+                    duration: sixteenth * 1.7, type: 'triangle', volume: 0.095,
+                    filterFreq: 650 });
+            }
+            // Plucked arpeggio opens up in the second half of the phrase.
+            if (step % 2 === 0 && (bar >= 2 || step % 4 === 0 || isBoss)) {
+                const intervals = [12, 19, 24, 12 + third, 19, 24, 12 + third, 26];
+                const note = hz(rootNote + intervals[step / 2]);
+                fmTone({ ...common, carrier: note, modulator: note * 2,
+                    index: note * (warm ? 0.18 : 0.45), endIndex: 4,
+                    duration: sixteenth * 2.6, volume: 0.034,
+                    filterFreq: warm ? 2400 : 3600, pan: step % 4 ? 0.4 : -0.4 });
+            }
+            // A sparse answering melody keeps the eight-bar phrase from being a treadmill.
+            if (bar >= 4 && [0, 6, 10].includes(step)) {
+                const melody = [24 + third, 26, 24, 19];
+                tone({ ...common, frequency: hz(rootNote + melody[(bar + Math.floor(step / 4)) % 4]),
+                    type: 'sine', duration: sixteenth * 3.5, volume: 0.035, pan: 0.15 });
+            }
+            if ([0, 8].includes(step) || (isBoss && step === 11)) {
+                tone({ ...common, frequency: 145, endFrequency: 48, duration: 0.18,
+                    type: 'sine', volume: 0.15 });
+            }
+            if (step === 4 || step === 12) {
+                noiseBurst({ ...common, duration: 0.13, volume: 0.065,
+                    filterFreq: 1900, endFilter: 950, pan: 0.08 });
+                tone({ ...common, frequency: 185, endFrequency: 115, duration: 0.09,
+                    type: 'triangle', volume: 0.035 });
+            }
+            if (step % 2 === 0 || (isBoss && bar % 4 === 3)) {
+                noiseBurst({ ...common, duration: step === 14 ? 0.085 : 0.035,
+                    volume: step % 4 === 2 ? 0.025 : 0.014, type: 'highpass',
+                    filterFreq: 6500, endFilter: 5200, pan: -0.3 });
+            }
             musicStep += 1;
         }
 
         function scheduleMusic() {
-            if (musicTimer) {
-                window.clearInterval(musicTimer);
-                musicTimer = null;
-            }
-            if (!musicStarted) return;
-            const kit = style();
-            const interval = musicMode === 'boss' ? kit.musicMs.boss : kit.musicMs.waves;
-            playMusicStep();
-            musicTimer = window.setInterval(playMusicStep, interval);
+            if (musicTimer) window.clearInterval(musicTimer);
+            musicTimer = null;
+            if (!musicStarted || !context) return;
+            nextMusicTime = context.currentTime + 0.025;
+            const tick = function () {
+                if (!musicStarted || context.state === 'suspended') return;
+                // Schedule against the audio clock so frame stalls don't wobble the beat.
+                if (nextMusicTime < context.currentTime) nextMusicTime = context.currentTime + 0.01;
+                const stepSeconds = 60 / (musicMode === 'boss' ? 136 : 112) / 4;
+                while (nextMusicTime < context.currentTime + 0.12) {
+                    playMusicStep(nextMusicTime);
+                    nextMusicTime += stepSeconds;
+                }
+            };
+            tick();
+            musicTimer = window.setInterval(tick, 25);
+        }
+
+        function cancelMusicVoices() {
+            if (!context) return;
+            musicVoices.forEach(source => {
+                try { source.stop(context.currentTime + 0.04); } catch (err) { /* ended */ }
+            });
+            musicVoices.clear();
         }
 
         function applyMuteGain() {
             if (!master || !context) return;
-            master.gain.setTargetAtTime(muted ? 0.0001 : 0.92, context.currentTime, 0.03);
+            master.gain.setTargetAtTime(muted ? 0 : 0.8, context.currentTime, 0.03);
         }
 
         function applyStyle(nextId) {
@@ -602,11 +599,11 @@
                 );
             }
             setupEngine(context);
-            if (musicStarted) scheduleMusic();
+            if (musicStarted) { cancelMusicVoices(); scheduleMusic(); }
             return styleId;
         }
 
-        return {
+        const api = {
             unlock: getContext,
             setMuted: function (nextMuted) {
                 muted = Boolean(nextMuted);
@@ -641,6 +638,7 @@
                 getContext();
                 const nextMode = mode === 'boss' ? 'boss' : 'waves';
                 if (musicStarted && musicMode === nextMode) return;
+                cancelMusicVoices();
                 musicMode = nextMode;
                 musicStarted = true;
                 musicStep = 0;
@@ -655,12 +653,13 @@
             },
             stopMusic: function () {
                 musicStarted = false;
+                cancelMusicVoices();
                 if (musicTimer) {
                     window.clearInterval(musicTimer);
                     musicTimer = null;
                 }
                 if (musicBus && context) {
-                    musicBus.gain.setTargetAtTime(0.0001, context.currentTime, 0.08);
+                    musicBus.gain.setTargetAtTime(0, context.currentTime, 0.012);
                 }
             },
             setEngine: function (intensity, x) {
@@ -669,15 +668,15 @@
                 const amount = clamp(intensity || 0, 0, 1);
                 const now = audio.currentTime;
                 const kit = style().engine;
-                const fat = styleId === 'arcade' ? 0.032 : (styleId === 'n64' ? 0.022 : 0.026);
-                engine.gain.gain.setTargetAtTime(0.0001 + amount * fat, now, 0.06);
+                const fat = styleId === 'arcade' ? 0.012 : 0.009;
+                engine.gain.gain.setTargetAtTime(amount * fat, now, 0.06);
                 engine.filter.frequency.setTargetAtTime(kit.filter + amount * (styleId === 'arcade' ? 900 : 420), now, 0.07);
                 engine.carrier.frequency.setTargetAtTime(kit.carrier + amount * 22, now, 0.07);
                 engine.modulator.frequency.setTargetAtTime(kit.mod + amount * 11, now, 0.07);
                 engine.modGain.gain.setTargetAtTime(kit.modIndex + amount * (styleId === 'arcade' ? 50 : 28), now, 0.07);
                 engine.body.frequency.setTargetAtTime(kit.body + amount * 24, now, 0.07);
                 engine.lfoGain.gain.setTargetAtTime(amount * (styleId === 'arcade' ? 50 : 22), now, 0.1);
-                engine.noiseGain.gain.setTargetAtTime(0.0001 + amount * (styleId === 'n64' ? 0.045 : 0.032), now, 0.05);
+                engine.noiseGain.gain.setTargetAtTime(amount * 0.012, now, 0.05);
                 engine.noiseFilter.frequency.setTargetAtTime(kit.noiseHz + amount * (styleId === 'arcade' ? 1800 : 700), now, 0.08);
                 setPannerValue(engine.panner, panFromX(x));
             },
@@ -737,20 +736,16 @@
                     }
                     return;
                 }
-                noiseBurst({ duration: 0.045, volume: 0.055 * punch, filterFreq: 1400, endFilter: 280, type: 'lowpass', pan: pan });
-                tone({ frequency: 92, endFrequency: 38, duration: 0.11, type: 'triangle', volume: 0.07 * punch, filterFreq: 420, pan: pan });
-                fmTone({
-                    carrier: 150, endCarrier: 48, modulator: 75,
-                    index: 70 * punch, endIndex: 12, duration: 0.1,
-                    volume: 0.055 * punch, filterFreq: 900, pan: pan
-                });
-                if (level >= 2) {
-                    tone({ frequency: 58, endFrequency: 28, duration: 0.13, type: 'sine', volume: 0.045, filterFreq: 220, pan: pan });
-                }
-                if (level >= 3) {
-                    noiseBurst({ duration: 0.08, volume: 0.045, filterFreq: 1100, endFilter: 180, type: 'lowpass', pan: pan });
-                    tone({ frequency: 120, endFrequency: 44, duration: 0.14, type: 'sawtooth', volume: 0.032, filterFreq: 500, pan: pan });
-                }
+                const variation = 1 + (Math.random() - 0.5) * 0.045;
+                fmTone({ carrier: 640 * variation, endCarrier: 210, modulator: 1280 * variation,
+                    index: 170, endIndex: 8, duration: 0.085, volume: 0.065 * punch,
+                    filterFreq: 2800, pan });
+                tone({ frequency: 185, endFrequency: 95, duration: 0.065,
+                    type: 'triangle', volume: 0.032 * punch, filterFreq: 800, pan });
+                if (level >= 2) tone({ frequency: 920 * variation, endFrequency: 330,
+                    duration: 0.055, type: 'sine', volume: 0.019, pan });
+                if (level >= 3) noiseBurst({ duration: 0.035, volume: 0.024,
+                    filterFreq: 2400, endFilter: 1100, pan });
             },
             enemyShoot: function (x) {
                 const pan = x;
@@ -758,8 +753,8 @@
                     tone({ frequency: 320, endFrequency: 140, duration: 0.07, type: 'square', volume: 0.03, pan: pan });
                     return;
                 }
-                tone({ frequency: 130, endFrequency: 55, duration: 0.11, type: 'triangle', volume: 0.04, filterFreq: 500, pan: pan });
-                noiseBurst({ duration: 0.07, volume: 0.028, filterFreq: 700, endFilter: 160, type: 'lowpass', pan: pan });
+                tone({ frequency: 310, endFrequency: 170, duration: 0.09, type: 'triangle', volume: 0.027, filterFreq: 1300, pan: pan });
+                noiseBurst({ duration: 0.045, volume: 0.016, filterFreq: 1700, endFilter: 600, pan: pan });
             },
             missile: function (x) {
                 const pan = x;
@@ -781,8 +776,8 @@
                     tone({ frequency: 1200, endFrequency: 300, duration: 0.04, type: 'square', volume: 0.028, pan: pan });
                     return;
                 }
-                tone({ frequency: 240, endFrequency: 90, duration: 0.06, type: 'triangle', volume: 0.03, filterFreq: 800, pan: pan });
-                noiseBurst({ duration: 0.045, volume: 0.028, filterFreq: 1200, endFilter: 280, type: 'lowpass', pan: pan });
+                tone({ frequency: 1100, endFrequency: 470, duration: 0.035, type: 'sine', volume: 0.018, pan: pan });
+                noiseBurst({ duration: 0.04, volume: 0.021, filterFreq: 2800, endFilter: 900, type: 'lowpass', pan: pan });
             },
             explosion: function (scale, x) {
                 const s = clamp(scale || 1, 0.7, 1.6);
@@ -799,31 +794,20 @@
                 }
                 fmTone({
                     carrier: 90 * s, endCarrier: 28, modulator: 45,
-                    index: 200, endIndex: 20, duration: 0.36 * s,
-                    volume: 0.11 * s, filterFreq: 700, pan: pan
+                    index: 95, endIndex: 8, duration: 0.36 * s,
+                    volume: 0.095 * s, filterFreq: 1000, pan: pan
                 });
-                noiseBurst({ duration: 0.34 * s, volume: 0.14 * s, filterFreq: 1400, endFilter: 70, pan: pan });
+                noiseBurst({ duration: 0.34 * s, volume: 0.12 * s, filterFreq: 2600, endFilter: 160, pan: pan });
             },
             powerup: function (x) {
-                const pan = x;
-                if (styleId === 'arcade') {
-                    tone({ frequency: 660, endFrequency: 880, duration: 0.08, type: 'square', volume: 0.035, pan: pan });
-                    window.setTimeout(function () {
-                        tone({ frequency: 880, endFrequency: 1175, duration: 0.1, type: 'square', volume: 0.03, pan: pan });
-                    }, 60);
-                    return;
-                }
-                if (styleId === 'snes') {
-                    tone({ frequency: 392, endFrequency: 330, duration: 0.14, type: 'sine', volume: 0.036, filterFreq: 1400, pan: pan });
-                    window.setTimeout(function () {
-                        tone({ frequency: 523, endFrequency: 440, duration: 0.16, type: 'triangle', volume: 0.03, filterFreq: 1600, pan: pan });
-                    }, 70);
-                    return;
-                }
-                tone({ frequency: 330, endFrequency: 220, duration: 0.16, type: 'sine', volume: 0.04, filterFreq: 900, pan: pan });
-                window.setTimeout(function () {
-                    tone({ frequency: 247, endFrequency: 196, duration: 0.18, type: 'triangle', volume: 0.032, filterFreq: 700, pan: pan });
-                }, 80);
+                const audio = getContext();
+                if (!audio) return;
+                [659.25, 830.61, 987.77, 1318.51].forEach((frequency, i) => {
+                    tone({ frequency, duration: 0.24, type: 'sine', volume: 0.055,
+                        pan: x, when: audio.currentTime + i * 0.065 });
+                    tone({ frequency: frequency * 2, duration: 0.12, type: 'sine',
+                        volume: 0.012, pan: x, when: audio.currentTime + i * 0.065 });
+                });
             },
             damage: function (x) {
                 const pan = x;
@@ -886,18 +870,15 @@
             },
             victory: function () {
                 this.stopMusic();
-                if (styleId === 'arcade') {
-                    chord([392, 494, 587], 0.18, 0.04, 'square', 0);
-                    window.setTimeout(function () { chord([523, 659, 784], 0.28, 0.045, 'square', 0); }, 160);
-                    return;
-                }
-                tone({ frequency: 110, duration: 0.28, type: 'triangle', volume: 0.045, filterFreq: 400, pan: 0 });
-                window.setTimeout(function () {
-                    tone({ frequency: 147, duration: 0.32, type: 'sine', volume: 0.04, filterFreq: 500, pan: -0.12 });
-                }, 160);
-                window.setTimeout(function () {
-                    tone({ frequency: 165, duration: 0.5, type: 'triangle', volume: 0.042, filterFreq: 450, pan: 0.1 });
-                }, 340);
+                const audio = getContext();
+                if (!audio) return;
+                [523.25, 659.25, 783.99, 1046.5].forEach((frequency, i) => {
+                    tone({ frequency, duration: i === 3 ? 0.9 : 0.26, type: 'triangle',
+                        volume: 0.055, filterFreq: 2400, when: audio.currentTime + i * 0.14 });
+                });
+                [261.63, 329.63, 392].forEach(frequency => tone({ frequency,
+                    duration: 1.1, type: 'sine', volume: 0.035, attack: 0.03,
+                    sustain: true, when: audio.currentTime + 0.42 }));
             },
             gameOver: function () {
                 this.stopMusic();
@@ -905,6 +886,21 @@
                 noiseBurst({ duration: 0.4, volume: 0.06, filterFreq: 400, endFilter: 50, pan: 0 });
             }
         };
+        // A barrage is one auditory event, even when many projectiles collide in one frame.
+        const cooldowns = { shoot: 0.045, enemyShoot: 0.075, spark: 0.05,
+            explosion: 0.04, missile: 0.09, laserFire: 0.1, laserWarn: 0.15 };
+        Object.keys(cooldowns).forEach(name => {
+            const play = api[name];
+            api[name] = function (...args) {
+                const audio = getContext();
+                if (!audio || muted) return;
+                const last = lastEvents[name];
+                if (last != null && audio.currentTime - last < cooldowns[name]) return;
+                lastEvents[name] = audio.currentTime;
+                return play.apply(api, args);
+            };
+        });
+        return api;
     }
 
     const api = {

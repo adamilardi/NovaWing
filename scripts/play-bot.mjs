@@ -72,19 +72,21 @@ export function installInPagePilot() {
         const wh = worldHeight(snap);
         if (isVertical(snap)) {
             if (snap.phase === 'boss' && snap.boss) {
+                const final = snap.segment === 'finalBoss' ||
+                    (snap.boss && snap.boss.encounter === 'final');
                 return {
-                    minX: 70,
-                    maxX: 730,
-                    minY: 280,
-                    maxY: 540,
+                    minX: 56,
+                    maxX: 744,
+                    minY: final ? 500 : 280,
+                    maxY: final ? 582 : 540,
                     wh: wh
                 };
             }
             return {
                 minX: 60,
                 maxX: 740,
-                minY: 220,
-                maxY: 540,
+                minY: 390,
+                maxY: 545,
                 wh: wh
             };
         }
@@ -189,7 +191,7 @@ export function installInPagePilot() {
             const e = enemies[i];
             out.push(Object.assign({}, e, {
                 kind: 'enemy',
-                h: (e.h || 36) * (e.type === 'interceptor' ? 1.3 : 1)
+                h: (e.h || 36) * (e.type === 'interceptor' || e.type === 'riser' ? 1.3 : 1)
             }));
         }
         const obstacles = snap.obstacles || [];
@@ -250,8 +252,11 @@ export function installInPagePilot() {
         const lives = snap.lives || 0;
         const low = lives <= 1;
         if (pu.type === 'repair' && lives <= 2) return low ? 100 : 72;
-        if (pu.type === 'shield' && !snap.hasShield) return low ? 90 : 48;
+        if (pu.type === 'shield' && !snap.hasShield) {
+            return isVertical(snap) ? 88 : (low ? 90 : 48);
+        }
         if (pu.type === 'weapon' && snap.weaponLevel < 3) {
+            if (snap.weaponLevel < 2) return low ? 70 : 96;
             return low ? 36 : (58 - snap.weaponLevel * 8);
         }
         if (pu.type === 'boost' && snap.boostEnergy < 65) return low ? 12 : 38;
@@ -343,7 +348,14 @@ export function installInPagePilot() {
                 const closingUp = t.y > y + 20 && (t.vy || 0) < -8;
                 if (closingDown || closingUp) column += t.kind === 'bullet' ? 1.4 : 1;
             }
-            score += column * 55;
+            score += column * 95;
+            // Extra: a bullet already aligned on this X and closing from above is lethal.
+            for (let i = 0; i < threats.length; i++) {
+                const t = threats[i];
+                if (t.kind !== 'bullet' && t.kind !== 'enemy') continue;
+                if (Math.abs((t.x || 0) - x) > 34) continue;
+                if (t.y < y - 12 && (t.vy || 0) > 40) score += t.kind === 'bullet' ? 220 : 90;
+            }
         }
 
         // Prefer corridor centers in canyon levels (strong).
@@ -363,7 +375,8 @@ export function installInPagePilot() {
         } else if (vertical) {
             // Stay in the aft pocket (bottom of screen), not mid-field into dives.
             const homeY = snap.phase === 'boss' ? VERT_BOSS_Y : VERT_HOME_Y;
-            score += Math.abs(y - homeY) * 0.22;
+            score += Math.abs(y - homeY) * 0.38;
+            if (y < 340) score += (340 - y) * 1.4;
         } else if ((snap.weaponLevel || 1) < 2) {
             // Early game: stay mid-screen, avoid top/bottom death traps.
             score += Math.abs(y - 300) * 0.25;
@@ -650,10 +663,14 @@ export function installInPagePilot() {
             const b = bulletsList[i];
             if (b.isLaser) {
                 if (vertical) {
-                    // Vertical lasers are X strips.
+                    // Vertical lasers are X strips. Exact overlap used to
+                    // always dodge left (x>=p.x), which walked the right-side
+                    // park into the 400-column volley.
                     if (Math.abs(b.x - p.x) < 54) {
                         minTtc = Math.min(minTtc, 0.04);
-                        dodgeDir = b.x >= p.x ? -1 : 1; // used as X dodge via state
+                        const roomL = p.x - 70;
+                        const roomR = 730 - p.x;
+                        dodgeDir = roomL >= roomR ? -1 : 1;
                         kind = 'laser';
                     }
                 } else if (Math.abs(b.y - p.y) < 54) {
@@ -665,11 +682,11 @@ export function installInPagePilot() {
             }
             if (vertical) {
                 const vy = b.vy || 0;
-                const fromAbove = b.y < p.y - 8 && vy > 20;
-                const fromBelow = b.y > p.y + 8 && vy < -20;
+                const fromAbove = b.y < p.y - 8 && vy > 16;
+                const fromBelow = b.y > p.y + 8 && vy < -12;
                 if (!fromAbove && !fromBelow) continue;
                 if (fromAbove && b.y < p.y - 560) continue;
-                if (fromBelow && b.y > p.y + 280) continue;
+                if (fromBelow && b.y > p.y + 320) continue;
                 const tHit = (p.y - b.y) / vy;
                 if (tHit < 0 || tHit > 0.95) continue;
                 const predX = b.x + (b.vx || 0) * tHit;
@@ -682,11 +699,13 @@ export function installInPagePilot() {
             }
             const vx = b.vx || -380;
             if (vx >= -20) continue;
-            if (b.x < p.x - 30 || b.x > p.x + 480) continue;
+            // Phase-1 spawn is ~403px out (tHit≈1.06); 0.95 dropped the opening
+            // frame of each volley so ttc/pressured lagged the gap finder.
+            if (b.x < p.x - 30 || b.x > p.x + 640) continue;
             const tHit = (b.x - p.x) / -vx;
-            if (tHit < 0 || tHit > 0.95) continue;
+            if (tHit < 0 || tHit > 1.35) continue;
             const predY = b.y + (b.vy || 0) * tHit;
-            if (Math.abs(predY - p.y) < 52 && tHit < minTtc) {
+            if (Math.abs(predY - p.y) < 56 && tHit < minTtc) {
                 minTtc = tHit;
                 dodgeDir = predY >= p.y ? -1 : 1;
                 kind = 'bullet';
@@ -709,7 +728,10 @@ export function installInPagePilot() {
         lastAimY: 300,
         holdDodgeDir: 0,
         holdDodgeUntil: 0,
-        safeY: 300
+        safeY: 300,
+        strafeSign: 1,
+        laneHoldX: 400,
+        laneHoldUntil: 0
     };
 
     /**
@@ -724,8 +746,29 @@ export function installInPagePilot() {
         for (let y = bounds.minY; y <= bounds.maxY; y += 14) samples.push(y);
         samples.push(preferY, p.y, state.safeY);
         if (snap.boss) {
-            samples.push(snap.boss.y, snap.boss.y - 90, snap.boss.y + 90);
+            const by = snap.boss.y;
+            samples.push(by, by - 90, by + 90, by - 140, by + 140, by - 190, by + 190);
         }
+
+        // Volleys spawn at boss.x-122 (~533) and aim at the player. A constant
+        // 0.38 hull-track beat a graze-lane (miss≈30) so we sat in the fan.
+        const impacts = [];
+        for (let i = 0; i < bullets.length; i++) {
+            const b = bullets[i];
+            if (b.isLaser) continue;
+            const vx = b.vx || -380;
+            if (vx >= -10) continue;
+            if (b.x < p.x - 40 || b.x > p.x + 640) continue;
+            const tHit = (b.x - p.x) / -vx;
+            if (tHit < 0 || tHit > 1.45) continue;
+            impacts.push({ predY: b.y + (b.vy || 0) * tHit, tHit: tHit });
+        }
+        let aimY = 0;
+        for (let i = 0; i < impacts.length; i++) aimY += impacts[i].predY;
+        if (impacts.length) aimY /= impacts.length;
+        const trackW = impacts.length >= 3 ? 0.05
+            : impacts.length >= 1 ? 0.10
+            : 0.32;
 
         let bestY = preferY;
         let bestScore = -Infinity;
@@ -733,10 +776,15 @@ export function installInPagePilot() {
         for (let si = 0; si < samples.length; si++) {
             const y = clamp(samples[si], bounds.minY, bounds.maxY);
             let score = 0;
-            // Prefer near boss for DPS, but weakly.
-            if (snap.boss) score -= Math.abs(y - snap.boss.y) * 0.15;
+            if (snap.boss) score -= Math.abs(y - snap.boss.y) * trackW;
             score -= Math.abs(y - p.y) * 0.05;
-            score -= Math.abs(y - preferY) * 0.08;
+            score -= Math.abs(y - preferY) * (impacts.length >= 2 ? 0.16 : 0.08);
+            if (impacts.length >= 2 && Math.abs(y - state.safeY) < 20) score += 10;
+
+            if (impacts.length >= 2) {
+                const aimMiss = Math.abs(y - aimY);
+                if (aimMiss < 78) score -= (78 - aimMiss) * 1.35;
+            }
 
             // Soft boss body
             if (snap.boss) {
@@ -754,17 +802,16 @@ export function installInPagePilot() {
                 }
                 const vx = b.vx || -380;
                 if (vx >= -10) continue;
-                // Only care about bullets that will cross our X soon.
-                if (b.x < p.x - 40 || b.x > p.x + 520) continue;
+                if (b.x < p.x - 40 || b.x > p.x + 640) continue;
                 const tHit = (b.x - p.x) / -vx;
-                if (tHit < 0 || tHit > 0.85) continue;
+                if (tHit < 0 || tHit > 1.45) continue;
                 const predY = b.y + (b.vy || 0) * tHit;
                 const miss = Math.abs(predY - y);
-                if (miss < 48) {
+                if (miss < 56) {
                     const urgency = 1 / (0.08 + tHit);
-                    score -= (48 - miss) * urgency * 1.6;
-                } else if (miss < 80) {
-                    score -= (80 - miss) * 0.15;
+                    score -= (56 - miss) * urgency * 2.1;
+                } else if (miss < 96) {
+                    score -= (96 - miss) * 0.22;
                 }
             }
 
@@ -781,6 +828,46 @@ export function installInPagePilot() {
     }
 
     /**
+     * Final-boss well: hazard rings sweep r=90↔280 (lethalWidth 22 → ~291).
+     * At y≈572 the floor is already r≈312, so a bottom-center strafe stays
+     * outside the rings AND can DPS the boss on the 400 column.
+     */
+    function blackHoleInfo(snap) {
+        const bh = snap.blackHole || {};
+        const cfg = bh.config || {};
+        const x = cfg.x != null ? cfg.x : 400;
+        const y = cfg.y != null ? cfg.y : 260;
+        const p = snap.player;
+        const dist = p ? (Math.hypot(p.x - x, p.y - y) || 0.001) : 999;
+        return {
+            active: Boolean(bh.active),
+            preview: Boolean(bh.preview),
+            x: x,
+            y: y,
+            dist: dist,
+            minR: bh.active ? 304 : 0,
+            dangerR: (cfg.dangerRadius != null ? cfg.dangerRadius : 48) + 20,
+            killR: (cfg.killRadius != null ? cfg.killRadius : 28) + 16
+        };
+    }
+
+    /**
+     * Final-boss shots are +X=0 / vy=-690 from the floor. Orbit is
+     * x=bhx+cos(a)r, y=bhy+sin(a)r so vx=-ω(y-bhy). 17% acc was aiming at
+     * current X while the hull moved 50–75px during the 0.7s flight.
+     */
+    function finalLeadX(snap) {
+        const b = snap.boss;
+        const p = snap.player;
+        if (!b || !p) return 400;
+        const bh = blackHoleInfo(snap);
+        const tShot = clamp((p.y - b.y) / 690, 0.1, 0.85);
+        const omega = (b.phase >= 3) ? 0.75 : 0.55;
+        const lead = -omega * (b.y - bh.y) * tShot;
+        return clamp(b.x + lead, 90, 710);
+    }
+
+    /**
      * Vertical-boss gap finder: pick the X with max clearance from incoming
      * dive bullets / vertical laser strips.
      */
@@ -788,11 +875,14 @@ export function installInPagePilot() {
         const p = snap.player;
         const bounds = playBounds(snap);
         const bullets = snap.enemyBullets || [];
+        const bh = blackHoleInfo(snap);
         const samples = [];
         for (let x = bounds.minX; x <= bounds.maxX; x += 16) samples.push(x);
         samples.push(preferX, p.x);
+        const leadX = (bh.active && p.y >= 520 && snap.boss) ? finalLeadX(snap) : null;
         if (snap.boss) {
             samples.push(snap.boss.x, snap.boss.x - 80, snap.boss.x + 80);
+            if (leadX != null) samples.push(leadX);
         }
 
         let bestX = preferX;
@@ -801,41 +891,216 @@ export function installInPagePilot() {
         for (let si = 0; si < samples.length; si++) {
             const x = clamp(samples[si], bounds.minX, bounds.maxX);
             let score = 0;
-            if (snap.boss) score -= Math.abs(x - snap.boss.x) * 0.15;
+            if (snap.boss && !bh.active) score -= Math.abs(x - snap.boss.x) * 0.15;
+            if (leadX != null) score -= Math.abs(x - leadX) * 0.28;
             score -= Math.abs(x - p.x) * 0.05;
-            score -= Math.abs(x - preferX) * 0.08;
+            score -= Math.abs(x - preferX) * 0.12;
 
             if (snap.boss) {
                 const bodyHalf = (snap.boss.w || 220) * 0.22;
                 const bodyDist = Math.abs(x - snap.boss.x);
-                if (bodyDist < bodyHalf + 16) score -= (bodyHalf + 16 - bodyDist) * 6;
+                // Overhead hull is a DPS lane, not an X blocker (13% acc).
+                const closeY = Math.abs((snap.boss.y || 0) - p.y) <
+                    (snap.boss.h || 150) * 0.4 + 50;
+                if (closeY && bodyDist < bodyHalf + 16) {
+                    score -= (bodyHalf + 16 - bodyDist) * 6;
+                }
+            }
+
+            if (bh.active) {
+                const dist = Math.hypot(x - bh.x, p.y - bh.y);
+                if (dist < bh.minR) score -= (bh.minR - dist) * 36;
+                if (dist < bh.minR + 28) score -= (bh.minR + 28 - dist) * 8;
+                // Crossing the well on X is a ring death above the floor.
+                // At y≈572, r≈312 > ring 291, so 400 is legal for DPS.
+                if (Math.abs(x - bh.x) < 110 && p.y < 520) score -= 260;
+                if (Math.abs(x - bh.x) < 56 && p.y < 530) score -= 110;
             }
 
             for (let i = 0; i < bullets.length; i++) {
                 const b = bullets[i];
                 if (b.isLaser) {
                     const dx = Math.abs(b.x - x);
-                    if (dx < 40) score -= (40 - dx) * 14;
+                    if (dx < 44) score -= (44 - dx) * 16;
                     continue;
                 }
                 const vy = b.vy || 380;
                 if (vy <= 20) continue;
                 if (b.y > p.y + 30 || b.y < p.y - 560) continue;
                 const tHit = (p.y - b.y) / vy;
-                if (tHit < 0 || tHit > 0.85) continue;
+                if (tHit < 0 || tHit > 1.15) continue;
                 const predX = b.x + (b.vx || 0) * tHit;
                 const miss = Math.abs(predX - x);
-                if (miss < 48) {
+                if (miss < 52) {
                     const urgency = 1 / (0.08 + tHit);
-                    score -= (48 - miss) * urgency * 1.6;
-                } else if (miss < 80) {
-                    score -= (80 - miss) * 0.15;
+                    score -= (52 - miss) * urgency * 1.8;
+                } else if (miss < 88) {
+                    score -= (88 - miss) * 0.18;
+                }
+            }
+
+            const enemies = snap.enemies || [];
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (e.y > p.y + 16) continue;
+                const evy = e.vy || 0;
+                const tHit = evy > 16 ? (p.y - e.y) / evy : 0.55;
+                if (tHit < 0 || tHit > 1.3) continue;
+                const predX = e.x + (e.vx || 0) * Math.min(tHit, 0.55);
+                const miss = Math.abs(predX - x);
+                if (miss < 44) {
+                    score -= (44 - miss) * (e.type === 'interceptor' ? 2.4 : 1.5);
                 }
             }
 
             const edge = Math.min(x - bounds.minX, bounds.maxX - x);
             if (edge < 35) score -= (35 - edge) * 0.8;
 
+            if (score > bestScore) {
+                bestScore = score;
+                bestX = x;
+            }
+        }
+        return bestX;
+    }
+
+    /**
+     * Vertical-wave gap finder: pick an X that is not a dive / riser / bullet column.
+     */
+    function safestWaveX(snap, preferX, commit) {
+        const p = snap.player;
+        const bounds = playBounds(snap);
+        const bullets = snap.enemyBullets || [];
+        const enemies = snap.enemies || [];
+        const samples = [];
+        for (let x = bounds.minX; x <= bounds.maxX; x += 18) samples.push(x);
+        samples.push(preferX, p.x, 280, 520, 220, 580, 340, 460, 160, 640, 300, 500, 150, 650);
+        // Mine-curtain gaps sit at 175/325/475/625 when slots are 100+150n.
+        samples.push(175, 325, 475, 625, 125, 675);
+        const obstacles = snap.obstacles || [];
+        const mineXs = [];
+        for (let i = 0; i < obstacles.length; i++) mineXs.push(obstacles[i].x || 0);
+        mineXs.sort(function (a, b) { return a - b; });
+        for (let i = 0; i < mineXs.length - 1; i++) {
+            samples.push((mineXs[i] + mineXs[i + 1]) * 0.5);
+        }
+        let bestX = preferX;
+        let bestScore = -Infinity;
+        const diveLanes = [105, 185, 265, 345, 425, 505, 280, 340, 460, 520];
+        for (let si = 0; si < samples.length; si++) {
+            const x = clamp(samples[si], bounds.minX, bounds.maxX);
+            let score = 0;
+            score -= Math.abs(x - preferX) * (commit ? 0.14 : 0.05);
+            // Stay in the current gap unless another column is clearly safer.
+            // TTC ignores player vx, so a 5pt upgrade used to strafe through mines.
+            // Commit (shield/weapon hunt) must actually leave the pocket.
+            score -= Math.abs(x - p.x) * (commit ? 0.04 : 0.16);
+            // 400 is V-tip / riser / mine-dropper. 18pts lost to a graze lane.
+            if (Math.abs(x - 400) < 52) score -= (52 - Math.abs(x - 400)) * 1.1;
+            // Authored dive lanes / V-wings. Soft so 320-weapon / 480-shield still win.
+            for (let li = 0; li < diveLanes.length; li++) {
+                const d = Math.abs(x - diveLanes[li]);
+                if (d < 26) score -= (26 - d) * 0.65;
+            }
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                if (b.isLaser) {
+                    if (Math.abs(b.x - x) < 42) score -= (42 - Math.abs(b.x - x)) * 16;
+                    continue;
+                }
+                const vy = b.vy || 0;
+                if (Math.abs(vy) < 12) continue;
+                const fromAbove = vy > 12 && b.y < p.y + 20 && b.y > p.y - 640;
+                const fromBelow = vy < -12 && b.y > p.y - 20 && b.y < p.y + 300;
+                if (!fromAbove && !fromBelow) continue;
+                const tHit = (p.y - b.y) / vy;
+                if (tHit < 0 || tHit > 1.2) continue;
+                const predX = b.x + (b.vx || 0) * tHit;
+                const miss = Math.abs(predX - x);
+                if (miss < 44) score -= (44 - miss) * (1 / (0.08 + tHit)) * 1.8;
+            }
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                const evy = e.vy || 0;
+                const closingDown = e.y < p.y - 16 && evy > 6;
+                const closingUp = e.y > p.y + 10 && evy < -6;
+                let predX = e.x || 0;
+                if (closingDown && evy > 10) {
+                    const tHit = (p.y - e.y) / evy;
+                    if (tHit > 0 && tHit < 1.3) {
+                        predX = e.x + (e.vx || 0) * Math.min(tHit, 0.7);
+                        // Homing interceptors start with vx≈0; pincer darts already
+                        // carry convergeVx (±40). Extra lead walked us into the arms.
+                        if ((e.type === 'interceptor' || e.type === 'dart') &&
+                                Math.abs(e.vx || 0) < 22) {
+                            const lead = e.type === 'interceptor' ? 175 : 90;
+                            const gap = p.x - e.x;
+                            predX = e.x + clamp(gap, -lead * tHit, lead * tHit);
+                        }
+                    }
+                }
+                const miss = Math.min(Math.abs(predX - x), Math.abs((e.x || 0) - x));
+                if (miss > 70) continue;
+                const homing = e.type === 'interceptor' || e.type === 'dart';
+                const rising = e.type === 'riser' || closingUp;
+                if (closingDown) score -= (homing ? 72 : 48) * clamp(1 - miss / 50, 0.2, 1);
+                else if (rising) score -= 95 * clamp(1 - miss / 70, 0.2, 1);
+                else if (e.y < p.y && miss < 28) score -= 18;
+                else if (e.y > p.y && e.y < p.y + 160 && miss < 34) score -= 32;
+            }
+            for (let i = 0; i < obstacles.length; i++) {
+                const o = obstacles[i];
+                const dx = Math.abs((o.x || 0) - x);
+                if (dx > 80) continue;
+                if (o.y > p.y + 140 || o.y < p.y - 560) continue;
+                // Close-in-Y mines clip a 72px hull; far mines only block the column.
+                const yDist = o.y < p.y ? (p.y - o.y) : (o.y - p.y) * 0.7;
+                const near = yDist < 110 ? 4.2 : (yDist < 220 ? 2.8 : 1.6);
+                score -= (80 - dx) * near;
+            }
+            // Crossing a live column (mines have vx=0 so TTC stays inf until overlap).
+            // Far mines (~2s above) used to cost 190 and trap us in a dart column.
+            const spanLo = Math.min(p.x, x) + 14;
+            const spanHi = Math.max(p.x, x) - 14;
+            if (spanHi > spanLo) {
+                for (let i = 0; i < obstacles.length; i++) {
+                    const o = obstacles[i];
+                    const ox = o.x || 0;
+                    if (ox <= spanLo || ox >= spanHi) continue;
+                    const yd = p.y - o.y;
+                    if (yd > -50 && yd < 180) {
+                        if (yd < 90) score -= 300;
+                        else if (commit) score -= 8;
+                        else if (yd < 140) score -= 70;
+                        else score -= 18;
+                    }
+                }
+                for (let i = 0; i < enemies.length; i++) {
+                    const e = enemies[i];
+                    const ex = e.x || 0;
+                    if (ex <= spanLo || ex >= spanHi) continue;
+                    const closing = (e.y < p.y - 8 && (e.vy || 0) > 8) ||
+                        (e.type === 'riser' && e.y > p.y - 20 && e.y < p.y + 180);
+                    if (!closing) continue;
+                    const yd = p.y - (e.y || 0);
+                    score -= yd < 140 ? 160 : 28;
+                }
+            }
+            let hasRiser = false;
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (e.type === 'riser' || ((e.vy || 0) < -12 && e.y > p.y)) hasRiser = true;
+            }
+            if (hasRiser) {
+                // 30px ban left a 30–48px dead zone that still clipped.
+                const cols = [200, 400, 600];
+                for (let ci = 0; ci < cols.length; ci++) {
+                    const d = Math.abs(x - cols[ci]);
+                    if (d < 54) score -= (54 - d) * 3.2;
+                }
+            }
+            const edge = Math.min(x - bounds.minX, bounds.maxX - x);
+            if (edge < 40) score -= (40 - edge) * 0.9;
             if (score > bestScore) {
                 bestScore = score;
                 bestX = x;
@@ -881,6 +1146,7 @@ export function installInPagePilot() {
 
         let ax = 0;
         let ay = 0;
+        let waveEscape = false;
         if (dx < -6) ax = -1;
         else if (dx > 10) ax = 1;
         if (dy < -5) ay = -1;
@@ -889,23 +1155,240 @@ export function installInPagePilot() {
         // Commit to a dodge direction briefly to avoid thrashing.
         if (isVertical(snap)) {
             // In vertical mode dodgeDir is primarily an X-axis escape.
-            if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+            if (snap.phase === 'waves') {
+                const powerups = snap.powerups || [];
+                // Flip parks at (400,460) with ~800ms i-frames. x===400 used to
+                // pick 510 (WAVE_LANE 505 / V-wing 520) and boost into the opening.
+                const spawnCol = Math.abs(p.x - 400) < 90;
+                let huntX = p.x < 400 ? 300 : 475;
+                if (spawnCol) huntX = 300;
+                // Shield first (gauntlet is a blender), then weapon/repair.
+                // Pickups drop at 70px/s from y=-50; hunting at 560px parks us
+                // on 320/480 for ~7s under dive lanes. Shield is a life — start
+                // earlier (~5s out). Other orbs wait until ~3s out.
+                const huntOrder = [];
+                for (let i = 0; i < powerups.length; i++) {
+                    const pu = powerups[i];
+                    const reach = (pu.type === 'shield' && !snap.hasShield) ? 380 : 260;
+                    if (pu.y > p.y + 80 || pu.y < p.y - reach) continue;
+                    if (pu.type === 'shield' && !snap.hasShield) huntOrder.unshift(pu.x);
+                    else if (pu.type === 'repair' && (snap.lives || 0) <= 2) huntOrder.push(pu.x);
+                    else if (pu.type === 'weapon' && (snap.weaponLevel || 1) < 3) {
+                        // 38s Spread sits on V-wing 520. Twin is enough; parking
+                        // there for the 7s drop is a blender death (Spread, 54 kills).
+                        const needTwin = (snap.weaponLevel || 1) < 2;
+                        const hot = [200, 280, 340, 400, 460, 505, 520, 600];
+                        let onHot = false;
+                        for (let hi = 0; hi < hot.length; hi++) {
+                            if (Math.abs((pu.x || 0) - hot[hi]) < 22) onHot = true;
+                        }
+                        if (needTwin || !onHot) huntOrder.push(pu.x);
+                    }
+                }
+                let hunting = false;
+                if (huntOrder.length) {
+                    huntX = huntOrder[0];
+                    const obsB = snap.obstacles || [];
+                    for (let hi = 0; hi < huntOrder.length; hi++) {
+                        const hx = huntOrder[hi];
+                        let blocked = false;
+                        for (let bi = 0; bi < obsB.length; bi++) {
+                            const o = obsB[bi];
+                            // Only skip a pickup if a mine is in the lane now
+                            // (far curtain rows used to cancel the 10s shield).
+                            if (Math.abs((o.x || 0) - hx) < 50 && Math.abs(o.y - p.y) < 130) {
+                                blocked = true;
+                                break;
+                            }
+                        }
+                        if (!blocked) {
+                            huntX = hx;
+                            hunting = true;
+                            break;
+                        }
+                        if (hi === huntOrder.length - 1) {
+                            huntX = p.x < 400 ? 300 : 475;
+                        }
+                    }
+                }
+                let risersOut = false;
+                const ensHunt = snap.enemies || [];
+                for (let i = 0; i < ensHunt.length; i++) {
+                    const e = ensHunt[i];
+                    if (e.type === 'riser' || ((e.vy || 0) < -12 && e.y > p.y - 20)) {
+                        risersOut = true;
+                        break;
+                    }
+                }
+                if (risersOut && (Math.abs(huntX - 200) < 54 || Math.abs(huntX - 400) < 54 ||
+                        Math.abs(huntX - 600) < 54)) {
+                    huntX = huntX < 400 ? 300 : 475;
+                    hunting = false;
+                }
+                let safeX = safestWaveX(snap, huntX, hunting);
+                let diveCol = false;
+                let riserBelow = false;
+                let floorThreat = false;
+                let holdHot = here.ttc < 0.22 || spawnCol;
+                const ens = snap.enemies || [];
+                for (let i = 0; i < ens.length; i++) {
+                    const e = ens[i];
+                    const evy = e.vy || 0;
+                    const dxe = Math.abs((e.x || 0) - p.x);
+                    // In-column risers only. 300px/58px used to mark all three
+                    // columns hot at once and thrashed into dives.
+                    const rising = e.type === 'riser' || (evy < -8 && e.y > p.y);
+                    if (rising && e.y > p.y - 8 && e.y < p.y + 200 && dxe < 48) {
+                        floorThreat = true;
+                        riserBelow = true;
+                        holdHot = true;
+                    } else if (e.y > p.y + 6 && e.y < p.y + 150 && dxe < 72) {
+                        floorThreat = true;
+                    }
+                    if (e.y < p.y - 12 && evy > 8) {
+                        const tHit = (p.y - e.y) / evy;
+                        if (tHit > 0 && tHit < 1.25) {
+                            const predX = (e.x || 0) + (e.vx || 0) * Math.min(tHit, 0.5);
+                            if (dxe < 50 || Math.abs(predX - p.x) < 54) {
+                                diveCol = true;
+                                holdHot = true;
+                            }
+                        }
+                    }
+                }
+                const bls = snap.enemyBullets || [];
+                for (let i = 0; i < bls.length; i++) {
+                    const b = bls[i];
+                    if (b.isLaser) {
+                        if (Math.abs((b.x || 0) - p.x) < 54) holdHot = true;
+                        continue;
+                    }
+                    const vy = b.vy || 0;
+                    if (vy <= 16 || b.y > p.y - 8) continue;
+                    const tHit = (p.y - b.y) / vy;
+                    if (tHit < 0 || tHit > 0.85) continue;
+                    const predX = (b.x || 0) + (b.vx || 0) * tHit;
+                    if (Math.abs(predX - p.x) < 52) holdHot = true;
+                }
+                const obs = snap.obstacles || [];
+                for (let i = 0; i < obs.length; i++) {
+                    const o = obs[i];
+                    const dxm = Math.abs((o.x || 0) - p.x);
+                    if (dxm < 52 && o.y < p.y - 8 && o.y > p.y - 240) {
+                        diveCol = true;
+                        holdHot = true;
+                    }
+                    if (dxm < 52 && Math.abs(o.y - p.y) < 90) floorThreat = true;
+                }
+                // Spawn-break sits at 300 for the 3s weapon; the 10s shield is at
+                // 480. safestWaveX refuses to cross 400 if anything is diving the
+                // gate (span penalty 160 > prefer 25), so we missed the shield
+                // and sat with unused boost until lives<=2 killed strafe.
+                let crossHunt = false;
+                if (hunting && Math.abs(huntX - p.x) > 64 && here.ttc > 0.16) {
+                    let gateHot = false;
+                    const glo = Math.min(p.x, huntX) + 18;
+                    const ghi = Math.max(p.x, huntX) - 18;
+                    for (let i = 0; i < ens.length; i++) {
+                        const e = ens[i];
+                        const ex = e.x || 0;
+                        if (ex <= glo || ex >= ghi) continue;
+                        const evy = e.vy || 0;
+                        if (e.y < p.y - 8 && evy > 8) {
+                            const tHit = (p.y - e.y) / evy;
+                            if (tHit > 0 && tHit < 0.5) gateHot = true;
+                        }
+                    }
+                    for (let i = 0; i < obs.length; i++) {
+                        const o = obs[i];
+                        const ox = o.x || 0;
+                        if (ox <= glo || ox >= ghi) continue;
+                        if (p.y - o.y < 100 && p.y - o.y > -30) gateHot = true;
+                    }
+                    if (!gateHot) {
+                        safeX = huntX;
+                        crossHunt = true;
+                    }
+                }
+                // Hold the gap. Skipping hold whenever holdHot (ttc/dive) thrashed
+                // through sibling columns (13% acc, unused boost, missed 10s shield).
+                // Abandon only if THIS X is the dive, or we're still crossing to a pickup.
+                const atHunt = hunting && Math.abs(p.x - huntX) < 44;
+                const skipHold = (hunting && !atHunt) || crossHunt;
+                const heldIsDive = diveCol && Math.abs(p.x - state.laneHoldX) < 40;
+                if (!skipHold && now < state.laneHoldUntil &&
+                        Math.abs(state.laneHoldX - p.x) < 150) {
+                    if (!heldIsDive && Math.abs(safeX - state.laneHoldX) < 100) {
+                        safeX = state.laneHoldX;
+                    }
+                } else {
+                    state.laneHoldX = safeX;
+                    state.laneHoldUntil = now + (heldIsDive ? 70 : 280);
+                }
+                waveEscape = holdHot || crossHunt;
+                const errX = safeX - p.x;
+                if (Math.abs(errX) > 10) ax = errX > 0 ? 1 : -1;
+                else ax = 0;
+                // Gap finder sometimes picks "stay" in a live dive. Step out.
+                if (diveCol && ax === 0) {
+                    ax = p.x >= 400 ? 1 : -1;
+                    if (p.x > 640) ax = -1;
+                    if (p.x < 160) ax = 1;
+                    waveEscape = true;
+                }
+                // Climb only for risers in our column. Sitting at 418 walked
+                // into dive traffic; home stays the aft pocket (y≈460).
+                if (riserBelow && p.y > 405 && !diveCol) ay = -1;
+                else if (p.y < VERT_HOME_Y - 12) ay = 1;
+                else if (p.y > VERT_HOME_Y + 22) ay = -1;
+                else ay = 0;
+                if (floorThreat && ay > 0) ay = 0;
+                // Meet a close orb instead of waiting at y=460 while it falls
+                // through dive traffic (shield is 64px, 70px/s).
+                if (hunting && atHunt && !diveCol && p.y > 398) {
+                    for (let i = 0; i < powerups.length; i++) {
+                        const pu = powerups[i];
+                        if (Math.abs((pu.x || 0) - huntX) > 40) continue;
+                        if (pu.y < p.y - 24 && pu.y > p.y - 220) {
+                            ay = -1;
+                            break;
+                        }
+                    }
+                }
+                // BH preview pull (60s) aims at (400,40). Sit-still boost sped
+                // mines into the floor pocket; 400 is the well column.
+                const preview = snap.blackHole && snap.blackHole.preview;
+                if (preview) {
+                    if (Math.abs(p.x - 400) < 70) {
+                        ax = p.x >= 400 ? 1 : -1;
+                        waveEscape = true;
+                    }
+                    if (p.y > VERT_HOME_Y + 8) ay = -1;
+                    if (ay > 0 && p.y >= VERT_HOME_Y - 8) ay = 0;
+                }
+                // Panic-dodge only when impact is imminent. dodgeDir at ttc<0.32
+                // walked into sibling dive columns and canceled the gap finder.
+                if (here.kind === 'laser' && here.ttc < 0.6 && here.dodgeDir !== 0) {
+                    ax = here.dodgeDir;
+                } else if (here.ttc < 0.14 && here.dodgeDir !== 0) {
+                    if (ax === 0 || (ax > 0) === (here.dodgeDir > 0)) ax = here.dodgeDir;
+                }
+            } else if ((here.kind === 'laser' && here.ttc < 0.6) || (here.ttc < 0.32 && here.dodgeDir !== 0)) {
                 if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
                     state.holdDodgeDir = here.dodgeDir;
-                    state.holdDodgeUntil = now + (here.kind === 'laser' ? 240 : 160);
+                    state.holdDodgeUntil = now + (here.kind === 'laser' ? 280 : 180);
                 }
                 ax = state.holdDodgeDir;
-                if (here.ttc < 0.28 && p.y < 500) ay = 1; // drop back
-            } else if (ttc < 0.24 && Math.abs(dx) > 2) {
+                if (here.ttc < 0.34 && p.y < 520) ay = 1;
+            } else if (ttc < 0.22 && Math.abs(dx) > 2) {
                 ax = dx < 0 ? -1 : 1;
-            } else if (ttc > 0.7 && snap.phase === 'waves' && Math.abs(p.x - 400) < 36) {
-                // Don't camp the 400 column — riser/V waves own it.
-                ax = p.x >= 400 ? 1 : -1;
             }
+            const bhWave = snap.blackHole || {};
+            if ((bhWave.preview || bhWave.active) && p.y < 450) ay = 1;
         } else if (here.ttc < 0.5 && here.dodgeDir !== 0) {
             if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
                 state.holdDodgeDir = here.dodgeDir;
-                state.holdDodgeUntil = now + (here.kind === 'laser' ? 240 : 160);
+                state.holdDodgeUntil = now + (here.kind === 'laser' ? 280 : 260);
             }
             ay = state.holdDodgeDir;
             if (here.ttc < 0.3 && p.x > 72) ax = -1;
@@ -926,73 +1409,227 @@ export function installInPagePilot() {
 
         if (snap.phase === 'boss' && snap.boss && isVertical(snap)) {
             const b = snap.boss;
-            const hp = Number.isFinite(b.health) ? b.health : 240;
-            const pressured = here.ttc < 0.7 || here.bullets >= 2;
-            // Final BH fight: wider orbit; intro-style vertical: sit under and dump.
-            const orbitR = isFinalBoss
-                ? (lowLives || hp < 100 ? 110 : 70)
-                : (lowLives || hp < 100 ? 90 : 40);
-            const preferX = clamp(
-                b.x + state.bossOrbitSign * orbitR,
-                bounds.minX + 12,
-                bounds.maxX - 12
-            );
-            if (now > state.bossWeaveUntil) {
-                state.bossOrbitSign *= -1;
-                state.bossWeaveUntil = now + (pressured ? 360 : 520);
+            const bh = blackHoleInfo(snap);
+            // Final BH: sit on the floor (y≈572 → r≈312 > ring 291) and strafe
+            // under the boss. Side-pockets had no DPS and same-side missiles
+            // filled the 170px lane. Dropping from spawn (400,480) increases r
+            // without crossing the well.
+            const preferY = (isFinalBoss && bh.active) ? 572 : (isFinalBoss ? 552 : VERT_BOSS_Y);
+            let pocketLo = bounds.minX + 8;
+            let pocketHi = bounds.maxX - 8;
+            let stationX = clamp(b.x, pocketLo + 30, pocketHi - 30);
+            if (bh.active && isFinalBoss) {
+                // Floor is ring-safe at y≈572. Sit under the hull (shots are
+                // +X=0); outer*42 plus a 400-ban parked us opposite the boss.
+                pocketLo = 90;
+                pocketHi = 710;
+                stationX = clamp(b.x, 140, 660);
             }
-            if (p.x <= bounds.minX + 30) state.bossOrbitSign = 1;
-            if (p.x >= bounds.maxX - 30) state.bossOrbitSign = -1;
 
-            const safeX = safestBossX(snap, preferX);
-            const errX = safeX - p.x;
-            if (Math.abs(errX) > 10) ax = errX > 0 ? 1 : -1;
-            else ax = 0;
-            // Hold low for DPS window; climb slightly when safe.
-            const preferY = VERT_BOSS_Y;
-            const errY = preferY - p.y;
-            if (Math.abs(errY) > 12) ay = errY > 0 ? 1 : -1;
+            if (p.y < preferY - 4) ay = 1;
+            else if (p.y > preferY + 12) ay = -1;
             else ay = 0;
-            if (here.ttc < 0.4 && here.dodgeDir !== 0) ax = here.dodgeDir;
-            if (here.ttc < 0.28) ay = 1;
+            if (bh.active && p.y < preferY) ay = 1;
+            if (bh.active && ay < 0 && p.y < preferY + 20) ay = 0;
 
-            // Black-hole arena: stay outside danger radius, never enter kill radius.
-            const bh = snap.blackHole || {};
-            if (bh.active && bh.config && p) {
-                const cfg = bh.config;
-                const ax0 = cfg.x != null ? cfg.x : 400;
-                const ay0 = cfg.y != null ? cfg.y : 260;
-                const dxBh = p.x - ax0;
-                const dyBh = p.y - ay0;
-                const dist = Math.sqrt(dxBh * dxBh + dyBh * dyBh) || 0.001;
-                const dangerR = (cfg.dangerRadius != null ? cfg.dangerRadius : 48) + 28;
-                const killR = (cfg.killRadius != null ? cfg.killRadius : 28) + 36;
-                if (dist < killR) {
-                    // Emergency spit-out direction
-                    ax = dxBh / dist > 0 ? 1 : -1;
-                    ay = dyBh / dist > 0 ? 1 : -1;
-                } else if (dist < dangerR) {
-                    ax = dxBh / dist > 0 ? 1 : -1;
-                    if (p.y < ay0 + dangerR + 40) ay = 1;
+            if (bh.active && p.y < 530) {
+                // Spawn is (400,480), r≈220 < minR 304. ax=0 rode the 400
+                // column through pull + opening volley. Strafe out while dropping.
+                const outer = p.x >= 400 ? 1 : -1;
+                ax = Math.abs(p.x - 400) < 110 ? outer : 0;
+                if (here.ttc < 0.4 && here.dodgeDir !== 0) {
+                    const d = here.dodgeDir;
+                    if (Math.abs((p.x + d * 48) - 400) >= Math.abs(p.x - 400) - 6) ax = d;
+                }
+            } else {
+                if (p.x >= pocketHi - 22) state.strafeSign = -1;
+                else if (p.x <= pocketLo + 22) state.strafeSign = 1;
+                const bullets = snap.enemyBullets || [];
+                let aimX = 0;
+                let aimN = 0;
+                let aimT = 9;
+                for (let i = 0; i < bullets.length; i++) {
+                    const bl = bullets[i];
+                    if (bl.isLaser) {
+                        if (Math.abs(bl.x - p.x) < 54 && aimT > 0.05) {
+                            aimX = bl.x;
+                            aimN = 1;
+                            aimT = 0.05;
+                        }
+                        continue;
+                    }
+                    const vy = bl.vy || 0;
+                    if (vy <= 15) continue;
+                    if (bl.y > p.y + 20 || bl.y < p.y - 640) continue;
+                    const tHit = (p.y - bl.y) / vy;
+                    if (tHit < 0 || tHit > 1.2) continue;
+                    const predX = bl.x + (bl.vx || 0) * tHit;
+                    if (Math.abs(predX - p.x) < 120 && tHit < aimT + 0.16) {
+                        aimX = predX;
+                        aimN = 1;
+                        aimT = Math.min(aimT, tHit);
+                    }
+                }
+                const ens = snap.enemies || [];
+                for (let i = 0; i < ens.length; i++) {
+                    const e = ens[i];
+                    if (e.y > p.y - 8 || e.y < p.y - 420) continue;
+                    if (Math.abs((e.x || 0) - p.x) > 60) continue;
+                    const evy = e.vy || 80;
+                    const tHit = evy > 10 ? (p.y - e.y) / evy : 0.5;
+                    if (tHit < 0 || tHit > 0.95) continue;
+                    if (tHit < aimT + 0.08) {
+                        aimX = e.x;
+                        aimN = 1;
+                        aimT = Math.min(aimT, tHit);
+                    }
+                }
+                if (bh.active && isFinalBoss) {
+                    // Under the hull when the sky is clear. Floor may cross 400.
+                    let volleyN = 0;
+                    for (let i = 0; i < bullets.length; i++) {
+                        const bl = bullets[i];
+                        if (bl.isLaser) continue;
+                        const vy = bl.vy || 0;
+                        if (vy <= 15) continue;
+                        const tHit = (p.y - bl.y) / vy;
+                        if (tHit <= 0 || tHit > 1.05) continue;
+                        const predX = (bl.x || 0) + (bl.vx || 0) * tHit;
+                        // Any on-screen missile used to keep off=82 and 14% acc.
+                        if (Math.abs(predX - p.x) < 80) volleyN += 1;
+                    }
+                    let diveCol = false;
+                    for (let i = 0; i < ens.length; i++) {
+                        const e = ens[i];
+                        if (e.y > p.y - 4 || e.y < p.y - 500) continue;
+                        if (Math.abs((e.x || 0) - p.x) < 56) diveCol = true;
+                    }
+                    let laserOnUs = here.kind === 'laser' && here.ttc < 0.6;
+                    if (!laserOnUs) {
+                        for (let i = 0; i < bullets.length; i++) {
+                            if (bullets[i].isLaser && Math.abs(bullets[i].x - p.x) < 52) {
+                                laserOnUs = true;
+                                break;
+                            }
+                        }
+                    }
+                    const bossLow = b.y > 260;
+                    const skyHot = volleyN > 0 || diveCol || laserOnUs;
+                    const onFloor = p.y >= 530;
+                    let want = clamp(onFloor ? finalLeadX(snap) : b.x, 120, 680);
+                    const diveOnUs = laserOnUs || diveCol ||
+                        (aimN && aimT < (bossLow ? 0.72 : 0.5) && Math.abs(aimX - p.x) < 90);
+                    if (diveOnUs) {
+                        let dir = (aimN && !laserOnUs) ? (aimX >= p.x ? -1 : 1) : (p.x >= b.x ? 1 : -1);
+                        if ((dir < 0 && p.x <= 120) || (dir > 0 && p.x >= 680)) dir = -dir;
+                        if (!onFloor && Math.abs((p.x + dir * 100) - 400) < 40) dir = -dir;
+                        state.laneHoldX = clamp(p.x + dir * 140, 90, 710);
+                        state.laneHoldUntil = now + (laserOnUs ? 420 : 280);
+                    } else if (skyHot) {
+                        if (now > state.laneHoldUntil) {
+                            const dir = aimN ? (aimX >= p.x ? -1 : 1) : (p.x >= b.x ? 1 : -1);
+                            state.laneHoldX = clamp(p.x + dir * 90, 90, 710);
+                        }
+                        state.laneHoldUntil = Math.max(state.laneHoldUntil, now + 70);
+                    } else if (now > state.laneHoldUntil) {
+                        if (p.x <= 110) state.strafeSign = 1;
+                        else if (p.x >= 690) state.strafeSign = -1;
+                        else if (Math.abs(p.x - want) > 28) {
+                            state.strafeSign = want >= p.x ? 1 : -1;
+                        }
+                    }
+                    stationX = (now < state.laneHoldUntil) ? state.laneHoldX : want;
+                } else if (aimN && aimT < 0.9) {
+                    const away = aimX >= p.x ? -1 : 1;
+                    let hold = p.x + away * 118;
+                    if (hold < pocketLo + 18 || hold > pocketHi - 18) hold = p.x - away * 118;
+                    hold = clamp(hold, pocketLo + 18, pocketHi - 18);
+                    if (now > state.laneHoldUntil || Math.abs(state.laneHoldX - aimX) < 48) {
+                        state.laneHoldX = hold;
+                        state.laneHoldUntil = now + Math.max(420, aimT * 1000 + 200);
+                    }
+                    state.strafeSign = state.laneHoldX >= p.x ? 1 : -1;
+                }
+                const holding = now < state.laneHoldUntil;
+                const cruiseX = clamp(
+                    holding ? state.laneHoldX : stationX,
+                    pocketLo + 12,
+                    pocketHi - 12
+                );
+                let safeX = clamp(safestBossX(snap, cruiseX), pocketLo, pocketHi);
+                if (bh.active && isFinalBoss && p.y < 530 && Math.abs(safeX - 400) < 50) {
+                    safeX = cruiseX;
+                }
+                if (holding && Math.abs(safeX - state.laneHoldX) > 70) {
+                    // Gap finder wins if the hold lane is the thing killing us.
+                    const holdHot = here.kind === 'laser' || here.ttc < 0.28;
+                    if (!holdHot) safeX = state.laneHoldX;
+                }
+                if (bh.active && Math.hypot(safeX - bh.x, Math.max(p.y, preferY) - bh.y) < bh.minR) {
+                    safeX = cruiseX;
+                }
+                const errX = safeX - p.x;
+                if (Math.abs(errX) > 8) ax = errX > 0 ? 1 : -1;
+                else ax = 0;
+                state.strafeSign = (ax || state.strafeSign);
+            }
+
+            if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+                let dir = here.dodgeDir;
+                const towardWell = bh.active && isFinalBoss && p.y < 530 &&
+                    Math.abs((p.x + dir * 56) - 400) < Math.abs(p.x - 400) - 8;
+                // Right-side park: a laser on player.x used to skip the dodge
+                // (dir pointed through 400). Flip to the outer wall instead.
+                if (towardWell) dir = -dir;
+                const dodgeX = p.x + dir * 56;
+                const dodgeR = bh.active ? Math.hypot(dodgeX - bh.x, p.y - bh.y) : 999;
+                const dodgePocket = dodgeX >= pocketLo - 6 && dodgeX <= pocketHi + 6;
+                const safeR = !bh.active || dodgeR >= bh.minR - 4;
+                if (dodgePocket && safeR) {
+                    ax = dir;
+                    state.strafeSign = dir;
+                } else if (!bh.active || !isFinalBoss) {
+                    ax = (dodgePocket && safeR) ? dir : -dir;
+                    state.strafeSign = ax;
+                }
+            }
+            if (here.ttc < 0.22 && p.y < preferY + 6) ay = 1;
+
+            if (bh.active) {
+                const distAt = function (x, y) {
+                    return Math.hypot(x - bh.x, y - bh.y) || 0.001;
+                };
+                if (bh.dist < bh.minR) {
+                    ay = p.y < preferY + 8 ? 1 : 0;
+                    if (p.y >= 530 && here.ttc < 0.45 && here.dodgeDir) ax = here.dodgeDir;
+                    else if (p.y < 530 && Math.abs(p.x - 400) < 110) {
+                        ax = p.x >= 400 ? 1 : -1;
+                    }
+                } else if (distAt(p.x + ax * 40, p.y + ay * 40) < bh.minR) {
+                    ay = 1;
+                    ax = 0;
                 }
             }
         } else if (snap.phase === 'boss' && snap.boss) {
             const b = snap.boss;
             const hp = Number.isFinite(b.health) ? b.health : 240;
-            const pressured = here.ttc < 0.7 || here.bullets >= 2;
-            // Intro boss (L3): track tighter for faster escape threshold.
+            // bullets>=2 is true for a whole 3-missile volley (~1s), so a 118px
+            // orbit sat off the hull the entire fight (11–12% acc, two L2 losses).
+            const pressured = here.ttc < 0.7;
+            // Clear: ~28px off hull (still on the ~150px body). Imminent: step
+            // outside the ±42 launcher fan; safestBossY already leaves the aim band.
             const orbitAmp = isIntroBoss
                 ? (SPEEDRUN ? 18 : 28)
-                : (lowLives || hp < 100 ? 70 : 28);
+                : (pressured ? 72 : (lowLives ? 40 : 28));
             const preferY = clamp(
                 b.y + state.bossOrbitSign * orbitAmp,
                 bounds.minY + 12,
                 bounds.maxY - 12
             );
 
-            if (now > state.bossWeaveUntil) {
+            if (now > state.bossWeaveUntil && here.ttc > 0.8) {
                 state.bossOrbitSign *= -1;
-                state.bossWeaveUntil = now + (pressured ? 360 : (isIntroBoss && SPEEDRUN ? 280 : 520));
+                state.bossWeaveUntil = now + (pressured ? 420 : (isIntroBoss && SPEEDRUN ? 280 : 560));
             }
             if (p.y <= bounds.minY + 20) state.bossOrbitSign = 1;
             if (p.y >= bounds.maxY - 20) state.bossOrbitSign = -1;
@@ -1017,22 +1654,24 @@ export function installInPagePilot() {
                 else ay = 0;
             }
 
-            // Immediate laser/bullet override still wins.
-            if (here.ttc < 0.4 && here.dodgeDir !== 0) {
+            // Panic-only override. dodgeDir is "away from the nearest shot";
+            // a 3-missile volley makes that walk into a sibling. Trust the
+            // Y-gap finder unless impact is imminent (or a laser strip).
+            if (here.dodgeDir !== 0 && (here.ttc < 0.16 || here.kind === 'laser')) {
                 ay = here.dodgeDir;
             }
 
-            // Park left for reaction time; intro speedrun sits closer for DPS.
+            // Park left for reaction time; 72 glued us to the wall with no DPS.
             const endgame = hp < 80 || here.bullets >= 5;
             let preferX = (lowLives || endgame || b.x < 520) ? 98 : 130;
             if (isIntroBoss && SPEEDRUN && !lowLives) preferX = 150;
             if (p.x < preferX - 10) ax = 0.5;
             else if (p.x > preferX + 18) ax = -1;
             else ax = 0;
-            if (here.ttc < 0.32 && p.x > 78) ax = -1;
+            if (here.ttc < 0.32 && p.x > preferX + 8) ax = -1;
 
             // Don't over-weave into edges during bullet storms.
-            if (endgame && (p.y < bounds.minY + 40 || p.y > bounds.maxY - 40)) {
+            if (endgame && !pressured && (p.y < bounds.minY + 40 || p.y > bounds.maxY - 40)) {
                 ay = p.y < b.y ? 1 : -1;
             }
         }
@@ -1053,35 +1692,72 @@ export function installInPagePilot() {
                 const late = prog > dur * 0.88;
                 const mid = prog > dur * 0.35;
 
+                const inCorridor = Boolean(snap.openBands && snap.openBands.length &&
+                    yInOpenBand(p.y, snap, 48));
                 if (!early && (ttc > safeTtc || invuln)) boost = true;
                 else if (early && late && ttc > 0.6) boost = true;
                 else if (!early && !lowLives && energy > 60 && ttc > 0.22) boost = true;
                 else if (late && energy > 10 && ttc > 0.24) boost = true;
+                // Canyon: 90s wave clock needs boost in-band. A prior nerf
+                // (ttc>0.55 + lives>=3 + ttc<0.5 kill) caused mid-path deaths.
+                else if (inCorridor && energy > 14 && ttc > 0.42 && here.kind !== 'wall') boost = true;
+                else if (inCorridor && early && energy > 20 && ttc > 0.52 && prog > 2500) boost = true;
                 // Speedrun: open space can boost earlier (progress clock is free time).
                 else if (SPEEDRUN && openSpace && early && energy > 35 && ttc > 0.55) boost = true;
                 else if (SPEEDRUN && openSpace && mid && energy > 20 && ttc > 0.28) boost = true;
-                else if (SPEEDRUN && isVertical(snap) && energy > 25 && ttc > 0.35 && !lowLives) boost = true;
+                else if (SPEEDRUN && isVertical(snap) && energy > 40 && ttc > 0.7 && !lowLives) boost = true;
 
                 if (here.kind === 'wall' && here.ttc < 0.55) boost = false;
                 if (here.ttc < 0.2) boost = false;
+                // Vertical gauntlet: boost walks you into dive/riser columns.
+                if (isVertical(snap) && ttc < 0.65 && !invuln) boost = false;
+                if (isVertical(snap) && (snap.lives || 0) <= 2 && !snap.hasShield && !invuln) boost = false;
+                // Boost-strafe clips mines (TTC stays inf until the X slab overlaps).
+                // Exception: leave spawn/hot column if the next ~90px is mine-free.
+                if (isVertical(snap) && ax !== 0) {
+                    let minePath = false;
+                    const obsB = snap.obstacles || [];
+                    const lo = Math.min(p.x, p.x + ax * 90);
+                    const hi = Math.max(p.x, p.x + ax * 90);
+                    for (let i = 0; i < obsB.length; i++) {
+                        const o = obsB[i];
+                        const ox = o.x || 0;
+                        if (ox < lo - 8 || ox > hi + 8) continue;
+                        if (p.y - o.y < 120 && p.y - o.y > -40) minePath = true;
+                    }
+                    if (invuln && !minePath) boost = true;
+                    else if (minePath || !waveEscape) boost = false;
+                    else if (waveEscape && energy > 8 && here.ttc > 0.12) boost = true;
+                }
+                // Don't boost into the floor, or during BH preview (pull + fast mines).
+                if (isVertical(snap) && !invuln) {
+                    if (ay > 0) boost = false;
+                    if (snap.blackHole && snap.blackHole.preview) boost = false;
+                }
                 // Never boost while vertically off-corridor (rams the next wall column).
                 if (snap.openBands && snap.openBands.length && !yInOpenBand(p.y, snap, 40)) {
                     boost = false;
                 }
             } else if (snap.phase === 'boss') {
-                // Boss: boost mainly for emergency repositioning; intro DPS press.
-                if (here.ttc < 0.4) boost = true;
-                else if (Math.abs(p.y - state.safeY) > 70 && energy > 25 && here.ttc > 0.35) boost = true;
+                // Boss: boost is a dodge snap, not a ram. ttc<0.4 used to
+                // accelerate INTO volleys on L2 / final BH.
+                if (here.ttc < 0.2) boost = true;
+                else if (Math.abs(p.y - state.safeY) > 80 && energy > 30 && here.ttc > 0.4) boost = true;
+                else if (!isVertical(snap) && Math.abs(p.y - state.safeY) > 70 &&
+                    energy > 18 && here.ttc > 0.28 && here.ttc < 0.9) boost = true;
                 else if (isIntroBoss && SPEEDRUN && energy > 20 && here.ttc > 0.5) boost = true;
-                if (lowLives && here.ttc > 0.5) boost = false;
-                // Never boost into the black hole.
-                const bh = snap.blackHole || {};
-                if (bh.active && bh.config && p) {
-                    const cfg = bh.config;
-                    const ax0 = cfg.x != null ? cfg.x : 400;
-                    const ay0 = cfg.y != null ? cfg.y : 260;
-                    const dist = Math.hypot(p.x - ax0, p.y - ay0);
-                    if (dist < (cfg.dangerRadius || 48) + 50) boost = false;
+                if (lowLives && here.ttc > 0.35) boost = false;
+                const bh = blackHoleInfo(snap);
+                if (bh.active && p) {
+                    const towardX = (ax > 0 && p.x < bh.x) || (ax < 0 && p.x > bh.x);
+                    const towardY = ay < 0 && p.y > bh.y;
+                    // minR+50 used to blanket the whole floor (r≈312) and
+                    // killed lateral dodge-boost; low-orbit volleys then ram.
+                    if (towardX || towardY) boost = false;
+                    else if (p.y >= 525 && ax !== 0 && here.ttc < 0.5) boost = true;
+                    else if (p.y >= 525 && ax !== 0 && here.ttc > 0.4 && energy > 10 &&
+                        snap.boss && Math.abs(p.x - finalLeadX(snap)) > 64) boost = true;
+                    else if (bh.dist < bh.minR) boost = true;
                 }
             }
         }
@@ -1144,6 +1820,9 @@ export function installInPagePilot() {
     state.lastAimY = 300;
     state.holdDodgeDir = 0;
     state.holdDodgeUntil = 0;
+    state.strafeSign = 1;
+    state.laneHoldX = 400;
+    state.laneHoldUntil = 0;
     window.__novawingPilotOutcome = null;
     window.__novawingPilotError = null;
     window.__novawingPilotLastNote = '';

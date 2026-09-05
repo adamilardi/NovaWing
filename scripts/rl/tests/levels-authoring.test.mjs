@@ -119,7 +119,8 @@ describe('level authoring surface', () => {
         assert.ok(assist.bossTempoScale > 1);
         assert.equal(assist.softInterceptorAim, true);
         assert.equal(assist.enemyHealthScale, easy.enemyHealthScale);
-        assert.ok(hard.enemyHealthScale > 1);
+        assert.equal(hard.enemyHealthScale, defaults.enemyHealthScale);
+        assert.ok(hard.enemyShotSpeedScale > defaults.enemyShotSpeedScale);
         assert.equal(hard.softInterceptorAim, undefined);
         assert.deepEqual(Levels.getDifficultyPreset('nope'), {});
     });
