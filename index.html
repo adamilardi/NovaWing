@@ -19,7 +19,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: #000;
+            background: radial-gradient(ellipse at center, #111b30 0%, #050812 65%, #020309 100%);
             touch-action: none;
             -webkit-user-select: none;
             user-select: none;
@@ -41,7 +41,9 @@
             touch-action: none;
         }
         #game-container canvas {
-            border: 2px solid #333;
+            border: 1px solid #30465c;
+            box-sizing: border-box;
+            box-shadow: 0 0 0 5px #080e19, 0 0 48px #12283c80;
             image-rendering: pixelated;
             touch-action: none;
             /* Reset any Phaser inline margins so flex can truly center */
@@ -71,7 +73,7 @@
 </head>
 <body>
     <div id="game-container"></div>
-    <div id="boot-hint">Tap screen · Landscape · P pause · SPACE CADET / HOTSHOT / SUPERNOVA in pause · AUTO fire · BOOST</div>
+    <div id="boot-hint">Preparing NovaWing…</div>
     <script src="src/assets.js?v=1.3.0"></script>
     <script src="src/level-flow.js?v=1.3.0"></script>
     <script src="src/audio-director.js?v=1.3.0"></script>

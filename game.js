@@ -10,13 +10,9 @@ const config = {
         mode: Phaser.Scale.FIT,
         // CSS flex on #game-container handles centering. Phaser autoCenter
         // adds margins that fight flex and shove the canvas off-center.
-        autoCenter: Phaser.Scale.NO_CENTER,
-        // Never upscale past native 800x600 (desktop stays original size;
-        // phones still shrink to fit via FIT).
-        max: {
-            width: 800,
-            height: 600
-        }
+        autoCenter: Phaser.Scale.NO_CENTER
+        // FIT uses the available window, including desktop upscaling, while
+        // retaining the 800x600 world and its 4:3 aspect ratio.
     },
     input: {
         activePointers: 3
@@ -133,10 +129,12 @@ const BOOST_LEVEL_PROGRESS_MULTIPLIER = 1.55;
 const BOOST_WORLD_SPEED_MULTIPLIER = 1.7;
 const LOCAL_LEADERBOARD_KEY = 'novawing-fastest-runs';
 const PLAYER_NAME_KEY = 'novawing-player-name';
+const PERSONAL_BEST_KEY = 'novawing-score-personal-bests';
 const AUDIO_MUTE_KEY = 'novawing-muted';
 const AUDIO_STYLE_KEY = 'novawing-sfx-style';
 const ASSIST_STORAGE_KEY = 'novawing-assist';
 const DIFFICULTY_MODE_KEY = 'novawing-difficulty';
+const TUTORIAL_SEEN_KEY = 'novawing-tutorial-seen';
 const DIFFICULTY_MODES = ['easy', 'normal', 'hard'];
 const LEADERBOARD_API_URL = '/api/leaderboard';
 const RUN_API_URL = '/api/run';
@@ -571,6 +569,11 @@ let assistCheckpoint = null;
 let assistContinuePending = false;
 let gamePaused = false;
 let pauseOverlay = null;
+let openingOverlay = null;
+let openingActive = false;
+let openingShownThisSession = false;
+let openingStartCallback = null;
+let tutorialOverlay = null;
 let pauseRestartArmed = false;
 let pauseClosedPhysics = false;
 let sfx;
@@ -700,17 +703,7 @@ function createCombatTextures(scene) {
     sparkRedGfx.generateTexture('sparkRed', 12, 12);
     sparkRedGfx.destroy();
 
-    const glowOrbGfx = scene.add.graphics();
-    glowOrbGfx.fillStyle(0xffffff, 0.08);
-    glowOrbGfx.fillCircle(16, 16, 16);
-    glowOrbGfx.fillStyle(0xffffff, 0.18);
-    glowOrbGfx.fillCircle(16, 16, 10);
-    glowOrbGfx.fillStyle(0xffffff, 0.55);
-    glowOrbGfx.fillCircle(16, 16, 5);
-    glowOrbGfx.fillStyle(0xffffff, 0.95);
-    glowOrbGfx.fillCircle(16, 16, 2);
-    glowOrbGfx.generateTexture('glowOrb', 32, 32);
-    glowOrbGfx.destroy();
+    createSoftLightTexture(scene, 'glowOrb', 32, '180,224,255');
 
     const boostSparkGfx = scene.add.graphics();
     boostSparkGfx.fillStyle(0x66f6ff, 0.35);
@@ -722,16 +715,25 @@ function createCombatTextures(scene) {
     boostSparkGfx.generateTexture('boostSpark', 22, 8);
     boostSparkGfx.destroy();
 
-    const muzzleGfx = scene.add.graphics();
-    muzzleGfx.fillStyle(0x66f6ff, 0.35);
-    muzzleGfx.fillCircle(12, 12, 12);
-    muzzleGfx.fillStyle(0xffffaa, 0.9);
-    muzzleGfx.fillCircle(12, 12, 6);
-    muzzleGfx.fillStyle(0xffffff, 1);
-    muzzleGfx.fillCircle(12, 12, 2.5);
-    muzzleGfx.generateTexture('muzzleFlash', 24, 24);
-    muzzleGfx.destroy();
+    createSoftLightTexture(scene, 'muzzleFlash', 24, '180,245,255');
 }
+
+function createSoftLightTexture(scene, key, size, color) {
+    if (scene.textures.exists(key)) return;
+    const texture = scene.textures.createCanvas(key, size, size);
+    const ctx = texture.context;
+    const radius = size / 2;
+    const glow = ctx.createRadialGradient(radius, radius, 0, radius, radius, radius);
+    glow.addColorStop(0, 'rgba(255,255,255,1)');
+    glow.addColorStop(0.13, 'rgba(255,255,255,0.95)');
+    glow.addColorStop(0.32, `rgba(${color},0.5)`);
+    glow.addColorStop(0.65, `rgba(${color},0.12)`);
+    glow.addColorStop(1, `rgba(${color},0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, size, size);
+    texture.refresh();
+}
+
 
 function createWorldTextures(scene) {
     const obstacleGfx = scene.add.graphics();
@@ -1135,8 +1137,8 @@ function create() {
     bossNextDroneAt = 0;
     bossNextLaserAt = 0;
     bossPhase = 1;
-    levelStartTime = this.time.now;
-    levelAttemptStartTime = this.time.now;
+    levelStartTime = 0;
+    levelAttemptStartTime = 0;
     levelStartScore = score;
     levelStartKills = enemiesKilled;
     levelStartShotsFired = shotsFired;
@@ -1150,16 +1152,10 @@ function create() {
     leaderboardEntries = getLocalLeaderboard('campaign');
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer();
-    if (isLeaderboardEligibleSession()) {
-        campaignRunState = startScopedRunOnServer('campaign');
-        levelRunState = startScopedRunOnServer(getLevelLeaderboardScope(currentLevel));
-    } else {
-        campaignRunState = null;
-        levelRunState = null;
-    }
+    campaignRunState = null;
+    levelRunState = null;
 
     createBackgroundLayers(this);
-    syncLevelMusic('waves');
 
     // Player
     const startDef = getLevelDef(currentLevel);
@@ -1221,6 +1217,8 @@ function create() {
         window.removeEventListener('blur', clearBoostInput);
         document.removeEventListener('visibilitychange', clearInputWhenHidden);
         destroyTouchControls();
+        hideOpeningOverlay();
+        hideFirstRunTutorial();
         pauseOverlay = null;
         gamePaused = false;
         clearBoostInput();
@@ -1273,21 +1271,23 @@ function create() {
     hudPanel.setDepth(9);
     hudPanel.setScrollFactor(0);
     hudPanel.fillStyle(0x081018, 0.42);
-    hudPanel.fillRoundedRect(8, 8, 210, 72, 8);
-    hudPanel.fillRoundedRect(582, 8, 210, 72, 8);
+    hudPanel.fillRoundedRect(8, 8, 230, 78, 8);
+    hudPanel.fillRoundedRect(562, 8, 230, 78, 8);
+    hudPanel.fillRoundedRect(274, 8, 252, 50, 8);
     hudPanel.lineStyle(1, 0x66f6ff, 0.22);
-    hudPanel.strokeRoundedRect(8, 8, 210, 72, 8);
-    hudPanel.strokeRoundedRect(582, 8, 210, 72, 8);
+    hudPanel.strokeRoundedRect(8, 8, 230, 78, 8);
+    hudPanel.strokeRoundedRect(562, 8, 230, 78, 8);
+    hudPanel.strokeRoundedRect(274, 8, 252, 50, 8);
 
     scoreText = this.add.text(18, 14, '', {
         ...hudTextStyle,
-        fontSize: '18px',
+        fontSize: '16px',
         fill: '#e8f0ff'
     }).setDepth(10).setScrollFactor(0);
 
-    weaponText = this.add.text(18, 38, '', {
+    weaponText = this.add.text(18, 39, '', {
         ...hudTextStyle,
-        fontSize: '18px',
+        fontSize: '16px',
         fill: '#66f6ff'
     }).setDepth(10).setScrollFactor(0);
 
@@ -1309,29 +1309,22 @@ function create() {
         fill: '#66f6ff'
     }).setOrigin(1, 0).setDepth(10).setScrollFactor(0);
 
-    statusText = this.add.text(18, 58, '', {
+    statusText = this.add.text(18, 62, '', {
         ...hudTextStyle,
         fontSize: '14px',
         fill: '#55ffaa'
     }).setDepth(10).setScrollFactor(0);
 
-    levelText = this.add.text(400, 36, '', {
+    levelText = this.add.text(400, 17, '', {
         ...hudTextStyle,
-        fontSize: '14px',
-        fill: '#c7ddff'
+        fontSize: '17px',
+        fill: '#ffffff'
     }).setOrigin(0.5, 0).setDepth(10).setScrollFactor(0);
 
-    muteText = this.add.text(400, 14, '', {
-        ...hudTextStyle,
-        fontSize: '13px',
-        fill: '#8aa0c8'
-    }).setOrigin(0.5, 0).setDepth(10).setScrollFactor(0);
-    muteText.setInteractive({ useHandCursor: true });
-    muteText.on('pointerdown', () => {
-        toggleMute();
-    });
+    // Audio controls live in the pause menu, keeping the combat HUD focused.
+    muteText = null;
 
-    pauseText = this.add.text(400, 54, '', {
+    pauseText = this.add.text(400, 39, '', {
         ...hudTextStyle,
         fontSize: '12px',
         fill: '#8aa0c8'
@@ -1371,14 +1364,28 @@ function create() {
     updateLevelText();
     updateAssistHud();
 
-    // Spawn authored enemy and obstacle waves (segmented levels own scheduling).
+    // Spawn events are armed by beginGameplay(), after the opening Play action.
     this.obstacleSpawnEvent = null;
     this.powerupSpawnEvent = null;
     this.firstPowerupEvent = null;
     if (startDef.hasPathWalls) {
         seedLevelPathWalls(this);
     }
-    {
+    const beginGameplay = () => {
+        if (!openingActive && levelStartTime > 0) return;
+        openingActive = false;
+        hideOpeningOverlay();
+        levelStartTime = this.time.now;
+        levelAttemptStartTime = this.time.now;
+        clearBoostInput();
+        if (this.physics && this.physics.world && this.physics.world.isPaused) this.physics.resume();
+        setHudVisible(true);
+        if (isLeaderboardEligibleSession()) {
+            campaignRunState = startScopedRunOnServer('campaign');
+            levelRunState = startScopedRunOnServer(getLevelLeaderboardScope(currentLevel));
+        }
+        syncLevelMusic('waves');
+        if (touchControls && touchControls.container) touchControls.container.setVisible(true);
         const levelStartDef = getLevelDef(currentLevel);
         const startLabel = 'LEVEL ' + currentLevel + ': ' + levelStartDef.name;
         showFloatingText(this, 400, 120, startLabel, '#66f6ff', { screenSpace: true });
@@ -1404,12 +1411,24 @@ function create() {
         } else {
             scheduleNextEnemyWave(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
         }
+        maybeShowFirstRunTutorial(this);
+    };
+
+    openingActive = !openingShownThisSession && !isPlaytestBotSession();
+    if (openingActive) {
+        openingShownThisSession = true;
+        if (this.physics && this.physics.world) this.physics.pause();
+        setHudVisible(false);
+        if (touchControls && touchControls.container) touchControls.container.setVisible(false);
+        showOpeningOverlay(this, beginGameplay);
+    } else {
+        beginGameplay();
     }
 
     // Debug: press L to cycle levels (respects live getTotalLevels / ?level3=1).
     if (this.input.keyboard) {
         this.input.keyboard.on('keydown-L', () => {
-            if (levelEnded || victoryPending || awaitingNextLevel || levelTransitioning || gamePaused) return;
+            if (openingActive || levelEnded || victoryPending || awaitingNextLevel || levelTransitioning || gamePaused) return;
             const max = totalLevels();
             const next = currentLevel >= max ? 1 : currentLevel + 1;
             debugSkipToLevel.call(this, next);
@@ -1433,7 +1452,7 @@ function create() {
 }
 
 function update(time, delta) {
-    if (levelEnded || victoryPending || awaitingNextLevel || gamePaused) return;
+    if (openingActive || levelEnded || victoryPending || awaitingNextLevel || gamePaused) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
@@ -1605,22 +1624,43 @@ function hitEnemy(bullet, enemy) {
     const damage = bullet.damage || 1;
     const hitX = bullet.x;
     const hitY = bullet.y;
+    const impactAngle = getProjectileImpactAngle(bullet);
     releaseSprite(bullet);
 
     enemy.health = Math.max(0, (enemy.health || 1) - damage);
     shotsHit++;
 
     if (enemy.health > 0) {
-        createExplosion(this, hitX, hitY, 8, { palette: 'cyan', flash: false });
-        enemy.setTint(0xffffff);
-        segmentScope.delay(this, 45, () => {
-            if (enemy.active) enemy.clearTint();
+        createExplosion(this, hitX, hitY, damage > 1 ? 12 : 8, {
+            palette: 'cyan', flash: damage > 1, direction: impactAngle,
+            spread: damage > 1 ? 50 : 34
         });
+        flashCombatTarget(this, enemy, damage > 1 ? 0x99ffff : 0xffffff, damage > 1 ? 70 : 48);
         sfx.spark(hitX);
         return;
     }
 
-    destroyEnemy.call(this, enemy, { allowSplit: true });
+    destroyEnemy.call(this, enemy, { allowSplit: true, impactAngle, heavyShot: damage > 1 });
+}
+
+function getProjectileImpactAngle(projectile) {
+    if (projectile && projectile.body && projectile.body.velocity) {
+        const velocity = projectile.body.velocity;
+        if (Math.abs(velocity.x) + Math.abs(velocity.y) > 1) {
+            return Phaser.Math.RadToDeg(Math.atan2(velocity.y, velocity.x));
+        }
+    }
+    return combatOrientation === 'up' ? -90 : 0;
+}
+
+function flashCombatTarget(scene, target, tint, duration) {
+    if (!scene || !target || !target.active) return;
+    const flashToken = (target.combatFlashToken || 0) + 1;
+    target.combatFlashToken = flashToken;
+    target.setTintFill(tint);
+    segmentScope.delay(scene, duration, () => {
+        if (target.active && target.combatFlashToken === flashToken) target.clearTint();
+    });
 }
 
 function destroyEnemy(enemy, options = {}) {
@@ -1629,6 +1669,7 @@ function destroyEnemy(enemy, options = {}) {
     const allowSplit = options.allowSplit !== false;
     const enemyX = enemy.x;
     const enemyY = enemy.y;
+    const enemyType = enemy.enemyType;
     const shouldSplit = allowSplit && Boolean(enemy.splitsOnDeath);
     const killScore = Number.isFinite(enemy.killScore) ? enemy.killScore : REGULAR_KILL_SCORE;
     const boostAmount = Number.isFinite(options.boostAmount)
@@ -1636,15 +1677,25 @@ function destroyEnemy(enemy, options = {}) {
         : (Number.isFinite(enemy.boostRefill)
             ? enemy.boostRefill
             : difficultyNumber('boostRefillOnKill', BOOST_REFILL_ON_KILL));
-    const explosionSize = enemy.enemyType === 'splitter' ? 42 : (enemy.enemyType === 'splitterDrone' ? 18 : 34);
+    const heavyEnemy = enemyType === 'splitter' || enemyType === 'mineDropper' || enemyType === 'orbiter';
+    const explosionSize = heavyEnemy ? 46 : (enemyType === 'splitterDrone' ? 18 : 34);
 
     enemy.dying = true;
     releaseSprite(enemy);
     createExplosion(this, enemyX, enemyY, explosionSize, {
-        palette: enemy.enemyType === 'splitter' ? 'red' : 'orange',
-        ring: enemy.enemyType === 'splitter' || enemy.enemyType === 'regular'
+        palette: enemyType === 'splitter' ? 'red' : 'orange',
+        ring: heavyEnemy || enemyType === 'regular',
+        direction: options.impactAngle,
+        spread: heavyEnemy ? 76 : 54,
+        debris: heavyEnemy || options.heavyShot
     });
-    sfx.explosion(enemy.enemyType === 'splitter' ? 1.15 : 1, enemyX);
+    if (heavyEnemy) {
+        createExplosion(this, enemyX - 8, enemyY, 16, {
+            palette: 'cyan', flash: false, direction: options.impactAngle, spread: 100
+        });
+        shakeCombatCamera(this, 100, 0.0022);
+    }
+    sfx.explosion(heavyEnemy ? 1.15 : 1, enemyX);
 
     enemiesKilled++;
     score += killScore;
@@ -1664,6 +1715,7 @@ function hitBoss(bullet, bossSprite) {
     const damage = bullet.damage || 1;
     const hitX = bullet.x;
     const hitY = bullet.y;
+    const impactAngle = getProjectileImpactAngle(bullet);
     releaseSprite(bullet);
     shotsHit++;
     bossHealth = Math.max(0, bossHealth - damage);
@@ -1673,14 +1725,13 @@ function hitBoss(bullet, bossSprite) {
     updateBossHealthBar();
     createExplosion(this, hitX, hitY, damage > 1 ? 12 : 7, {
         palette: damage > 1 ? 'cyan' : 'orange',
-        flash: damage > 1
+        flash: damage > 1,
+        direction: impactAngle,
+        spread: damage > 1 ? 48 : 30
     });
     sfx.spark(hitX);
 
-    bossSprite.setTint(0xffffff);
-    segmentScope.delay(this, 45, () => {
-        if (bossSprite.active) bossSprite.clearTint();
-    });
+    flashCombatTarget(this, bossSprite, damage > 1 ? 0x99ffff : 0xffffff, damage > 1 ? 70 : 48);
 
     maybeResolveBossAfterDamage(this, bossSprite, 'bullet');
 }
@@ -4526,11 +4577,8 @@ function completeLevel() {
     const scoreEligible = isLeaderboardEligibleSession();
     const sessionGen = runtimeSessionGen;
     const scene = this;
-    let playerName = null;
-
-    // Kick the PATCH off the stack *before* window.prompt. The modal blocks
-    // the JS thread, so a same-turn complete+prompt would include name-entry
-    // time in the server-measured run clock.
+    // Lock the run clock before showing results. Name entry happens in the
+    // results card and therefore never becomes part of the official time.
     if (scoreEligible) {
         completeScopedRunOnServer(levelRunState, {
             score: levelScore,
@@ -4546,37 +4594,21 @@ function completeLevel() {
         }
     }
 
-    function promptAndSubmitLevel() {
-        if (sessionGen !== runtimeSessionGen) return Promise.resolve(null);
-        if (!scoreEligible) return Promise.resolve(null);
-        playerName = promptForPlayerName(levelScope, isFinalLevel);
-        return submitLeaderboard({
-            name: playerName,
-            scope: levelScope,
-            timeMs: levelTimeMs,
-            score: levelScore,
-            kills: levelKills,
-            accuracy: levelAccuracy
-        }, levelRunState);
-    }
-
     if (!isFinalLevel) {
         musicDirector.stop();
         sfx.victory();
         window.setTimeout(() => {
-            const submitPromise = promptAndSubmitLevel();
             if (sessionGen !== runtimeSessionGen || levelEnded || victoryPending) return;
             endLevel.call(scene, 'LEVEL ' + clearedLevel + ' CLEAR', '#55ffaa', {
                 continueToNext: true,
                 completed: true,
                 completionTimeMs: levelTimeMs,
-                playerName,
                 skipLeaderboard: !scoreEligible,
                 scope: levelScope,
                 score: levelScore,
                 kills: levelKills,
                 accuracy: levelAccuracy,
-                submitPromise
+                leaderboardState: levelRunState
             });
         }, 0);
         return;
@@ -4588,14 +4620,25 @@ function completeLevel() {
     musicDirector.stop();
     sfx.victory();
     window.setTimeout(() => {
-        promptAndSubmitLevel();
         if (sessionGen !== runtimeSessionGen) return;
         scene.time.delayedCall(650, () => {
             endLevel.call(scene, 'BOSS DESTROYED', '#55ffaa', {
                 completed: true,
                 completionTimeMs,
-                playerName,
-                skipLeaderboard: !scoreEligible
+                skipLeaderboard: !scoreEligible,
+                scope: 'campaign',
+                score,
+                kills: enemiesKilled,
+                accuracy: getRunAccuracy(),
+                leaderboardState: campaignRunState,
+                finalLevelSubmission: {
+                    scope: levelScope,
+                    timeMs: levelTimeMs,
+                    score: levelScore,
+                    kills: levelKills,
+                    accuracy: levelAccuracy,
+                    leaderboardState: levelRunState
+                }
             });
         });
     }, 0);
@@ -4619,6 +4662,7 @@ function debugSkipToLevel(levelId) {
 }
 
 function startLevel(levelId, options = {}) {
+    hideFirstRunTutorial();
     if (levelEnded || victoryPending) return;
 
     segmentScope.reset();
@@ -4629,6 +4673,7 @@ function startLevel(levelId, options = {}) {
     currentLevel = Phaser.Math.Clamp(levelId, 1, totalLevels());
     const levelDef = getLevelDef(currentLevel);
     applyLevelArt(this, currentLevel);
+    applyBackgroundTheme(this, currentLevel);
     levelAttemptStartTime = this.time.now;
     levelStartScore = score;
     levelStartKills = enemiesKilled;
@@ -5511,7 +5556,7 @@ function updateLivesText() {
 
 function updateWeaponText() {
     if (!weaponText) return;
-    weaponText.setText(getWeaponName().toUpperCase());
+    weaponText.setText('WEAPON  ' + getWeaponName().toUpperCase());
 }
 
 function updateStatusText() {
@@ -5876,8 +5921,33 @@ function approachValue(current, target, maxStep) {
     return target;
 }
 
+function isEditableInputTarget(target) {
+    if (!target) return false;
+    if (target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return true;
+    const tagName = String(target.tagName || '').toLowerCase();
+    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' ||
+        Boolean(target.isContentEditable);
+}
+
 function handleKeyboardDown(event) {
+    if (isEditableInputTarget(event.target)) return;
     if (musicDirector) musicDirector.unlock();
+
+    // Own opening controls here because this capture listener runs before Phaser.
+    if (openingActive) {
+        if (!event.repeat && (event.code === 'Enter' || event.code === 'Space') &&
+            typeof openingStartCallback === 'function') {
+            openingStartCallback();
+        } else if (!event.repeat && event.code === 'ArrowLeft') {
+            cycleDifficultyMode(-1);
+            refreshOpeningDifficulty();
+        } else if (!event.repeat && event.code === 'ArrowRight') {
+            cycleDifficultyMode(1);
+            refreshOpeningDifficulty();
+        }
+        event.preventDefault();
+        return;
+    }
 
     if (isPauseInput(event)) {
         togglePause();
@@ -6205,10 +6275,11 @@ function setDifficultyMode(next) {
     const mode = parseDifficultyModeName(next) || 'normal';
     difficultyMode = mode;
     saveDifficultyMode(mode);
-    if (mode !== 'normal') markSessionLeaderboardIneligible();
+    // The opening is pre-run, so players can browse modes before choosing.
+    if (mode !== 'normal' && !openingActive) markSessionLeaderboardIneligible();
     updateAssistHud();
     refreshPauseOverlay();
-    if (!gamePaused) {
+    if (!gamePaused && !openingActive) {
         const scene = getActiveScene();
         if (scene && scene.add) {
             showFloatingText(
@@ -6381,9 +6452,148 @@ function getActiveScene() {
 
 function canPause() {
     if (isPlaytestBotSession()) return false;
+    if (openingActive) return false;
     if (levelEnded || victoryPending || awaitingNextLevel) return false;
     if (assistContinuePending) return false;
     return true;
+}
+
+function setHudVisible(visible) {
+    [hudPanel, scoreText, livesText, livesIcon, weaponText, boostText, statusText,
+        levelText, pauseText].forEach(node => {
+        if (node && node.setVisible) node.setVisible(Boolean(visible));
+    });
+    boostSegments.forEach(node => {
+        if (node && node.setVisible) node.setVisible(Boolean(visible));
+    });
+}
+
+function hideOpeningOverlay() {
+    if (!openingOverlay) return;
+    (openingOverlay.nodes || []).forEach(node => {
+        if (node && node.destroy) node.destroy();
+    });
+    if (openingOverlay.keyHandler && openingOverlay.scene && openingOverlay.scene.input.keyboard) {
+        openingOverlay.scene.input.keyboard.off('keydown', openingOverlay.keyHandler);
+    }
+    openingOverlay = null;
+    openingStartCallback = null;
+}
+
+function showOpeningOverlay(scene, onPlay) {
+    hideOpeningOverlay();
+    if (!scene || !scene.add) return;
+    openingStartCallback = onPlay;
+    const nodes = [];
+    const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.97)
+        .setDepth(80).setScrollFactor(0).setInteractive();
+    nodes.push(dim);
+
+    const eyebrow = scene.add.text(400, 100, 'THE LAST STARFIGHTER SQUADRON', {
+        fontFamily: 'monospace', fontSize: '13px', fill: '#8aa0c8', letterSpacing: 3
+    }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setAlpha(0);
+    const title = scene.add.text(400, 176, 'NOVAWING', {
+        fontFamily: 'monospace', fontStyle: 'bold', fontSize: '64px', fill: '#eafcff',
+        stroke: '#176c9a', strokeThickness: 8, letterSpacing: 6
+    }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setScale(0.82).setAlpha(0);
+    const rule = scene.add.rectangle(400, 220, 360, 2, 0x66f6ff, 0.85)
+        .setDepth(81).setScrollFactor(0).setScale(0, 1);
+    const mission = scene.add.text(400, 250, 'CHOOSE FLIGHT MODE', {
+        fontFamily: 'monospace', fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
+    }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
+    nodes.push(eyebrow, title, rule, mission);
+
+    const difficultyButtons = [];
+    const labels = { easy: 'SPACE CADET', normal: 'HOTSHOT', hard: 'SUPERNOVA' };
+    DIFFICULTY_MODES.forEach((mode, index) => {
+        const x = 210 + index * 190;
+        const bg = scene.add.rectangle(x, 310, 166, 52, 0x0b1930, 0.96)
+            .setDepth(81).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        const label = scene.add.text(x, 310, labels[mode], {
+            fontFamily: 'monospace', fontSize: '14px', fill: '#b8c8e8',
+            stroke: '#050816', strokeThickness: 3
+        }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        const choose = () => {
+            setDifficultyMode(mode);
+            refreshOpeningDifficulty();
+        };
+        bg.on('pointerdown', choose);
+        label.on('pointerdown', choose);
+        difficultyButtons.push({ mode, bg, label });
+        nodes.push(bg, label);
+    });
+
+    const playBg = scene.add.rectangle(400, 400, 310, 66, 0x12445c, 0.98)
+        .setStrokeStyle(2, 0x66f6ff, 0.95).setDepth(81).setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+    const playLabel = scene.add.text(400, 400, 'LAUNCH', {
+        fontFamily: 'monospace', fontStyle: 'bold', fontSize: '24px', fill: '#ffffff',
+        stroke: '#050816', strokeThickness: 4, letterSpacing: 3
+    }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const controls = scene.add.text(400, 466,
+        shouldShowTouchControls() ? 'DRAG TO FLY  ·  HOLD BOOST' : 'WASD / ARROWS TO FLY  ·  SHIFT / X TO BOOST  ·  SPACE TO FIRE', {
+            fontFamily: 'monospace', fontSize: '13px', fill: '#8aa0c8', align: 'center'
+        }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
+    nodes.push(playBg, playLabel, controls);
+
+    const launch = () => {
+        if (!openingActive || typeof onPlay !== 'function') return;
+        if (sfx && sfx.unlock) sfx.unlock();
+        onPlay();
+    };
+    playBg.on('pointerdown', launch);
+    playLabel.on('pointerdown', launch);
+    openingOverlay = { scene, nodes, difficultyButtons, keyHandler: null };
+    refreshOpeningDifficulty();
+
+    scene.tweens.add({ targets: eyebrow, alpha: 1, duration: 450, ease: 'Sine.easeOut' });
+    scene.tweens.add({ targets: title, alpha: 1, scale: 1, duration: 650, delay: 120, ease: 'Back.easeOut' });
+    scene.tweens.add({ targets: rule, scaleX: 1, duration: 550, delay: 500, ease: 'Sine.easeOut' });
+    scene.tweens.add({ targets: playBg, scaleX: 1.035, scaleY: 1.035, yoyo: true, repeat: -1, duration: 950 });
+}
+
+function refreshOpeningDifficulty() {
+    if (!openingOverlay) return;
+    const selected = getDifficultyMode();
+    openingOverlay.difficultyButtons.forEach(button => {
+        const active = button.mode === selected;
+        button.bg.setFillStyle(active ? 0x173f5c : 0x0b1930, 0.98);
+        button.bg.setStrokeStyle(active ? 2 : 1, active ? 0x66f6ff : 0x405878, active ? 1 : 0.65);
+        button.label.setFill(active ? '#ffffff' : '#8aa0c8');
+    });
+}
+
+function hasSeenTutorial() {
+    try { return window.localStorage.getItem(TUTORIAL_SEEN_KEY) === '1'; }
+    catch (error) { return false; }
+}
+
+function maybeShowFirstRunTutorial(scene) {
+    if (isPlaytestBotSession() || hasSeenTutorial()) return;
+    try { window.localStorage.setItem(TUTORIAL_SEEN_KEY, '1'); } catch (error) {}
+    const touch = shouldShowTouchControls();
+    const tutorialY = touch ? 382 : 500;
+    const copy = touch
+        ? 'DRAG TO STEER\nHOLD BOOST TO BREAK THROUGH'
+        : 'WASD / ARROWS  MOVE\nSHIFT / X / Z  BOOST   ·   SPACE  FIRE';
+    const panel = scene.add.rectangle(400, tutorialY, 520, 72, 0x071220, 0.9)
+        .setStrokeStyle(1, 0x66f6ff, 0.7).setDepth(45).setScrollFactor(0).setAlpha(0);
+    const label = scene.add.text(400, tutorialY, copy, {
+        fontFamily: 'monospace', fontSize: '15px', fill: '#e8f0ff', align: 'center',
+        lineSpacing: 7, stroke: '#050816', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(46).setScrollFactor(0).setAlpha(0);
+    const tween = scene.tweens.add({ targets: [panel, label], alpha: 1, duration: 250, hold: 3200, yoyo: true,
+        onComplete: () => hideFirstRunTutorial() });
+    tutorialOverlay = { nodes: [panel, label], tween };
+}
+
+function hideFirstRunTutorial() {
+    if (!tutorialOverlay) return;
+    if (tutorialOverlay.tween && tutorialOverlay.tween.stop) tutorialOverlay.tween.stop();
+    (tutorialOverlay.nodes || []).forEach(node => {
+        if (node && node.destroy) node.destroy();
+    });
+    tutorialOverlay = null;
 }
 
 function togglePause(scene) {
@@ -6566,6 +6776,7 @@ function panFromX(x) {
 }
 
 function handleKeyboardUp(event) {
+    if (isEditableInputTarget(event.target)) return;
     const handledMovement = trackMovementInput(event, false);
     const handledBoost = trackBoostInput(event, false);
     const handledFire = trackFireInput(event, false);
@@ -7143,6 +7354,7 @@ function activateSprite(sprite, x, y) {
     sprite.nextHitEffectAt = null;
     sprite.damage = null;
     sprite.dying = false;
+    sprite.combatFlashToken = (sprite.combatFlashToken || 0) + 1;
     resetPooledEnemyState(sprite);
 
     if (sprite.body) {
@@ -7170,6 +7382,7 @@ function releaseSprite(sprite) {
     sprite.shotCooldownMax = null;
     sprite.health = null;
     sprite.dying = false;
+    sprite.combatFlashToken = (sprite.combatFlashToken || 0) + 1;
     sprite.canShoot = false;
     sprite.nextShotAt = null;
     sprite.damage = null;
@@ -7343,23 +7556,140 @@ function createMuzzleFlash(scene, x, y, level) {
     });
 }
 
-function createBackgroundLayers(scene) {
-    nebulaGraphics = scene.add.graphics();
-    nebulaGraphics.setDepth(-3);
-    nebulaGraphics.setScrollFactor(0);
+// Bake atmospheric detail once; scene restarts reuse the same GPU textures.
+// A local deterministic noise field keeps cosmetic work out of gameplay RNG.
+function getBackgroundTheme(levelId) {
+    return levelId === 2 ? 'canyon' : (levelId === 3 ? 'singularity' : 'space');
+}
 
-    // Soft distant nebula blobs (screen-space so tall levels keep the sky filled).
-    const nebula = scene.add.graphics();
-    nebula.setDepth(-2);
-    nebula.setScrollFactor(0);
-    nebula.fillStyle(0x1a2a6a, 0.18);
-    nebula.fillEllipse(160, 120, 320, 180);
-    nebula.fillStyle(0x5a1a4a, 0.12);
-    nebula.fillEllipse(620, 460, 360, 200);
-    nebula.fillStyle(0x0e3a4a, 0.14);
-    nebula.fillEllipse(480, 180, 260, 140);
-    nebula.fillStyle(0x241050, 0.1);
-    nebula.fillEllipse(280, 500, 280, 160);
+function createAtmosphereTextures(scene, theme = 'space') {
+    function noise(x, y) {
+        const ix = Math.floor(x), iy = Math.floor(y);
+        const sx = (x - ix) ** 2 * (3 - 2 * (x - ix));
+        const sy = (y - iy) ** 2 * (3 - 2 * (y - iy));
+        const hash = (a, b) => {
+            let n = Math.imul(a, 374761393) + Math.imul(b, 668265263);
+            n = Math.imul(n ^ (n >>> 13), 1274126177);
+            return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+        };
+        const a = hash(ix, iy), b = hash(ix + 1, iy);
+        const c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
+        return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+    }
+    const skyKey = 'deepSpace-' + theme;
+    if (!scene.textures.exists(skyKey)) {
+        const texture = scene.textures.createCanvas(skyKey, 480, 360);
+        const ctx = texture.context;
+        const pixels = ctx.createImageData(480, 360);
+        for (let y = 0; y < 360; y++) {
+            for (let x = 0; x < 480; x++) {
+                const n = noise(x / 90 + 7, y / 90 + 3) * 0.55
+                    + noise(x / 38, y / 38) * 0.28
+                    + noise(x / 14, y / 14) * 0.12
+                    + noise(x / 5, y / 5) * 0.05;
+                let ribbon = Math.exp(-(((y - 265 + x * 0.37 + 42 * Math.sin(x / 100)) / 85) ** 2));
+                if (theme === 'canyon') {
+                    // Dust hangs above and below the flight corridor.
+                    ribbon = 0.3 + 0.7 * Math.abs(y - 180) / 180;
+                } else if (theme === 'singularity') {
+                    const dx = x - 315, dy = (y - 115) * 1.25;
+                    const radius = Math.hypot(dx, dy);
+                    const spiral = Math.sin(Math.atan2(dy, dx) * 3 + radius / 36);
+                    ribbon = 0.35 + 0.65 * (spiral * 0.5 + 0.5);
+                }
+                const cloud = Math.max(0, n - 0.28) ** 1.6 * ribbon * 3.6;
+                const violet = (Math.sin(x / 135 + y / 180) + 1) * 0.5;
+                const dust = noise(x / 48 + 20, y / 48) * 0.45 + 0.55;
+                const i = (y * 480 + x) * 4;
+                const palettes = theme === 'canyon'
+                    ? [100, 56, 25] : (theme === 'singularity'
+                        ? [78 + 20 * violet, 26, 125] : [24 + 28 * violet, 55 - 24 * violet, 100]);
+                pixels.data[i] = (theme === 'canyon' ? 12 : 4) + cloud * palettes[0] * dust;
+                pixels.data[i + 1] = 7 + cloud * palettes[1] * dust;
+                pixels.data[i + 2] = (theme === 'canyon' ? 10 : 17) + cloud * palettes[2] * dust;
+                pixels.data[i + 3] = 255;
+            }
+        }
+        ctx.putImageData(pixels, 0, 0);
+        if (theme === 'canyon') {
+            // Distant rock silhouettes are baked into the sky, well behind hazards.
+            for (let i = 0; i < 32; i++) {
+                const x = noise(i * 7, 2) * 480;
+                const y = i % 2 ? noise(i, 8) * 105 : 255 + noise(i, 6) * 105;
+                const radius = 3 + noise(i, 12) * 17;
+                ctx.beginPath();
+                for (let corner = 0; corner < 7; corner++) {
+                    const angle = corner / 7 * Math.PI * 2;
+                    const r = radius * (0.65 + noise(i, corner) * 0.35);
+                    const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
+                    if (corner === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                const rock = ctx.createLinearGradient(x - radius, y - radius, x + radius, y + radius);
+                rock.addColorStop(0, '#39302a');
+                rock.addColorStop(1, '#100f14');
+                ctx.fillStyle = rock;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(179,124,73,0.14)';
+                ctx.lineWidth = 0.6;
+                ctx.stroke();
+            }
+        }
+        texture.refresh();
+    }
+    if (!scene.textures.exists('distantPlanet')) {
+        const texture = scene.textures.createCanvas('distantPlanet', 320, 320);
+        const ctx = texture.context;
+        const halo = ctx.createRadialGradient(160, 160, 122, 160, 160, 157);
+        halo.addColorStop(0, 'rgba(83,183,255,0.28)');
+        halo.addColorStop(0.3, 'rgba(50,116,211,0.12)');
+        halo.addColorStop(1, 'rgba(30,80,180,0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(0, 0, 320, 320);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(160, 160, 125, 0, Math.PI * 2);
+        ctx.clip();
+        const surface = ctx.createLinearGradient(65, 60, 235, 245);
+        surface.addColorStop(0, '#477996');
+        surface.addColorStop(0.35, '#24475f');
+        surface.addColorStop(1, '#060d20');
+        ctx.fillStyle = surface;
+        ctx.fillRect(0, 0, 320, 320);
+        for (let i = 0; i < 65; i++) {
+            const y = 40 + i * 3.8;
+            ctx.strokeStyle = `rgba(132,193,212,${0.035 + noise(i, 4) * 0.075})`;
+            ctx.lineWidth = 1 + noise(i, 9) * 4;
+            ctx.beginPath();
+            ctx.moveTo(25, y);
+            ctx.bezierCurveTo(100, y - 22, 205, y + 28, 290, y - 14);
+            ctx.stroke();
+        }
+        const shadow = ctx.createRadialGradient(86, 95, 25, 203, 182, 175);
+        shadow.addColorStop(0, 'rgba(2,6,18,0)');
+        shadow.addColorStop(0.46, 'rgba(2,6,18,0.15)');
+        shadow.addColorStop(0.72, 'rgba(2,6,18,0.88)');
+        shadow.addColorStop(1, 'rgba(2,6,18,0.99)');
+        ctx.fillStyle = shadow;
+        ctx.fillRect(0, 0, 320, 320);
+        ctx.strokeStyle = 'rgba(140,222,255,0.45)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(160, 160, 124, Math.PI * 0.94, Math.PI * 1.64);
+        ctx.stroke();
+        ctx.restore();
+        texture.refresh();
+    }
+}
+
+function createBackgroundLayers(scene) {
+    const theme = getBackgroundTheme(currentLevel);
+    createAtmosphereTextures(scene, theme);
+    nebulaGraphics = scene.add.image(400, 300, 'deepSpace-' + theme)
+        .setDisplaySize(960, 720).setDepth(-3).setScrollFactor(0);
+    scene.distantPlanet = scene.add.image(625, 180, 'distantPlanet')
+        .setDisplaySize(275, 275).setAlpha(0.8).setDepth(-0.5).setScrollFactor(0);
 
     starLayers = [
         { speed: 0.045, size: 1, alpha: 0.35, color: 0x6a7aa0, count: 50, seed: 11 },
@@ -7368,20 +7698,34 @@ function createBackgroundLayers(scene) {
         { speed: 0.22, size: 2.5, alpha: 0.95, color: 0xc8f0ff, count: 18, seed: 73 }
     ].map(layer => {
         const stars = [];
+        let seed = layer.seed;
+        const random = () => {
+            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+            return seed / 4294967296;
+        };
         for (let i = 0; i < layer.count; i++) {
-            const n = ((i + 1) * layer.seed * 9301 + 49297) % 233280;
-            stars.push({
-                x: (n % 820),
-                y: ((n * 17) % 600),
-                twinkle: (n % 100) / 100
-            });
+            stars.push({ x: random() * 820, y: random() * 600, twinkle: random() });
         }
         return { ...layer, stars, gfx: scene.add.graphics().setDepth(-1).setScrollFactor(0) };
     });
 
+    applyBackgroundTheme(scene, currentLevel);
     vignette = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0);
     vignette.setDepth(20);
     vignette.setScrollFactor(0);
+}
+
+function applyBackgroundTheme(scene, levelId) {
+    const theme = getBackgroundTheme(levelId);
+    createAtmosphereTextures(scene, theme);
+    if (nebulaGraphics) nebulaGraphics.setTexture('deepSpace-' + theme);
+    if (scene.distantPlanet) scene.distantPlanet.setVisible(theme === 'space');
+    const colors = theme === 'canyon'
+        ? [0x877568, 0xbca083, 0xffdfb0, 0xffedcf]
+        : (theme === 'singularity'
+            ? [0x776299, 0xaf90d8, 0xf0d6ff, 0xb9dfff]
+            : [0x6a7aa0, 0xa8b8d8, 0xffffff, 0xc8f0ff]);
+    if (starLayers) starLayers.forEach((layer, index) => { layer.color = colors[index]; });
 }
 
 function drawBackgroundLayers(scene, frameDelta, time) {
@@ -7390,16 +7734,15 @@ function drawBackgroundLayers(scene, frameDelta, time) {
     const boostMul = Phaser.Math.Linear(1, 1.85, boostIntensity);
     starfieldOffset += frameDelta * 0.01;
 
-    // Slow drifting nebula wash
+    // Move cached images rather than rebuilding cloud geometry every frame.
     if (nebulaGraphics) {
-        nebulaGraphics.clear();
-        const drift = time * 0.00008;
-        nebulaGraphics.fillStyle(0x2244aa, 0.05 + Math.sin(drift) * 0.02);
-        nebulaGraphics.fillEllipse(200 + Math.sin(drift * 1.3) * 40, 140, 300, 160);
-        nebulaGraphics.fillStyle(0xaa3366, 0.04 + Math.cos(drift * 0.9) * 0.015);
-        nebulaGraphics.fillEllipse(620 + Math.cos(drift) * 30, 440, 340, 180);
-        nebulaGraphics.fillStyle(0x33aacc, 0.03);
-        nebulaGraphics.fillEllipse(420 + Math.sin(drift * 0.7) * 50, 300, 220, 120);
+        const drift = time * 0.000025;
+        nebulaGraphics.setPosition(400 + Math.sin(drift) * 22, 300 + Math.cos(drift * 0.7) * 16);
+    }
+    if (scene.distantPlanet) {
+        scene.distantPlanet.setPosition(625 + Math.sin(time * 0.000018) * 12,
+            180 + Math.cos(time * 0.000014) * 8);
+        scene.distantPlanet.setAlpha(isVerticalScroll() ? 0.35 : 0.8);
     }
 
     starLayers.forEach((layer, layerIndex) => {
@@ -7415,10 +7758,22 @@ function drawBackgroundLayers(scene, frameDelta, time) {
                 star.x -= speed * (1 + (i % 3) * 0.08);
                 if (star.x < -10) star.x = 810;
             }
-            const twinkle = 0.55 + Math.sin(time * 0.004 + star.twinkle * 12 + layerIndex) * 0.45;
+            const twinkle = 0.78 + Math.sin(time * 0.0015 + star.twinkle * 12 + layerIndex) * 0.22;
             layer.gfx.fillStyle(layer.color, layer.alpha * twinkle);
             const size = layer.size * (layerIndex === 3 && (i % 5 === 0) ? 1.4 : 1);
-            layer.gfx.fillRect(star.x, star.y, size, size);
+            layer.gfx.fillCircle(star.x, star.y, size * 0.5);
+            if (layerIndex === 3) {
+                for (let ring = 3; ring >= 1; ring--) {
+                    layer.gfx.fillStyle(layer.color, layer.alpha * twinkle * 0.025 / ring);
+                    layer.gfx.fillCircle(star.x, star.y, size * ring * 0.7);
+                }
+                if (boostIntensity > 0.15) {
+                    layer.gfx.lineStyle(size * 0.5, layer.color, boostIntensity * 0.3);
+                    layer.gfx.lineBetween(star.x, star.y,
+                        star.x + (vertical ? 0 : boostIntensity * 22),
+                        star.y - (vertical ? boostIntensity * 22 : 0));
+                }
+            }
             if (layerIndex >= 2 && i % 7 === 0) {
                 layer.gfx.fillStyle(layer.color, layer.alpha * twinkle * 0.35);
                 if (vertical) {
@@ -7546,17 +7901,89 @@ function savePlayerName(name) {
     }
 }
 
-function promptForPlayerName(scope = 'campaign', includeCampaign = false) {
-    const previousName = getSavedPlayerName();
-    const label = getLeaderboardScopeLabel(scope);
-    const suffix = includeCampaign ? ' + CAMPAIGN' : '';
-    const typedName = window.prompt(
-        'Name for the ' + label + suffix + ' leaderboards:',
-        previousName || 'Pilot'
-    );
-    const name = sanitizePlayerName(typedName || previousName || 'Pilot');
-    savePlayerName(name);
-    return name;
+function getPersonalBestId(scope, difficulty, assist, name) {
+    return [
+        GAME_VERSION,
+        sanitizeLeaderboardScope(scope),
+        parseDifficultyModeName(difficulty) || 'normal',
+        assist ? 'assist' : 'standard',
+        sanitizePlayerName(name).toLowerCase()
+    ].join('|');
+}
+
+function getPersonalBestScore(scope, difficulty, assist, name) {
+    try {
+        const scores = JSON.parse(window.localStorage.getItem(PERSONAL_BEST_KEY) || '{}');
+        const value = Number(scores[getPersonalBestId(scope, difficulty, assist, name)]);
+        return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+    } catch (err) {
+        return 0;
+    }
+}
+
+function recordPersonalBestScore(scope, difficulty, assist, name, resultScore) {
+    const best = Math.max(0, getPersonalBestScore(scope, difficulty, assist, name), Math.round(Number(resultScore) || 0));
+    try {
+        const scores = JSON.parse(window.localStorage.getItem(PERSONAL_BEST_KEY) || '{}');
+        scores[getPersonalBestId(scope, difficulty, assist, name)] = best;
+        window.localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(scores));
+    } catch (err) {
+        // Personal best display remains available for this result if storage is blocked.
+    }
+    return best;
+}
+
+function createPilotNameInput(scene, gameX, gameY, gameWidth) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = getSavedPlayerName() || 'Pilot';
+    input.maxLength = 14;
+    input.autocomplete = 'nickname';
+    input.autocapitalize = 'words';
+    input.spellcheck = false;
+    input.id = 'pilot-name-input';
+    input.className = 'novawing-results-input';
+    input.setAttribute('aria-label', 'Pilot name');
+    Object.assign(input.style, {
+        position: 'fixed',
+        zIndex: '1000',
+        boxSizing: 'border-box',
+        border: '2px solid #66f6ff',
+        borderRadius: '4px',
+        outline: 'none',
+        background: '#081225',
+        color: '#ffffff',
+        fontFamily: 'monospace',
+        fontWeight: '700',
+        textAlign: 'center',
+        boxShadow: '0 0 14px rgba(102, 246, 255, .25)',
+        touchAction: 'manipulation'
+    });
+    const stopGameKey = event => event.stopPropagation();
+    input.addEventListener('keydown', stopGameKey);
+    input.addEventListener('keyup', stopGameKey);
+    document.body.appendChild(input);
+
+    const position = () => {
+        if (!game.canvas || !input.isConnected) return;
+        const rect = game.canvas.getBoundingClientRect();
+        const scaleX = rect.width / 800;
+        const scaleY = rect.height / 600;
+        input.style.left = (rect.left + (gameX - gameWidth / 2) * scaleX) + 'px';
+        input.style.top = (rect.top + (gameY - 17) * scaleY) + 'px';
+        input.style.width = (gameWidth * scaleX) + 'px';
+        input.style.height = Math.max(30, 34 * scaleY) + 'px';
+        input.style.fontSize = Math.max(16, 18 * Math.min(scaleX, scaleY)) + 'px';
+    };
+    const destroy = () => {
+        window.removeEventListener('resize', position);
+        input.removeEventListener('keydown', stopGameKey);
+        input.removeEventListener('keyup', stopGameKey);
+        if (input.parentNode) input.parentNode.removeChild(input);
+    };
+    window.addEventListener('resize', position);
+    position();
+    return { input, destroy };
 }
 
 function sanitizePlayerName(value) {
@@ -7943,6 +8370,7 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
 }
 
 function endLevel(title, color, options = {}) {
+    hideFirstRunTutorial();
     const continueToNext = Boolean(options.continueToNext);
     if (continueToNext) {
         if (awaitingNextLevel) return;
@@ -7979,15 +8407,17 @@ function endLevel(title, color, options = {}) {
     const displayScore = Number.isFinite(options.score) ? options.score : score;
     const displayKills = Number.isFinite(options.kills) ? options.kills : enemiesKilled;
     const displayAccuracy = Number.isFinite(options.accuracy) ? options.accuracy : accuracy;
-    const playerName = completed && !skipLeaderboard
-        ? sanitizePlayerName(options.playerName || promptForPlayerName(continueToNext ? displayScope : 'campaign'))
+    let playerName = completed && !skipLeaderboard
+        ? sanitizePlayerName(getSavedPlayerName() || 'Pilot')
         : null;
+    const resultDifficulty = getDifficultyMode();
+    const resultAssist = isAssistEnabled();
     const currentLeaderboard = getLocalLeaderboard(displayScope);
     const unrankedLine = formatUnrankedReasonLine();
     const resultLine = continueToNext
-        ? (skipLeaderboard ? unrankedLine : 'Saving level score...')
+        ? (skipLeaderboard ? unrankedLine : 'Enter a pilot name to post this run')
         : (completed && !skipLeaderboard
-            ? 'Submitting campaign score...'
+            ? 'Enter a pilot name to post this run'
             : (completed || skipLeaderboard || isAssistEnabled() || getDifficultyMode() !== 'normal'
                 ? unrankedLine
                 : 'Complete the boss fight to set a time'));
@@ -8001,49 +8431,64 @@ function endLevel(title, color, options = {}) {
 
     if (gamePaused) setPaused(this, false, { skipResumePhysics: true });
 
-    const panel = this.add.rectangle(400, 300, 650, 550, 0x050814, 0.92);
+    const panel = this.add.rectangle(400, 300, 730, 560, 0x050814, 0.95);
     panel.setStrokeStyle(2, 0x8aa4ff, 0.75);
     panel.setDepth(10);
     panel.setScrollFactor(0);
 
-    const titleText = this.add.text(400, 68, title, {
-        fontSize: '38px',
+    const titleText = this.add.text(400, 52, title, {
+        fontSize: '34px',
         fill: color,
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    const resultLineText = this.add.text(400, 113, resultLine, {
-        fontSize: '18px',
+    const resultLineText = this.add.text(400, 88, resultLine, {
+        fontSize: '15px',
         fill: completed ? '#66f6ff' : '#aab2c8',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     const formatResultStats = (timeMs) => [
-        'Pilot:          ' + (playerName || '--'),
-        'Time:           ' + (completed ? formatRunTime(timeMs) : '--:--.--'),
-        'Enemies killed: ' + displayKills,
-        'Shots fired:    ' + (continueToNext
+        'TIME       ' + (completed ? formatRunTime(timeMs) : '--:--.--'),
+        'KILLS      ' + displayKills,
+        'SHOTS      ' + (continueToNext
             ? Math.max(0, shotsFired - levelStartShotsFired)
             : shotsFired),
-        'Accuracy:       ' + displayAccuracy + '%',
-        'Weapon:         ' + getWeaponName(),
-        'Score:          ' + displayScore
+        'ACCURACY   ' + displayAccuracy + '%',
+        'WEAPON     ' + getWeaponName()
     ];
-    const statsText = this.add.text(400, 242, formatResultStats(completionTimeMs), {
-        fontSize: '18px',
+    const statsPanel = this.add.rectangle(218, 287, 310, 310, 0x091329, 0.88)
+        .setStrokeStyle(1, 0x314d7a, 0.9).setDepth(11).setScrollFactor(0);
+    const statsHeading = this.add.text(218, 151, 'RUN SUMMARY', {
+        fontSize: '16px', fill: '#8aa4ff', fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+    const scoreText = this.add.text(218, 115, 'SCORE  ' + displayScore, {
+        fontSize: '25px', fill: '#ffe66d', fontFamily: 'monospace', fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+    const savedName = playerName || sanitizePlayerName(getSavedPlayerName() || 'Pilot');
+    const previousBest = getPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName);
+    const eligibleResultScore = completed && !leaderboardDebugTainted ? displayScore : 0;
+    if (completed && skipLeaderboard && !leaderboardDebugTainted) {
+        recordPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName, displayScore);
+    }
+    const personalBestText = this.add.text(218, 178, 'PERSONAL BEST  ' + Math.max(previousBest, eligibleResultScore), {
+        fontSize: '14px', fill: '#66f6ff', fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+    const statsText = this.add.text(92, 207, formatResultStats(completionTimeMs), {
+        fontSize: '16px',
         fill: '#c7ddff',
         fontFamily: 'monospace',
         align: 'left'
-    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    }).setOrigin(0, 0).setDepth(12).setScrollFactor(0).setLineSpacing(7);
 
-    const difficultyHint = this.add.text(400, 140, formatDifficultyToggleLabel(), {
+    const difficultyHint = this.add.text(218, 370, formatDifficultyToggleLabel(), {
         fontSize: '14px',
         fill: difficultyModeFill(),
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     difficultyHint.setInteractive({ useHandCursor: true });
 
-    const assistHint = this.add.text(400, 162, formatAssistToggleLabel(), {
+    const assistHint = this.add.text(218, 393, formatAssistToggleLabel(), {
         fontSize: '14px',
         fill: isAssistEnabled() ? '#ffe66d' : '#8aa0c8',
         fontFamily: 'monospace'
@@ -8051,9 +8496,9 @@ function endLevel(title, color, options = {}) {
     assistHint.setInteractive({ useHandCursor: true });
 
     const refreshResultModeLines = () => {
-        difficultyHint.setText(formatDifficultyToggleLabel());
+        difficultyHint.setText('<  MODE: ' + formatDifficultyModeName() + '  >');
         difficultyHint.setFill(difficultyModeFill());
-        assistHint.setText(formatAssistToggleLabel());
+        assistHint.setText('ASSIST: ' + (isAssistEnabled() ? 'ON' : 'OFF'));
         assistHint.setFill(isAssistEnabled() ? '#ffe66d' : '#8aa0c8');
         if (!continueToNext && resultLineText && resultLineText.active) {
             const rankedNext = getDifficultyMode() === 'normal' && !isAssistEnabled();
@@ -8074,24 +8519,34 @@ function endLevel(title, color, options = {}) {
         setAssistEnabled(!isAssistEnabled());
         refreshResultModeLines();
     });
+    refreshResultModeLines();
 
-    const leaderboardTitle = this.add.text(400, 318, getLeaderboardScopeLabel(displayScope) + ' FASTEST', {
-        fontSize: '22px',
+    const leaderboardPanel = this.add.rectangle(555, 287, 335, 310, 0x091329, 0.88)
+        .setStrokeStyle(1, 0x314d7a, 0.9).setDepth(11).setScrollFactor(0);
+    const leaderboardTitle = this.add.text(555, 151, getLeaderboardScopeLabel(displayScope) + ' LEADERBOARD', {
+        fontSize: '17px',
         fill: '#ffffff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     let selectedLeaderboardScope = displayScope;
-    const leaderboardText = this.add.text(400, 430, formatLeaderboardLines(currentLeaderboard), {
-        fontSize: '14px',
+    const formatCompactLeaderboard = (entries, emptyMessage) => {
+        if (!entries.length) return [emptyMessage || leaderboardStatus || 'No completed runs yet'];
+        return entries.map((entry, index) =>
+            padLeft(index + 1, 2, ' ') + '. ' + padRight(entry.name, 12, ' ') + ' ' +
+            formatRunTime(entry.timeMs) + ' ' + padLeft(entry.score, 5, ' ')
+        );
+    };
+    const leaderboardText = this.add.text(405, 208, formatCompactLeaderboard(currentLeaderboard), {
+        fontSize: '12px',
         fill: '#c7ddff',
         fontFamily: 'monospace',
         align: 'left'
-    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    }).setOrigin(0, 0).setDepth(11).setScrollFactor(0).setLineSpacing(4);
 
     const tabScopes = getLeaderboardScopes();
-    const tabLeft = 220;
-    const tabRight = 580;
+    const tabLeft = 430;
+    const tabRight = 680;
     const tabDefs = tabScopes.map((scope, index) => {
         const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
         return {
@@ -8101,8 +8556,8 @@ function endLevel(title, color, options = {}) {
         };
     });
     const tabTexts = tabDefs.map(tab => {
-        const text = this.add.text(tab.x, 349, tab.label, {
-            fontSize: '15px',
+        const text = this.add.text(tab.x, 180, tab.label, {
+            fontSize: '13px',
             fill: tab.scope === displayScope ? '#ffe66d' : '#8aa0c8',
             fontFamily: 'monospace'
         }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
@@ -8119,7 +8574,7 @@ function endLevel(title, color, options = {}) {
         leaderboardText.setText('Loading...');
         loadLeaderboardFromServer(selectedLeaderboardScope).then(result => {
             if (!leaderboardText.scene || selectedLeaderboardScope !== result.scope) return;
-            leaderboardText.setText(formatLeaderboardLines(
+            leaderboardText.setText(formatCompactLeaderboard(
                 result.entries || [],
                 result.online ? 'No online scores yet' : 'No local scores yet'
             ));
@@ -8129,14 +8584,28 @@ function endLevel(title, color, options = {}) {
         tab.text.on('pointerdown', () => selectLeaderboardScope(tab.scope));
     });
 
-    const shareStatusText = this.add.text(400, 520, '', {
+    const nameLabel = this.add.text(218, 430, completed && !skipLeaderboard ? 'PILOT NAME' : '', {
+        fontSize: '13px', fill: '#8aa4ff', fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    const pilotInput = completed && !skipLeaderboard
+        ? createPilotNameInput(this, 218, 458, 245)
+        : null;
+    if (pilotInput) {
+        pilotInput.input.addEventListener('input', () => {
+            const typedName = sanitizePlayerName(pilotInput.input.value);
+            const typedBest = getPersonalBestScore(displayScope, resultDifficulty, resultAssist, typedName);
+            personalBestText.setText('PERSONAL BEST  ' + Math.max(typedBest, eligibleResultScore));
+        });
+    }
+
+    const shareStatusText = this.add.text(555, 430, '', {
         fontSize: '14px',
         fill: '#66f6ff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    const shareText = this.add.text(400, 543, 'Share score', {
-        fontSize: '18px',
+    const shareText = this.add.text(555, 458, 'SHARE SCORE', {
+        fontSize: '16px',
         fill: '#ffe66d',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setVisible(false).setScrollFactor(0);
@@ -8146,31 +8615,51 @@ function endLevel(title, color, options = {}) {
         shareScoreResult(submittedEntry, submittedRank, shareStatusText);
     });
 
-    const actionHint = continueToNext
-        ? (shouldShowTouchControls()
-            ? 'Tap here or press Enter to continue'
-            : 'Press Enter or Space to continue · R to restart')
-        : (shouldShowTouchControls()
-            ? 'Tap here or press R to restart'
-            : 'Press R or Enter to restart');
-    const actionText = this.add.text(400, 566, actionHint, {
+    const submitBg = this.add.rectangle(218, 505, 245, 38, 0x123c4b, 1)
+        .setStrokeStyle(2, 0x66f6ff, 0.9).setDepth(11).setScrollFactor(0)
+        .setVisible(Boolean(pilotInput)).setInteractive({ useHandCursor: true });
+    const submitText = this.add.text(218, 505, 'SUBMIT SCORE', {
+        fontSize: '16px', fill: '#66f6ff', fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0).setVisible(Boolean(pilotInput));
+    submitText.setInteractive({ useHandCursor: true });
+
+    const restartX = continueToNext ? 275 : 400;
+    const restartBg = this.add.rectangle(restartX, 558, 210, 42, 0x252d43, 1)
+        .setStrokeStyle(2, 0x8aa4ff, 0.9).setDepth(11).setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+    const restartText = this.add.text(restartX, 558, 'RETRY', {
+        fontSize: '18px', fill: '#c7ddff', fontFamily: 'monospace'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const actionText = this.add.text(525, 558, continueToNext ? 'NEXT LEVEL' : 'RETRY', {
         fontSize: '18px',
-        fill: continueToNext ? '#66f6ff' : '#aab2c8',
+        fill: continueToNext ? '#06121a' : '#c7ddff',
         fontFamily: 'monospace'
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
+    const actionBg = this.add.rectangle(525, 558, 210, 42, continueToNext ? 0x66f6ff : 0x252d43, 1)
+        .setStrokeStyle(2, continueToNext ? 0x66f6ff : 0x8aa4ff, 1).setDepth(11).setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+    actionText.setDepth(12);
     actionText.setInteractive({ useHandCursor: true });
+    actionBg.setVisible(continueToNext);
+    actionText.setVisible(continueToNext);
 
-    const restartScene = () => this.scene.restart();
+    let cleanupResults = () => {};
+    const restartScene = () => {
+        cleanupResults();
+        this.scene.restart();
+    };
     let continued = false;
     const overlayNodes = [
-        panel, titleText, resultLineText, difficultyHint, assistHint, statsText, leaderboardTitle, leaderboardText,
-        shareStatusText, shareText, actionText
+        panel, titleText, resultLineText, difficultyHint, assistHint, statsPanel, statsHeading, scoreText,
+        personalBestText, statsText, leaderboardPanel, leaderboardTitle, leaderboardText, nameLabel,
+        shareStatusText, shareText, submitBg, submitText, restartBg, restartText, actionBg, actionText
     ];
 
     const goNext = () => {
         if (!continueToNext || continued || !awaitingNextLevel) return;
         continued = true;
         awaitingNextLevel = false;
+        cleanupResults();
         overlayNodes.forEach(node => {
             if (node && node.destroy) node.destroy();
         });
@@ -8183,24 +8672,49 @@ function endLevel(title, color, options = {}) {
         beginNextLevel.call(this);
     };
 
+    const keyboard = this.input.keyboard;
+    const onEnter = () => {
+        if (pilotInput && document.activeElement === pilotInput.input) return;
+        if (continueToNext) goNext();
+        else restartScene();
+    };
+    const onSpace = () => {
+        if (!pilotInput || document.activeElement !== pilotInput.input) goNext();
+    };
+    const onContinue = () => goNext();
+    const onRestart = () => restartScene();
+
+    cleanupResults = () => {
+        if (pilotInput) pilotInput.destroy();
+        if (keyboard) {
+            keyboard.off('keydown-ENTER', onEnter);
+            keyboard.off('keydown-SPACE', onSpace);
+            keyboard.off('keydown-C', onContinue);
+            keyboard.off('keydown-R', onRestart);
+        }
+    };
+    this.events.once('shutdown', cleanupResults);
+
     if (continueToNext) {
         actionText.on('pointerdown', goNext);
-        if (this.input.keyboard) {
-            this.input.keyboard.once('keydown-ENTER', goNext);
-            this.input.keyboard.once('keydown-SPACE', goNext);
-            this.input.keyboard.once('keydown-C', goNext);
-            this.input.keyboard.once('keydown-R', restartScene);
+        actionBg.on('pointerdown', goNext);
+        if (keyboard) {
+            keyboard.on('keydown-ENTER', onEnter);
+            keyboard.on('keydown-SPACE', onSpace);
+            keyboard.on('keydown-C', onContinue);
+            keyboard.on('keydown-R', onRestart);
         }
         if (isPlaytestBotSession()) {
             this.time.delayedCall(800, goNext);
         }
     } else {
-        actionText.on('pointerdown', restartScene);
-        if (this.input.keyboard) {
-            this.input.keyboard.once('keydown-R', restartScene);
-            this.input.keyboard.once('keydown-ENTER', restartScene);
+        if (keyboard) {
+            keyboard.on('keydown-R', onRestart);
+            keyboard.on('keydown-ENTER', onEnter);
         }
     }
+    restartText.on('pointerdown', restartScene);
+    restartBg.on('pointerdown', restartScene);
 
     // Hide virtual controls under the end-game panel so taps hit continue/share.
     if (touchControls && touchControls.container) {
@@ -8222,43 +8736,82 @@ function endLevel(title, color, options = {}) {
         submittedRank = rank;
         if (submittedEntry && Number.isFinite(submittedEntry.timeMs) && submittedEntry.timeMs > 0) {
             statsText.setText(formatResultStats(submittedEntry.timeMs));
+            personalBestText.setText('PERSONAL BEST  ' + getPersonalBestScore(
+                displayScope,
+                resultDifficulty,
+                resultAssist,
+                submittedEntry.name
+            ));
         }
         resultLineText.setText(rankedInTop
             ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
             : 'Finished outside top ' + LEADERBOARD_LIMIT);
         if (selectedLeaderboardScope === displayScope) {
-            leaderboardText.setText(formatLeaderboardLines(result.entries || []));
+            leaderboardText.setText(formatCompactLeaderboard(result.entries || []));
         }
         shareText.setVisible(true);
         shareStatusText.setText(result.online ? 'Score posted online' : 'Score saved locally');
     };
 
     selectLeaderboardScope(displayScope);
-
-    if (continueToNext) {
-        const pending = options.submitPromise;
-        if (pending && typeof pending.then === 'function') {
-            pending.then(result => applySubmitResult(result, {
-                name: playerName,
-                scope: displayScope,
-                timeMs: completionTimeMs,
-                score: displayScore,
-                kills: displayKills,
-                accuracy: displayAccuracy
-            }));
-        }
-    } else if (completed && !skipLeaderboard) {
+    let submissionStarted = false;
+    const submitScore = () => {
+        if (!pilotInput || submissionStarted || !completed || skipLeaderboard) return;
+        submissionStarted = true;
+        playerName = sanitizePlayerName(pilotInput.input.value);
+        pilotInput.input.value = playerName;
+        pilotInput.input.disabled = true;
+        savePlayerName(playerName);
+        submitText.setText('SUBMITTING...');
+        resultLineText.setText('Verifying run...');
         const scoreEntry = {
             name: playerName,
-            scope: 'campaign',
-            timeMs: (campaignRunState && campaignRunState.officialTimeMs) || completionTimeMs,
-            score,
-            kills: enemiesKilled,
-            accuracy
+            scope: displayScope,
+            timeMs: (options.leaderboardState && options.leaderboardState.officialTimeMs) || completionTimeMs,
+            score: displayScore,
+            kills: displayKills,
+            accuracy: displayAccuracy
         };
-
-        submitLeaderboard(scoreEntry, campaignRunState).then(result => {
+        const secondary = options.finalLevelSubmission;
+        const secondaryEntry = secondary ? {
+            name: playerName,
+            scope: secondary.scope,
+            timeMs: secondary.timeMs,
+            score: secondary.score,
+            kills: secondary.kills,
+            accuracy: secondary.accuracy
+        } : null;
+        const primarySubmission = submitLeaderboard(scoreEntry, options.leaderboardState);
+        const secondarySubmission = secondaryEntry
+            ? submitLeaderboard(secondaryEntry, secondary.leaderboardState)
+            : Promise.resolve(null);
+        Promise.all([primarySubmission, secondarySubmission]).then(results => {
+            const result = results[0];
+            recordPersonalBestScore(displayScope, resultDifficulty, resultAssist, playerName, displayScore);
+            if (secondaryEntry) {
+                recordPersonalBestScore(
+                    secondaryEntry.scope,
+                    resultDifficulty,
+                    resultAssist,
+                    playerName,
+                    secondaryEntry.score
+                );
+            }
             applySubmitResult(result, scoreEntry);
+            if (!submitText.scene) return;
+            submitText.setText('SCORE SUBMITTED');
+            submitText.disableInteractive();
+            submitBg.disableInteractive();
+        });
+    };
+    submitText.on('pointerdown', submitScore);
+    submitBg.on('pointerdown', submitScore);
+    if (pilotInput) {
+        pilotInput.input.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            submitScore();
+            pilotInput.input.blur();
         });
     }
 }
@@ -8313,6 +8866,11 @@ function createExplosion(scene, x, y, quantity, options = {}) {
         : (palette === 'red' ? 0xff5577 : 0xffcc66);
     const flash = options.flash !== false;
     const ring = Boolean(options.ring);
+    const hasDirection = Number.isFinite(options.direction);
+    const spread = Phaser.Math.Clamp(Number(options.spread) || 50, 12, 180);
+    const particleAngle = hasDirection
+        ? { min: options.direction - spread * 0.5, max: options.direction + spread * 0.5 }
+        : { min: 0, max: 360 };
 
     if (flash) {
         const core = scene.add.image(x, y, 'glowOrb');
@@ -8351,7 +8909,7 @@ function createExplosion(scene, x, y, quantity, options = {}) {
     const emitter = particles.createEmitter({
         lifespan: { min: 220, max: 620 },
         speed: { min: 60, max: 40 + quantity * 6 },
-        angle: { min: 0, max: 360 },
+        angle: particleAngle,
         scale: { start: 1.4, end: 0 },
         alpha: { start: 1, end: 0 },
         blendMode: 'ADD',
@@ -8360,6 +8918,28 @@ function createExplosion(scene, x, y, quantity, options = {}) {
     });
 
     emitter.explode(quantity, x, y);
+
+    // A handful of larger fragments gives sturdy targets extra weight while
+    // keeping the burst bounded and self-cleaning.
+    if (options.debris && fxQualityTier !== 'low') {
+        const debris = scene.add.particles(textureKey);
+        debris.setDepth(4);
+        const debrisEmitter = debris.createEmitter({
+            lifespan: { min: 360, max: 620 },
+            speed: { min: 90, max: 175 },
+            angle: hasDirection
+                ? { min: options.direction - 70, max: options.direction + 70 }
+                : { min: 0, max: 360 },
+            rotate: { min: -180, max: 180 },
+            scale: { start: mobilePerfMode ? 1.25 : 1.6, end: 0.15 },
+            alpha: { start: 0.95, end: 0 },
+            blendMode: 'ADD',
+            gravityY: 110,
+            quantity: 0
+        });
+        debrisEmitter.explode(mobilePerfMode ? 3 : 5, x, y);
+        scene.time.delayedCall(700, () => debris.destroy());
+    }
 
     // Secondary ember burst
     if (quantity >= 20) {
@@ -8379,6 +8959,12 @@ function createExplosion(scene, x, y, quantity, options = {}) {
     }
 
     scene.time.delayedCall(700, () => particles.destroy());
+}
+
+function shakeCombatCamera(scene, duration, intensity) {
+    if (!scene || !scene.cameras || !scene.cameras.main || gamePaused || levelEnded) return;
+    if (fxQualityTier === 'low') return;
+    scene.cameras.main.shake(duration, mobilePerfMode ? intensity * 0.65 : intensity, true);
 }
 
 
@@ -8791,6 +9377,19 @@ function getBotSnapshot() {
 window.__novawingDebug = {
     ready() {
         return Boolean(game && game.isBooted && game.scene && game.scene.scenes && game.scene.scenes[0]);
+    },
+    getOpeningState() {
+        return {
+            active: openingActive,
+            difficulty: getDifficultyMode(),
+            hasOverlay: Boolean(openingOverlay),
+            runStarted: levelStartTime > 0
+        };
+    },
+    startGame() {
+        if (!openingActive || typeof openingStartCallback !== 'function') return false;
+        openingStartCallback();
+        return true;
     },
     shouldShowTouchControls,
     getMobileProfile() {

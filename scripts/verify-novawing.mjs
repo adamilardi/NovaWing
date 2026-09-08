@@ -19,6 +19,8 @@ import { fileURLToPath } from 'url';
 import { defaultLaunchOptions } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
+import { casePolish } from './verify-polish.mjs';
+import { caseCombatPolish } from './verify-combat-polish.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -122,8 +124,16 @@ async function waitForGame(page, timeout = 20000) {
         return window.__novawingDebug &&
             window.__novawingDebug.ready &&
             window.__novawingDebug.ready() &&
-            typeof window.__novawingDebug.getBotSnapshot === 'function';
+            typeof window.__novawingDebug.getBotSnapshot === 'function' &&
+            window.__novawingDebug.getBotSnapshot().ready;
     }, null, { timeout });
+    // Gameplay cases launch through the same pointer action as a player.
+    // The dedicated polish case verifies the title before launching.
+    if (await page.evaluate(() => typeof openingActive !== 'undefined' && openingActive)) {
+        const canvas = await page.locator('#game-container canvas').boundingBox();
+        await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height * 2 / 3);
+        await page.waitForFunction(() => !openingActive);
+    }
 }
 
 function levelDurationMs(level) {
@@ -622,6 +632,8 @@ async function caseRlPolicy(browser, base, evidenceDir) {
 }
 
 const CASES = {
+    polish: casePolish,
+    'combat-polish': caseCombatPolish,
     content: caseContent,
     performance: casePerformance,
     boot: caseBoot,
