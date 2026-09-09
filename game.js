@@ -153,6 +153,7 @@ const TOUCH_FIRE_BTN = { x: 708, y: 508, radius: 52 };
 const TOUCH_BOOST_BTN = { x: 598, y: 508, radius: 42 };
 // Mobile/tablet: auto-fire so thumbs can focus on stick + boost (Fire / Android / A11).
 let mobileAutoFire = false;
+let mobileAutoFireInitialized = false;
 let mobilePerfMode = false;
 let orientationHintText = null;
 let orientationHintShownAt = 0;
@@ -174,6 +175,7 @@ const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.S,
     Phaser.Input.Keyboard.KeyCodes.D,
     Phaser.Input.Keyboard.KeyCodes.SPACE,
+    Phaser.Input.Keyboard.KeyCodes.ENTER,
     Phaser.Input.Keyboard.KeyCodes.SHIFT,
     Phaser.Input.Keyboard.KeyCodes.X,
     Phaser.Input.Keyboard.KeyCodes.Z,
@@ -449,6 +451,13 @@ const ENEMY_TYPES = {
 };
 
 let player;
+// Co-op is a shared-screen local mode. P1 remains the legacy `player` so the
+// established solo campaign code stays deterministic; P2 has its own ship and
+// combat state while score, waves, and progression remain shared.
+let playerTwo = null;
+let coopEnabled = false;
+let coopState = null;
+let requestedCoopEnabled = null;
 let cursors;
 let wasdKeys;
 let spaceKey;
@@ -459,6 +468,8 @@ let boostHeld = false;
 let fireHeld = false;
 let heldBoostInputs = new Set();
 let heldMoveInputs = new Set();
+let heldP1MoveInputs = new Set();
+let heldP2MoveInputs = new Set();
 let touchMoveX = 0;
 let touchMoveY = 0;
 let touchMoveActive = false;
@@ -557,6 +568,7 @@ let levelText = null;
 let levelTransitioning = false;
 let scoreText;
 let livesText;
+let coopText;
 let livesIcon;
 let weaponText;
 let boostText;
@@ -1089,6 +1101,8 @@ function create() {
     fireHeld = false;
     heldBoostInputs.clear();
     heldMoveInputs.clear();
+    heldP1MoveInputs.clear();
+    heldP2MoveInputs.clear();
     botInput = null;
     nextBoostTrailAt = 0;
     currentPlayerAnimation = null;
@@ -1166,6 +1180,22 @@ function create() {
     player.setCollideWorldBounds(true);
     player.setDepth(3);
     playPlayerAnimation(player, PLAYER_ANIMATION_KEYS.flight);
+    coopEnabled = requestedCoopEnabled == null ? resolveCoopEnabledAtBoot() : requestedCoopEnabled;
+    if (coopEnabled) assistEnabled = false;
+    coopState = createCoopPilotState(player, 1, lives);
+    if (coopEnabled) {
+        playerTwo = this.physics.add.sprite(120, Phaser.Math.Clamp(startY + 92, 54, 546), PLAYER_DEFAULT_TEXTURE);
+        applyPlayerShipSize(playerTwo);
+        playerTwo.setFlipX(true);
+        playerTwo.setTint(0xffa6e7);
+        playerTwo.setCollideWorldBounds(true);
+        playerTwo.setDepth(3);
+        playPlayerAnimation(playerTwo, PLAYER_ANIMATION_KEYS.flight);
+        playerTwo.coopId = 2;
+        coopState.p2 = createCoopPilotState(playerTwo, 2, 3);
+    } else {
+        playerTwo = null;
+    }
     applyLevelWorldBounds(this, currentLevel);
 
     // Groups
@@ -1250,6 +1280,7 @@ function create() {
     maybeShowOrientationHint(this);
     if (typeof window !== 'undefined') {
         const onOrient = () => {
+            if (isMobileOrTabletDevice()) createTouchControls(this);
             maybeShowOrientationHint(this);
         };
         window.addEventListener('orientationchange', onOrient);
@@ -1302,6 +1333,10 @@ function create() {
         .setFlipX(true)
         .setDepth(10)
         .setScrollFactor(0);
+
+    coopText = this.add.text(400, 62, '', {
+        ...hudTextStyle, fontSize: '13px', fill: '#ffb8e8'
+    }).setOrigin(0.5, 0).setDepth(10).setScrollFactor(0);
 
     boostText = this.add.text(782, 40, '', {
         ...hudTextStyle,
@@ -1357,6 +1392,7 @@ function create() {
 
     updateScoreText();
     updateLivesText();
+    updateCoopText();
     updateWeaponText();
     updateBoostUi();
     updateStatusText();
@@ -1449,6 +1485,14 @@ function create() {
     this.physics.add.overlap(player, walls, hitWall, null, this);
     this.physics.add.overlap(player, enemyBullets, hitPlayerShot, null, this);
     this.physics.add.overlap(player, powerups, collectPowerup, null, this);
+    if (playerTwo) {
+        this.physics.add.overlap(playerTwo, enemies, hitPlayer, null, this);
+        this.physics.add.overlap(playerTwo, bosses, hitBossCollision, null, this);
+        this.physics.add.overlap(playerTwo, obstacles, hitObstacle, null, this);
+        this.physics.add.overlap(playerTwo, walls, hitWall, null, this);
+        this.physics.add.overlap(playerTwo, enemyBullets, hitPlayerShot, null, this);
+        this.physics.add.overlap(playerTwo, powerups, collectPowerup, null, this);
+    }
 }
 
 function update(time, delta) {
@@ -1456,9 +1500,10 @@ function update(time, delta) {
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
-    const axes = getMovementAxes();
+    let axes = getMovementAxes();
     const isMoving = axes.x !== 0 || axes.y !== 0;
-    const wantsBoost = isBoostHeld();
+    let wantsBoost = isBoostHeld();
+    if (!player || !player.active) { axes = { x: 0, y: 0 }; wantsBoost = false; }
     const wasBoosting = isBoosting;
 
     if (boostLocked && boostEnergy >= BOOST_REENGAGE_THRESHOLD) {
@@ -1490,6 +1535,13 @@ function update(time, delta) {
 
     const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity);
     player.setVelocity(axes.x * speed, axes.y * speed);
+    // P2 uses arrow keys, Enter to fire and right Shift to boost. Their boost,
+    // shield, weapon and spare ships are independent; the mission score is not.
+    if (coopEnabled && playerTwo && playerTwo.active) {
+        updateCoopPilot.call(this, playerTwo, coopState.p2, time, frameDelta);
+        keepCoopShipsOnScreen();
+    }
+    if (coopEnabled && coopState) { coopState.boostEnergy = boostEnergy; coopState.hasShield = hasShield; coopState.weaponLevel = weaponLevel; coopState.lives = lives; updateCoopText(); }
     updateBoostUi();
     updateShieldVisual(time);
     if (sfx && sfx.setEngine) sfx.setEngine(boostIntensity, player.x);
@@ -1563,6 +1615,9 @@ function update(time, delta) {
     if (isFireHeld() && time > lastFired) {
         fireBullet.call(this, time);
     }
+    if (coopEnabled && playerTwo && playerTwo.active && isCoopFireHeld() && time > (coopState.p2.lastFired || 0)) {
+        fireBullet.call(this, time, playerTwo, coopState.p2);
+    }
 
     // Parallax starfield + drifting nebula
     drawBackgroundLayers(this, frameDelta, time);
@@ -1585,6 +1640,7 @@ function update(time, delta) {
         if (!e.active) return;
         updateEnemyMovement(e, frameDelta);
         maybeFireEnemyShot.call(this, e, time);
+        updateEnemyAnimation(e, time, frameDelta);
         if (isOffscreen(e, 40)) releaseSprite(e);
     });
 
@@ -1614,6 +1670,17 @@ function update(time, delta) {
         }
         if (isOffscreen(p, 40)) releasePowerup(this, p);
     });
+}
+
+function keepCoopShipsOnScreen() {
+    if (!player || !player.active || !playerTwo || !playerTwo.active) return;
+    // A shared camera can follow the midpoint, provided pilots cannot drift far
+    // enough apart to put either outside the 600px view.
+    const maxGap = 430;
+    if (Math.abs(playerTwo.y - player.y) > maxGap) {
+        playerTwo.y = player.y + Math.sign(playerTwo.y - player.y) * maxGap;
+        if (playerTwo.body && playerTwo.body.updateFromGameObject) playerTwo.body.updateFromGameObject();
+    }
 }
 
 
@@ -1701,6 +1768,10 @@ function destroyEnemy(enemy, options = {}) {
     score += killScore;
     if (boostAmount > 0) {
         refillBoost(this, boostAmount, enemyX, enemyY);
+        if (coopEnabled && coopState && coopState.p2 && playerTwo && playerTwo.active) {
+            coopState.p2.boostEnergy = Math.min(BOOST_MAX, coopState.p2.boostEnergy + boostAmount);
+            coopState.p2.boostLocked = false;
+        }
     }
     updateScoreText();
 
@@ -1764,47 +1835,54 @@ function maybeResolveBossAfterDamage(scene, bossSprite, reason) {
     return false;
 }
 
-function hitPlayer(player, enemy) {
+function hitPlayer(ship, enemy) {
     // During i-frames the ship phases through contacts — do not grant free kills/score.
-    if (!canApplyPlayerContactDamage(this)) return;
+    if (!canApplyPlayerContactDamage(this, ship)) return;
 
     // Ramming a splitter still ruptures it into drones.
     destroyEnemy.call(this, enemy, { allowSplit: true });
-    damagePlayer.call(this);
+    damagePlayer.call(this, ship);
 }
 
-function hitObstacle(player, obstacle) {
-    if (!canApplyPlayerContactDamage(this)) return;
+function hitObstacle(ship, obstacle) {
+    if (!canApplyPlayerContactDamage(this, ship)) return;
 
     const obstacleX = obstacle.x;
     const obstacleY = obstacle.y;
     releaseSprite(obstacle);
     createExplosion(this, obstacleX, obstacleY, 20, { palette: 'orange' });
-    damagePlayer.call(this);
+    damagePlayer.call(this, ship);
 }
 
 function hitWall(playerSprite, wall) {
     // Collision is resolved in resolvePlayerWallCollisions; keep callback for safety.
     if (!wall || !wall.active || !playerSprite || !playerSprite.active) return;
-    resolvePlayerAgainstWall.call(this, wall, canApplyPlayerContactDamage(this));
+    resolvePlayerAgainstWall.call(this, wall, canApplyPlayerContactDamage(this, playerSprite), playerSprite);
 }
 
 function resolvePlayerWallCollisions() {
     if (levelEnded || victoryPending || levelTransitioning) return;
-    if (!player || !player.active || !walls) return;
+    if ((!player || !player.active) && (!playerTwo || !playerTwo.active) || !walls) return;
     if (gamePhase !== 'waves') return;
 
     let scraped = false;
-    walls.getChildren().forEach(wall => {
-        if (!wall || !wall.active || !wall.body) return;
-        if (resolvePlayerAgainstWall.call(this, wall, false)) {
-            scraped = true;
-        }
-    });
+    if (player && player.active) {
+        walls.getChildren().forEach(wall => {
+            if (!wall || !wall.active || !wall.body) return;
+            if (resolvePlayerAgainstWall.call(this, wall, false, player)) scraped = true;
+        });
+    }
 
-    if (scraped && canApplyPlayerContactDamage(this)) {
+    if (scraped && player && player.active && canApplyPlayerContactDamage(this, player)) {
         createExplosion(this, player.x + 18, player.y, 12, { palette: 'orange', flash: false });
-        damagePlayer.call(this);
+        damagePlayer.call(this, player);
+    }
+    if (coopEnabled && playerTwo && playerTwo.active) {
+        let p2Scraped = false;
+        walls.getChildren().forEach(wall => {
+            if (wall && wall.active && wall.body && resolvePlayerAgainstWall.call(this, wall, false, playerTwo)) p2Scraped = true;
+        });
+        if (p2Scraped && canApplyPlayerContactDamage(this, playerTwo)) damagePlayer.call(this, playerTwo);
     }
 }
 
@@ -1813,10 +1891,10 @@ function resolvePlayerWallCollisions() {
  * Returns true only for a hard front-face scrape (damage). Ceiling/floor bumps
  * separate without costing a life so corridors stay navigable.
  */
-function resolvePlayerAgainstWall(wall, applyDamage) {
-    if (!player || !player.active || !player.body || !wall || !wall.body) return false;
+function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
+    if (!ship || !ship.active || !ship.body || !wall || !wall.body) return false;
 
-    const pb = player.body;
+    const pb = ship.body;
     const wb = wall.body;
     // Small pad so ship art (larger than the hitbox) does not sit inside crystal pixels.
     const pad = 5;
@@ -1830,32 +1908,32 @@ function resolvePlayerAgainstWall(wall, applyDamage) {
     let hardHit = false;
     if (overlapX < overlapY) {
         const push = dx < 0 ? -overlapX : overlapX;
-        player.x += push;
-        if (player.body && player.body.updateFromGameObject) {
-            player.body.updateFromGameObject();
+        ship.x += push;
+        if (ship.body && ship.body.updateFromGameObject) {
+            ship.body.updateFromGameObject();
         }
         // Oncoming wall face (to the right of the ship) is the deadly scrape.
         // Require a real bite so grazing a corner does not chain-damage.
         if (push < 0 && overlapX > 6) hardHit = true;
         if (pb.velocity && ((push < 0 && pb.velocity.x > 0) || (push > 0 && pb.velocity.x < 0))) {
-            player.setVelocityX(0);
+            ship.setVelocityX(0);
         }
     } else {
         const push = dy < 0 ? -overlapY : overlapY;
-        player.y += push;
-        if (player.body && player.body.updateFromGameObject) {
-            player.body.updateFromGameObject();
+        ship.y += push;
+        if (ship.body && ship.body.updateFromGameObject) {
+            ship.body.updateFromGameObject();
         }
         // Floor/ceiling: separate only. Deep embeds (wrong route sealed) still hurt.
         if (overlapY > 22 && overlapX > 18) hardHit = true;
         if (pb.velocity && ((push < 0 && pb.velocity.y > 0) || (push > 0 && pb.velocity.y < 0))) {
-            player.setVelocityY(0);
+            ship.setVelocityY(0);
         }
     }
 
     if (applyDamage && hardHit) {
-        createExplosion(this, player.x + 18, player.y, 12, { palette: 'orange', flash: false });
-        damagePlayer.call(this);
+        createExplosion(this, ship.x + 18, ship.y, 12, { palette: 'orange', flash: false });
+        damagePlayer.call(this, ship);
     }
     return hardHit;
 }
@@ -1890,8 +1968,9 @@ function hitWallWithBullet(bullet, wall) {
 
 function hitPowerup(bullet, powerup) {
     if (!bullet || !bullet.active || !powerup || !powerup.active) return;
+    const collector = bullet.ownerPlayer || player;
     releaseSprite(bullet);
-    collectPowerup.call(this, null, powerup);
+    collectPowerup.call(this, collector, powerup);
 }
 
 function collectPowerup(playerSprite, powerup) {
@@ -1903,8 +1982,14 @@ function collectPowerup(playerSprite, powerup) {
     const type = POWERUP_TYPES[typeKey] || POWERUP_TYPES.weapon;
     releasePowerup(this, powerup);
     createExplosion(this, x, y, 22);
-    holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.powerup, PLAYER_POWERUP_POSE_MS);
+    if (playerSprite === player || !playerSprite) holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.powerup, PLAYER_POWERUP_POSE_MS);
     sfx.powerup(x);
+
+    const collectorState = getCoopPilotState(playerSprite);
+    if (collectorState && playerSprite !== player) {
+        applyCoopPowerup(this, playerSprite, collectorState, type, x, y);
+        return;
+    }
 
     switch (type.key) {
         case 'shield':
@@ -1926,9 +2011,20 @@ function collectPowerup(playerSprite, powerup) {
     }
 }
 
+function applyCoopPowerup(scene, ship, state, type, x, y) {
+    if (type.key === 'weapon') state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + 1);
+    else if (type.key === 'shield') state.hasShield = true;
+    else if (type.key === 'repair') state.lives = Math.min(MAX_LIVES, state.lives + 1);
+    else if (type.key === 'boost') { state.boostEnergy = BOOST_MAX; state.boostLocked = false; }
+    else if (type.key === 'bomb') detonateScreenBomb(scene, x, y);
+    showFloatingText(scene, x, y - 24, 'P' + state.id + ' ' + type.key.toUpperCase(), type.color);
+    updateCoopText();
+}
+
 function applyWeaponPowerup(scene, x, y) {
     if (weaponLevel < MAX_WEAPON_LEVEL) {
         weaponLevel++;
+        if (coopState) coopState.weaponLevel = weaponLevel;
         updateWeaponText();
         showFloatingText(scene, x, y - 24, 'WEAPON UP', POWERUP_TYPES.weapon.color);
         return;
@@ -1945,6 +2041,7 @@ function applyShieldPowerup(scene, x, y) {
     }
 
     hasShield = true;
+    if (coopState) coopState.hasShield = true;
     updateStatusText();
     updateShieldVisual(scene.time.now);
     showFloatingText(scene, x, y - 24, 'SHIELD', POWERUP_TYPES.shield.color);
@@ -1958,6 +2055,7 @@ function applyRepairPowerup(scene, x, y) {
     }
 
     lives++;
+    if (coopState) coopState.lives = lives;
     updateLivesText();
     showFloatingText(scene, x, y - 24, 'REPAIR +1', POWERUP_TYPES.repair.color);
 }
@@ -1966,6 +2064,7 @@ function applyBoostPowerup(scene, x, y) {
     const previousBoost = boostEnergy;
     refillBoost(scene, BOOST_MAX, x, y);
     boostLocked = false;
+    if (coopState) { coopState.boostEnergy = boostEnergy; coopState.boostLocked = boostLocked; }
 
     if (previousBoost >= BOOST_MAX) {
         awardPowerupScore(scene, x, y, Math.floor(POWERUP_SCORE_BONUS * 0.6));
@@ -2052,77 +2151,90 @@ function hitEnemyBulletWithObstacle(enemyBullet) {
     sfx.spark(hitX);
 }
 
-function hitPlayerShot(player, enemyBullet) {
+function hitPlayerShot(ship, enemyBullet) {
     if (enemyBullet.isBossLaser) {
         const now = this.time.now;
         if (now < (enemyBullet.nextHitEffectAt || 0)) return;
         enemyBullet.nextHitEffectAt = now + 220;
-        createExplosion(this, player.x + 24, player.y, 12);
-        damagePlayer.call(this);
+        createExplosion(this, ship.x + 24, ship.y, 12);
+        damagePlayer.call(this, ship);
         return;
     }
 
     releaseSprite(enemyBullet);
-    createExplosion(this, player.x + 24, player.y, 12);
-    damagePlayer.call(this);
+    createExplosion(this, ship.x + 24, ship.y, 12);
+    damagePlayer.call(this, ship);
 }
 
-function hitBossCollision(player, bossSprite) {
+function hitBossCollision(ship, bossSprite) {
     if (!bossSprite.active) return;
-    if (!canApplyPlayerContactDamage(this)) return;
-    createExplosion(this, player.x + 34, player.y, 18);
-    damagePlayer.call(this);
+    if (!canApplyPlayerContactDamage(this, ship)) return;
+    createExplosion(this, ship.x + 34, ship.y, 18);
+    damagePlayer.call(this, ship);
 }
 
-function canApplyPlayerContactDamage(scene) {
+function canApplyPlayerContactDamage(scene, ship = player) {
     if (levelEnded || victoryPending) return false;
     if (!scene || !scene.time) return false;
-    return scene.time.now >= playerInvulnerableUntil;
+    const state = getCoopPilotState(ship);
+    return scene.time.now >= (ship === player ? playerInvulnerableUntil : (state ? state.invulnerableUntil : 0));
 }
 
-function damagePlayer() {
+function damagePlayer(ship = player) {
     if (levelEnded || victoryPending) return;
 
+    const state = getCoopPilotState(ship);
+    if (!ship || !ship.active || !state) return;
+
     const now = this.time.now;
-    if (now < playerInvulnerableUntil) return;
+    if (now < (ship === player ? playerInvulnerableUntil : state.invulnerableUntil)) return;
     const cooldown = isPlaytestBotSession()
         ? PLAYTEST_BOT_DAMAGE_COOLDOWN_MS
         : difficultyNumber('playerIFramesMs', PLAYER_DAMAGE_COOLDOWN_MS);
-    playerInvulnerableUntil = now + cooldown;
+    state.invulnerableUntil = now + cooldown;
+    if (ship === player) playerInvulnerableUntil = state.invulnerableUntil;
 
-    if (hasShield) {
-        hasShield = false;
-        updateStatusText();
-        updateShieldVisual(now);
-        createExplosion(this, player.x + 20, player.y, 22, { palette: 'cyan', ring: true });
-        sfx.shieldBreak(player.x);
+    if (ship === player) state.hasShield = hasShield;
+    if (ship === player) state.lives = lives;
+    if (state.hasShield) {
+        state.hasShield = false;
+        if (ship === player) { hasShield = false; updateStatusText(); updateShieldVisual(now); }
+        createExplosion(this, ship.x + 20, ship.y, 22, { palette: 'cyan', ring: true });
+        sfx.shieldBreak(ship.x);
         flashVignette(this, 0x55ffaa, 0.28);
-        showFloatingText(this, player.x, player.y - 36, 'SHIELD BREAK', '#55ffaa');
-        player.setTint(0x55ffaa);
+        showFloatingText(this, ship.x, ship.y - 36, 'P' + state.id + ' SHIELD BREAK', '#55ffaa');
+        ship.setTint(0x55ffaa);
         this.time.delayedCall(140, () => {
-            if (player.active) player.clearTint();
+            if (ship.active) ship.setTint(ship === playerTwo ? 0xffa6e7 : 0xffffff);
         });
         return;
     }
 
-    sfx.damage(player.x);
-    createExplosion(this, player.x + 16, player.y, 16, { palette: 'red' });
+    sfx.damage(ship.x);
+    createExplosion(this, ship.x + 16, ship.y, 16, { palette: 'red' });
     flashVignette(this, 0xff3355, 0.4);
 
-    lives--;
-    updateLivesText();
+    state.lives--;
+    if (ship === player) { lives = state.lives; updateLivesText(); }
+    updateCoopText();
 
-    player.setTint(0xff0000);
+    ship.setTint(0xff0000);
     this.time.delayedCall(130, () => {
-        if (player.active) player.clearTint();
+        if (ship.active) ship.setTint(ship === playerTwo ? 0xffa6e7 : 0xffffff);
     });
 
-    if (lives <= 0) {
-        if (tryAssistContinue(this)) {
+    if (state.lives <= 0) {
+        if (coopEnabled && hasAnyCoopPilotAlive()) {
+            ship.disableBody(true, true);
+            updateCoopText();
+            showFloatingText(this, 400, 170, 'P' + state.id + ' DOWN — PARTNER CONTINUES', '#ff8899', { screenSpace: true });
+            return;
+        }
+        if (!coopEnabled && tryAssistContinue(this)) {
             holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
             return;
         }
-        holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
+        if (ship === player) holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
         musicDirector.stop();
         sfx.gameOver();
         endLevel.call(this, 'GAME OVER', '#ff5555', {
@@ -2133,46 +2245,108 @@ function damagePlayer() {
     }
 }
 
-function fireBullet(time) {
-    const muzzle = getPlayerMuzzleAnchor();
+function resolveCoopEnabledAtBoot() {
+    try { return new URLSearchParams(window.location.search || '').get('coop') === '1'; }
+    catch (error) { return false; }
+}
+
+function createCoopPilotState(ship, id, pilotLives) {
+    return { id, ship, lives: pilotLives, weaponLevel: 1, hasShield: false,
+        boostEnergy: BOOST_MAX, boostLocked: false, boostIntensity: 0,
+        invulnerableUntil: 0, lastFired: 0, shots: 0 };
+}
+
+function getCoopPilotState(ship) {
+    if (!coopState || !ship) return null;
+    return ship === player ? coopState : (ship === playerTwo ? coopState.p2 : null);
+}
+
+function hasAnyCoopPilotAlive() {
+    return [player, playerTwo].some(ship => {
+        const state = getCoopPilotState(ship);
+        return state && state.lives > 0 && ship && ship.active;
+    });
+}
+
+function getCoopMovementAxes() {
+    return {
+        x: (heldP2MoveInputs.has('right') ? 1 : 0) - (heldP2MoveInputs.has('left') ? 1 : 0),
+        y: (heldP2MoveInputs.has('down') ? 1 : 0) - (heldP2MoveInputs.has('up') ? 1 : 0)
+    };
+}
+
+function isCoopFireHeld() {
+    const scene = getActiveScene();
+    return Boolean(scene && scene.input.keyboard && scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER).isDown);
+}
+
+function updateCoopPilot(ship, state, time, frameDelta) {
+    const axes = getCoopMovementAxes();
+    // Browser key events expose left/right shift through code; use the held input
+    // set so P1's Left Shift never accelerates P2.
+    const wantsBoost = heldBoostInputs.has('ShiftRight');
+    if (state.boostLocked && state.boostEnergy >= BOOST_REENGAGE_THRESHOLD) state.boostLocked = false;
+    if (!wantsBoost && state.boostEnergy < BOOST_REENGAGE_THRESHOLD) state.boostLocked = true;
+    const boosting = wantsBoost && state.boostEnergy > 0 && !state.boostLocked;
+    if (boosting) state.boostEnergy = Math.max(0, state.boostEnergy - difficultyNumber('boostDrainPerSecond', BOOST_DRAIN_PER_SECOND) * frameDelta / 1000);
+    state.boostIntensity = approachValue(state.boostIntensity, boosting ? 1 : 0,
+        (boosting ? BOOST_RAMP_UP_PER_SECOND : BOOST_FADE_OUT_PER_SECOND) * frameDelta / 1000);
+    const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, state.boostIntensity);
+    ship.setVelocity(axes.x * speed, axes.y * speed);
+    updateCoopPilotAnimation(ship, state);
+}
+
+function updateCoopPilotAnimation(ship, state) {
+    if (combatOrientation === 'up') { ensureVerticalPlayerTexture(ship); return; }
+    const next = state.boostIntensity > 0.2 ? PLAYER_ANIMATION_KEYS.boost : PLAYER_ANIMATION_KEYS.flight;
+    ship.play(next, true);
+}
+
+function fireBullet(time, shooter = player, pilotState = null) {
+    if (!shooter || !shooter.active) return;
+    const muzzle = getPlayerMuzzleAnchor(shooter);
+    const currentWeapon = pilotState ? pilotState.weaponLevel : weaponLevel;
     const fired = [];
 
     if (combatOrientation === 'up') {
         // Vertical table (L3 top-down): fire toward top of screen (−Y).
-        fired.push(launchBullet(muzzle.x, muzzle.y, 0, -690, weaponLevel >= 3 ? 'heavyBullet' : 'bullet'));
-        if (weaponLevel >= 2) {
-            fired.push(launchBullet(muzzle.x - 16, muzzle.y + 6, 0, -650, 'bullet'));
-            fired.push(launchBullet(muzzle.x + 16, muzzle.y + 6, 0, -650, 'bullet'));
+        fired.push(launchBullet(muzzle.x, muzzle.y, 0, -690, currentWeapon >= 3 ? 'heavyBullet' : 'bullet', shooter));
+        if (currentWeapon >= 2) {
+            fired.push(launchBullet(muzzle.x - 16, muzzle.y + 6, 0, -650, 'bullet', shooter));
+            fired.push(launchBullet(muzzle.x + 16, muzzle.y + 6, 0, -650, 'bullet', shooter));
         }
-        if (weaponLevel >= 3) {
-            fired.push(launchBullet(muzzle.x - 6, muzzle.y + 10, -150, -630, 'bullet'));
-            fired.push(launchBullet(muzzle.x + 6, muzzle.y + 10, 150, -630, 'bullet'));
+        if (currentWeapon >= 3) {
+            fired.push(launchBullet(muzzle.x - 6, muzzle.y + 10, -150, -630, 'bullet', shooter));
+            fired.push(launchBullet(muzzle.x + 6, muzzle.y + 10, 150, -630, 'bullet', shooter));
         }
     } else {
         // Horizontal (L1/L2): fire +X from the nose.
         const bulletX = muzzle.x;
-        fired.push(launchBullet(bulletX, muzzle.y, 690, 0, weaponLevel >= 3 ? 'heavyBullet' : 'bullet'));
-        if (weaponLevel >= 2) {
-            fired.push(launchBullet(bulletX - 6, muzzle.y - 16, 650, 0, 'bullet'));
-            fired.push(launchBullet(bulletX - 6, muzzle.y + 16, 650, 0, 'bullet'));
+        fired.push(launchBullet(bulletX, muzzle.y, 690, 0, currentWeapon >= 3 ? 'heavyBullet' : 'bullet', shooter));
+        if (currentWeapon >= 2) {
+            fired.push(launchBullet(bulletX - 6, muzzle.y - 16, 650, 0, 'bullet', shooter));
+            fired.push(launchBullet(bulletX - 6, muzzle.y + 16, 650, 0, 'bullet', shooter));
         }
-        if (weaponLevel >= 3) {
-            fired.push(launchBullet(bulletX - 10, muzzle.y - 6, 630, -150, 'bullet'));
-            fired.push(launchBullet(bulletX - 10, muzzle.y + 6, 630, 150, 'bullet'));
+        if (currentWeapon >= 3) {
+            fired.push(launchBullet(bulletX - 10, muzzle.y - 6, 630, -150, 'bullet', shooter));
+            fired.push(launchBullet(bulletX - 10, muzzle.y + 6, 630, 150, 'bullet', shooter));
         }
     }
 
     const firedCount = fired.filter(Boolean).length;
     if (firedCount > 0) {
         shotsFired += firedCount;
-        sfx.shoot(weaponLevel, muzzle.x);
+        if (pilotState) pilotState.shots += firedCount;
+        else if (coopState) coopState.shots += firedCount;
+        sfx.shoot(currentWeapon, muzzle.x);
         const flash = getPlayerNoseFlashAnchor(muzzle);
-        createMuzzleFlash(this, flash.x, flash.y, weaponLevel);
-        lastFired = time + (weaponLevel >= 3 ? 150 : 125);
+        createMuzzleFlash(this, flash.x, flash.y, currentWeapon);
+        if (pilotState) pilotState.lastFired = time + (currentWeapon >= 3 ? 150 : 125);
+        else lastFired = time + (currentWeapon >= 3 ? 150 : 125);
     }
 }
 
-function launchBullet(x, y, velocityX, velocityY, textureKey) {
+function launchBullet(x, y, velocityX, velocityY, textureKey, owner = player) {
     const bullet = bullets.get(x, y, textureKey);
     if (!bullet) return null;
 
@@ -2184,6 +2358,7 @@ function launchBullet(x, y, velocityX, velocityY, textureKey) {
     // Slightly smaller than the glow so hits line up with the bright core.
     bullet.body.setSize(bullet.width * 0.72, bullet.height * 0.7, true);
     bullet.damage = textureKey === 'heavyBullet' ? 2 : 1;
+    bullet.ownerPlayer = owner;
     return bullet;
 }
 
@@ -3774,11 +3949,16 @@ function applyLevelWorldBounds(scene, levelId) {
     if (player && player.active && player.body) {
         player.body.setCollideWorldBounds(true);
     }
+    if (playerTwo && playerTwo.active && playerTwo.body) playerTwo.body.setCollideWorldBounds(true);
 
     // Snap camera to the player's current route immediately.
-    if (levelDef.cameraFollowY && player && player.active) {
+    const cameraShips = [player, playerTwo].filter(ship => ship && ship.active);
+    const cameraY = cameraShips.length
+        ? cameraShips.reduce((sum, ship) => sum + ship.y, 0) / cameraShips.length
+        : 300;
+    if (levelDef.cameraFollowY && cameraShips.length) {
         const targetScrollY = Phaser.Math.Clamp(
-            player.y - GAME_HEIGHT * 0.5,
+            cameraY - GAME_HEIGHT * 0.5,
             0,
             Math.max(0, worldHeight - GAME_HEIGHT)
         );
@@ -3789,7 +3969,9 @@ function applyLevelWorldBounds(scene, levelId) {
 }
 
 function updateLevelCamera(scene, frameDelta) {
-    if (!scene || !scene.cameras || !player || !player.active) return;
+    if (!scene || !scene.cameras) return;
+    const cameraShips = [player, playerTwo].filter(ship => ship && ship.active);
+    if (!cameraShips.length) return;
 
     const levelDef = getLevelDef(currentLevel);
     const cam = scene.cameras.main;
@@ -3806,8 +3988,7 @@ function updateLevelCamera(scene, frameDelta) {
     const dt = frameDelta || 16.67;
 
     // Look slightly ahead of vertical velocity so climbing a shaft feels intentional.
-    const vy = player.body ? player.body.velocity.y : 0;
-    const focusY = player.y + vy * CAMERA_LOOKAHEAD_Y;
+    const focusY = cameraShips.reduce((sum, ship) => sum + ship.y + (ship.body ? ship.body.velocity.y : 0) * CAMERA_LOOKAHEAD_Y, 0) / cameraShips.length;
     const viewCenter = cam.scrollY + GAME_HEIGHT * 0.5;
     let targetScrollY = cam.scrollY;
 
@@ -3990,6 +4171,17 @@ function startBossFight(encounterKey) {
             player.setPosition(120, bossArenaY);
             player.setVelocity(0, 0);
             applyPlayerOrientation(player, 'right');
+        }
+    }
+    if (playerTwo && playerTwo.active) {
+        if (verticalBoss) {
+            playerTwo.setPosition(500, 480);
+            playerTwo.setVelocity(0, 0);
+            applyPlayerOrientation(playerTwo, 'up');
+        } else {
+            playerTwo.setPosition(120, Phaser.Math.Clamp(bossArenaY + 78, Math.max(54, bossArenaY - 240), bossArenaY + 240));
+            playerTwo.setVelocity(0, 0);
+            applyPlayerOrientation(playerTwo, 'right');
         }
     }
     // Flatten camera to a single screen around the arena for the boss.
@@ -4744,6 +4936,14 @@ function startLevel(levelId, options = {}) {
         applyPlayerOrientation(player, 'right');
         playPlayerAnimation(player, PLAYER_ANIMATION_KEYS.flight);
     }
+    if (playerTwo && playerTwo.active) {
+        const startY = Number.isFinite(levelDef.startY) ? levelDef.startY : 300;
+        playerTwo.setPosition(120, Phaser.Math.Clamp(startY + 92, 54, 546));
+        playerTwo.setVelocity(0, 0);
+        playerTwo.setTint(0xffa6e7);
+        applyPlayerOrientation(playerTwo, 'right');
+        playPlayerAnimation(playerTwo, PLAYER_ANIMATION_KEYS.flight);
+    }
     applyLevelWorldBounds(this, currentLevel);
     // Paint the canyon immediately so the mid route is readable before progress ticks.
     if (levelDef.hasPathWalls) {
@@ -4944,6 +5144,13 @@ function enterProgressWaves(scene, segDef) {
     } else if (player && player.active) {
         applyPlayerOrientation(player, 'right');
     }
+    if (playerTwo && playerTwo.active && combatOrientation === 'up') {
+        playerTwo.setPosition(500, 460);
+        playerTwo.setVelocity(0, 0);
+        applyPlayerOrientation(playerTwo, 'up');
+    } else if (playerTwo && playerTwo.active) {
+        applyPlayerOrientation(playerTwo, 'right');
+    }
 
     applyLevelWorldBounds(scene, currentLevel);
     if (getLevelDef(currentLevel).hasPathWalls) seedLevelPathWalls(scene);
@@ -5050,6 +5257,10 @@ function enterTransition(scene, segDef) {
                 }
             }
         });
+        if (playerTwo && playerTwo.active) {
+            segmentScope.tween(scene, { targets: playerTwo, x: 500, y: 460, duration: 700, ease: 'Sine.easeInOut',
+                onComplete: () => { if (transitionStillActive() && playerTwo && playerTwo.active) applyPlayerOrientation(playerTwo, 'up'); } });
+        }
         // Start reorient mid-tween for readability
         segmentScope.delay(scene, 350, () => {
             if (transitionStillActive() && player && player.active) {
@@ -5074,6 +5285,7 @@ function enterTransition(scene, segDef) {
         scrollMode = 'vertical';
         combatOrientation = 'up';
         if (player && player.active) applyPlayerOrientation(player, 'up');
+        if (playerTwo && playerTwo.active) applyPlayerOrientation(playerTwo, 'up');
     });
 
     // 3200–3500: engage text → topdown
@@ -5151,36 +5363,34 @@ function destroyBlackHoleVisuals() {
 }
 
 function applyBlackHoleForces(scene, frameDelta, time) {
-    if (!player || !player.active || (!blackHoleActive && !blackHolePreview)) return;
+    if ((!player || !player.active) && (!playerTwo || !playerTwo.active)) return;
+    if (!blackHoleActive && !blackHolePreview) return;
     const cfg = resolveBlackHoleConfig();
     const anchor = blackHolePreview && !blackHoleActive
         ? (cfg.previewAnchor || { x: 400, y: 40 })
         : { x: cfg.x, y: cfg.y };
     const scale = blackHolePreview && !blackHoleActive ? (cfg.previewPullScale || 0.25) : 1;
-    const dx = anchor.x - player.x;
-    const dy = anchor.y - player.y;
+    [player, playerTwo].filter(ship => ship && ship.active).forEach(ship => {
+    const dx = anchor.x - ship.x;
+    const dy = anchor.y - ship.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
     const maxR = cfg.maxPullRadius || 420;
     if (dist < maxR) {
-        const t = 1 - dist / maxR;
-        const force = (cfg.pullStrength || 220) * t * t * scale;
+        const pull = 1 - dist / maxR;
+        const force = (cfg.pullStrength || 220) * pull * pull * scale;
         const dt = (frameDelta || 16.67) / 1000;
-        const vx = player.body.velocity.x + (dx / dist) * force * dt;
-        const vy = player.body.velocity.y + (dy / dist) * force * dt;
-        player.setVelocity(vx, vy);
+        ship.setVelocity(ship.body.velocity.x + (dx / dist) * force * dt, ship.body.velocity.y + (dy / dist) * force * dt);
     }
-
     if (!blackHoleActive) return;
-
     if (dist < (cfg.killRadius || 28)) {
         // Always spit out of the event horizon (K17); only gate damage on i-frames.
-        const nx = (player.x - anchor.x) / dist;
-        const ny = (player.y - anchor.y) / dist;
+        const nx = (ship.x - anchor.x) / dist;
+        const ny = (ship.y - anchor.y) / dist;
         const spit = cfg.safeRadius || 110;
-        player.setPosition(anchor.x + nx * spit, anchor.y + ny * spit);
-        player.setVelocity(nx * 200, ny * 200);
-        if (time >= playerInvulnerableUntil) {
-            damagePlayer.call(scene);
+        ship.setPosition(anchor.x + nx * spit, anchor.y + ny * spit);
+        ship.setVelocity(nx * 200, ny * 200);
+        if (canApplyPlayerContactDamage(scene, ship)) {
+            damagePlayer.call(scene, ship);
             flashVignette(scene, 0x6622aa, 0.45);
             showFloatingText(scene, 400, 200, 'EVENT HORIZON', '#cc88ff', { screenSpace: true });
         }
@@ -5188,13 +5398,17 @@ function applyBlackHoleForces(scene, frameDelta, time) {
     }
 
     if (dist < (cfg.dangerRadius || 48)) {
-        if (time >= blackHoleLastDangerAt + (cfg.dangerTickMs || 450)) {
-            blackHoleLastDangerAt = time;
-            if (time >= playerInvulnerableUntil) {
-                damagePlayer.call(scene);
+        const state = getCoopPilotState(ship);
+        const lastDangerAt = state ? (state.blackHoleLastDangerAt || 0) : blackHoleLastDangerAt;
+        if (time >= lastDangerAt + (cfg.dangerTickMs || 450)) {
+            if (state) state.blackHoleLastDangerAt = time;
+            else blackHoleLastDangerAt = time;
+            if (canApplyPlayerContactDamage(scene, ship)) {
+                damagePlayer.call(scene, ship);
             }
         }
     }
+    });
 }
 
 function updateHazardRings(scene, time) {
@@ -5235,16 +5449,16 @@ function updateHazardRings(scene, time) {
     }
 
     if (st.phase === 'lethal') {
-        if (player && player.active) {
-            const dx = player.x - cfg.x;
-            const dy = player.y - cfg.y;
+        [player, playerTwo].filter(ship => ship && ship.active).forEach(ship => {
+            const dx = ship.x - cfg.x;
+            const dy = ship.y - cfg.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (Math.abs(dist - st.radius) < HAZARD_RING.lethalWidth * 0.5) {
-                if (time >= playerInvulnerableUntil) {
-                    damagePlayer.call(scene);
+                if (canApplyPlayerContactDamage(scene, ship)) {
+                    damagePlayer.call(scene, ship);
                 }
             }
-        }
+        });
         if (time >= st.lethalEndsAt) {
             st.phase = 'cooldown';
             st.cooldownEndsAt = time + period;
@@ -5362,6 +5576,7 @@ function getDebugBossSkip() {
 
 /** Debug, bot, and direct-level sessions never write public leaderboard scores. */
 function isLeaderboardEligibleSession() {
+    if (coopEnabled) return false;
     if (leaderboardDebugTainted) return false;
     try {
         const params = new URLSearchParams(window.location.search || '');
@@ -5476,7 +5691,7 @@ function maybeFireEnemyShot(enemy, time) {
     );
 
     if (enemy.usesMissile) {
-        fireEnemyMissile.call(this, enemy);
+        if (fireEnemyMissile.call(this, enemy)) enemy.enemyAnimationFiredAt = time;
         return;
     }
 
@@ -5499,6 +5714,7 @@ function maybeFireEnemyShot(enemy, time) {
             shot.setDepth(2);
             shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
         });
+        enemy.enemyAnimationFiredAt = time;
         sfx.enemyShoot(enemy.x);
         return;
     }
@@ -5513,6 +5729,7 @@ function maybeFireEnemyShot(enemy, time) {
     shot.setAngle(0);
     shot.setDepth(2);
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
+    enemy.enemyAnimationFiredAt = time;
     sfx.enemyShoot(enemy.x);
 }
 
@@ -5541,6 +5758,7 @@ function fireEnemyMissile(enemy) {
     missile.body.setSize(missile.width * 0.55, missile.height * 0.55);
     missile.body.setOffset(missile.width * 0.08, missile.height * 0.22);
     sfx.missile(enemy.x);
+    return true;
 }
 
 function updateScoreText() {
@@ -5552,6 +5770,18 @@ function updateLivesText() {
     if (!livesText) return;
     livesText.setText('×' + lives);
     if (livesIcon) livesIcon.setVisible(lives > 0);
+}
+
+function updateCoopText() {
+    if (!coopText) return;
+    if (!coopEnabled || !coopState || !coopState.p2) {
+        coopText.setText('');
+        return;
+    }
+    const p1Shield = coopState.hasShield ? ' S' : '';
+    const p2Shield = coopState.p2.hasShield ? ' S' : '';
+    coopText.setText('CO-OP  P1 ×' + coopState.lives + ' W' + coopState.weaponLevel + ' B' + Math.round(boostEnergy) + p1Shield +
+        '   P2 ×' + coopState.p2.lives + ' W' + coopState.p2.weaponLevel + ' B' + Math.round(coopState.p2.boostEnergy) + p2Shield + '   SHARED SCORE');
 }
 
 function updateWeaponText() {
@@ -5684,6 +5914,8 @@ function enemyInFireRange(enemy) {
  * @param {{ muzzleScale?: number, leadPerpendicular?: boolean, speed?: number }} [options]
  */
 function getEnemyFireVector(enemy, options) {
+    const target = getEnemyTarget(enemy);
+    if (!target) return { x: enemy.x, y: enemy.y, vx: 0, vy: 0 };
     const opts = options || {};
     const muzzleScale = Number.isFinite(opts.muzzleScale) ? opts.muzzleScale : 0.46;
     const speed = Number.isFinite(opts.speed)
@@ -5697,19 +5929,19 @@ function getEnemyFireVector(enemy, options) {
             ? enemy.shotMaxDx
             : (Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150);
         let dx = Phaser.Math.Clamp(
-            (player.x - enemy.x) * aimScale,
+            (target.x - enemy.x) * aimScale,
             -maxDx,
             maxDx
         );
-        if (opts.leadPerpendicular && player.body) {
+        if (opts.leadPerpendicular && target.body) {
             dx = Phaser.Math.Clamp(
-                dx + player.body.velocity.x * 0.12,
+                dx + target.body.velocity.x * 0.12,
                 -maxDx,
                 maxDx
             );
         }
         // Fire toward the player on the approach axis (risers climb from below → shoot up).
-        const vySign = (player && player.y < enemy.y - 4) ? -1 : 1;
+        const vySign = target.y < enemy.y - 4 ? -1 : 1;
         return {
             x: enemy.x,
             y: enemy.y + enemy.displayHeight * muzzleScale * vySign,
@@ -5720,13 +5952,13 @@ function getEnemyFireVector(enemy, options) {
 
     const maxDy = Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150;
     let dy = Phaser.Math.Clamp(
-        (player.y - enemy.y) * aimScale,
+        (target.y - enemy.y) * aimScale,
         -maxDy,
         maxDy
     );
-    if (opts.leadPerpendicular && player.body) {
+    if (opts.leadPerpendicular && target.body) {
         dy = Phaser.Math.Clamp(
-            dy + player.body.velocity.y * 0.12,
+            dy + target.body.velocity.y * 0.12,
             -maxDy,
             maxDy
         );
@@ -5741,17 +5973,28 @@ function getEnemyFireVector(enemy, options) {
     };
 }
 
-function getPlayerMuzzleAnchor() {
-    if (!player) return { x: 0, y: 0 };
+function getEnemyTarget(enemy) {
+    const ships = [player, playerTwo].filter(ship => ship && ship.active);
+    if (!ships.length) return null;
+    if (!enemy) return ships[0];
+    return ships.reduce((nearest, ship) => {
+        const a = Phaser.Math.Distance.Squared(enemy.x, enemy.y, nearest.x, nearest.y);
+        const b = Phaser.Math.Distance.Squared(enemy.x, enemy.y, ship.x, ship.y);
+        return b < a ? ship : nearest;
+    });
+}
+
+function getPlayerMuzzleAnchor(ship = player) {
+    if (!ship) return { x: 0, y: 0 };
     if (combatOrientation === 'up') {
         return {
-            x: player.x,
-            y: player.y - player.displayHeight * 0.45
+            x: ship.x,
+            y: ship.y - ship.displayHeight * 0.45
         };
     }
     return {
-        x: player.x + player.displayWidth * 0.5,
-        y: player.y
+        x: ship.x + ship.displayWidth * 0.5,
+        y: ship.y
     };
 }
 
@@ -5827,7 +6070,7 @@ function updateEnemyMovement(enemy, frameDelta) {
         const scene = enemy.scene;
         if (scene && scene.time && scene.time.now >= (enemy.nextMineAt || 0)) {
             enemy.nextMineAt = scene.time.now + (enemy.mineIntervalMs || 900);
-            spawnObstacle.call(scene, {
+            const mine = spawnObstacle.call(scene, {
                 x: enemy.x,
                 y: enemy.y + 20,
                 variantKey: 'mine',
@@ -5836,6 +6079,7 @@ function updateEnemyMovement(enemy, frameDelta) {
                 skipPathClamp: true,
                 allowDuringBoss: false
             });
+            if (mine) enemy.enemyAnimationFiredAt = scene.time.now;
         }
         return;
     }
@@ -5885,7 +6129,8 @@ function updateEnemyMovement(enemy, frameDelta) {
         return;
     }
 
-    if (!enemy.tracksPlayer || !player || !player.active || !enemy.body) {
+    const target = getEnemyTarget(enemy);
+    if (!enemy.tracksPlayer || !target || !enemy.body) {
         // Horizontal non-trackers: zero Y so approach stays pure +X scroll.
         // Vertical non-trackers: keep baseVelocityY from updateScrollVelocity.
         if (enemy.body && !isVerticalScroll()) enemy.setVelocityY(0);
@@ -5897,7 +6142,7 @@ function updateEnemyMovement(enemy, frameDelta) {
         const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
         const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
         const targetVelocityX = Phaser.Math.Clamp(
-            (player.x - enemy.x) * trackResponse,
+            (target.x - enemy.x) * trackResponse,
             -trackSpeed,
             trackSpeed
         );
@@ -5908,11 +6153,143 @@ function updateEnemyMovement(enemy, frameDelta) {
     const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
     const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
     const targetVelocityY = Phaser.Math.Clamp(
-        (player.y - enemy.y) * trackResponse,
+        (target.y - enemy.y) * trackResponse,
         -trackSpeed,
         trackSpeed
     );
     enemy.setVelocityY(targetVelocityY);
+}
+
+// Visual-only banking, engine pulses and attack cues. Arcade bodies stay unscaled.
+// Graphics are owned by the pooled enemy and disposed on release/reset.
+function updateEnemyAnimation(enemy, time, frameDelta) {
+    if (!enemy.active || !ENEMY_TYPES[enemy.enemyType]) return;
+    if (enemy.enemyType !== 'interceptor' || enemy.texture.key !== 'enemy2' || isVerticalScroll()) {
+        updateRosterEnemyAnimation(enemy, time, frameDelta);
+        return;
+    }
+    if (!enemy.enemyAnimationFx) {
+        enemy.enemyAnimationFx = enemy.scene.add.graphics();
+        enemy.enemyAnimationPhase = (enemy.x * 0.13 + enemy.y * 0.07) % (Math.PI * 2);
+    }
+    const dt = Math.min(Math.max(frameDelta, 0), 100) / 1000;
+    const lateral = enemy.body ? enemy.body.velocity.y : 0;
+    const targetBank = Phaser.Math.Clamp(-lateral * 0.065, -9, 9);
+    enemy.enemyAnimationBank += (targetBank - enemy.enemyAnimationBank) * (1 - Math.exp(-9 * dt));
+    const sinceShot = time - enemy.enemyAnimationFiredAt;
+    const recoil = sinceShot >= 0 && sinceShot < 180 ? Math.sin(sinceShot / 180 * Math.PI) * 2.2 : 0;
+    enemy.setAngle(enemy.enemyAnimationBank + recoil);
+
+    const fx = enemy.enemyAnimationFx;
+    fx.clear();
+    fx.setPosition(enemy.x, enemy.y);
+    fx.setRotation(enemy.rotation);
+    fx.setDepth(enemy.depth + 0.01);
+    const width = enemy.displayWidth;
+    const phase = time * 0.028 + enemy.enemyAnimationPhase;
+    const thrust = 0.5 + 0.3 * Math.sin(phase) + 0.2 * Math.sin(phase * 1.73);
+    const engineX = width * 0.29;
+    const length = 14 + thrust * 12 + Math.abs(lateral) * 0.025;
+    fx.fillStyle(0x168cff, 0.25 + thrust * 0.15);
+    fx.fillTriangle(engineX, -7, engineX + length, 0, engineX, 7);
+    fx.fillStyle(0x8dffff, 0.45 + thrust * 0.25);
+    fx.fillTriangle(engineX, -3, engineX + length * 0.75, 0, engineX, 3);
+
+    // Telegraph only a shot that is eligible to fire in the current lane.
+    const untilShot = enemy.nextShotAt - time;
+    const charge = enemy.canShoot && enemyInFireRange(enemy) && untilShot >= 0 && untilShot < 320
+        ? 1 - untilShot / 320 : 0;
+    const flash = sinceShot >= 0 && sinceShot < 110 ? 1 - sinceShot / 110 : 0;
+    const noseX = -width * 0.43;
+    if (charge > 0 || flash > 0) {
+        fx.fillStyle(0x53ddff, charge * 0.45 + flash * 0.35);
+        fx.fillCircle(noseX, 2, 2 + charge * 3 + flash * 5);
+        fx.fillStyle(0xe5ffff, Math.max(charge * 0.8, flash));
+        fx.fillCircle(noseX, 2, 1 + charge + flash * 2);
+        if (flash > 0) {
+            fx.fillTriangle(noseX, -1, noseX - 15 * flash, 2, noseX, 5);
+        }
+    }
+}
+
+function updateRosterEnemyAnimation(enemy, time, frameDelta) {
+    if (!enemy.enemyAnimationFx) {
+        enemy.enemyAnimationFx = enemy.scene.add.graphics();
+        enemy.enemyAnimationPhase = (enemy.x * 0.13 + enemy.y * 0.07) % (Math.PI * 2);
+    }
+    const type = enemy.enemyType;
+    const upright = Boolean(SPRITES[enemy.texture.key]?.upright || ENEMY_TYPES[type].upright);
+    const baseAngle = upright || !isVerticalScroll() ? 0 : 90;
+    const dt = Math.min(Math.max(frameDelta, 0), 100) / 1000;
+    const phase = time * 0.006 + enemy.enemyAnimationPhase;
+    const lateral = enemy.body ? (upright || isVerticalScroll() ? enemy.body.velocity.x : -enemy.body.velocity.y) : 0;
+    const heavy = type === 'splitter' || type === 'mineDropper';
+    const bankLimit = heavy ? 3 : type === 'strafer' ? 12 : 7;
+    const flutter = type === 'splitterDrone' ? Math.sin(phase * 3) * 3 : Math.sin(phase) * (heavy ? 1 : 1.8);
+    const targetBank = Phaser.Math.Clamp(lateral * 0.055, -bankLimit, bankLimit) + flutter;
+    enemy.enemyAnimationBank += (targetBank - enemy.enemyAnimationBank) * (1 - Math.exp(-8 * dt));
+    const sinceShot = time - enemy.enemyAnimationFiredAt;
+    const flash = sinceShot >= 0 && sinceShot < 140 ? 1 - sinceShot / 140 : 0;
+    enemy.setAngle(baseAngle + enemy.enemyAnimationBank + flash * (heavy ? 1 : 2));
+
+    const fx = enemy.enemyAnimationFx;
+    fx.clear();
+    fx.setPosition(enemy.x, enemy.y).setRotation(enemy.rotation).setDepth(enemy.depth + 0.01);
+    const w = enemy.displayWidth;
+    const h = enemy.displayHeight;
+    const pulse = 0.5 + Math.sin(phase * 4.7) * 0.3 + Math.sin(phase * 7.1) * 0.2;
+    const color = type === 'orbiter' || type === 'strafer' ? 0xc56aff
+        : type === 'riser' || type === 'interceptor' ? 0x56dbff : 0xffaa45;
+    const untilShot = enemy.nextShotAt - time;
+    const charge = enemy.canShoot && (enemy.usesRadialShot || enemyInFireRange(enemy)) && untilShot >= 0 && untilShot < 320
+        ? 1 - untilShot / 320 : 0;
+    const glow = (x, y, radius, strength) => {
+        fx.fillStyle(color, strength * 0.3);
+        fx.fillCircle(x, y, radius * 1.7);
+        fx.fillStyle(0xfff3df, strength * 0.65);
+        fx.fillCircle(x, y, radius * 0.6);
+    };
+    if (type === 'orbiter') {
+        // Counter-rotating core arcs emphasize its circular flight and radial attack.
+        const radius = w * (0.15 + charge * 0.025 + flash * 0.08);
+        fx.lineStyle(1.5, color, 0.35 + charge * 0.4);
+        for (let i = 0; i < 3; i += 1) {
+            const a = -phase + i * Math.PI * 2 / 3;
+            fx.beginPath();
+            fx.arc(0, -h * 0.04, radius, a, a + 0.9);
+            fx.strokePath();
+        }
+        glow(0, -h * 0.04, 3 + charge * 3 + flash * 4, 0.35 + pulse * 0.2 + charge * 0.4);
+    } else if (type === 'splitter') {
+        glow(-w * 0.04, 0, 3 + pulse * 1.5 + charge * 3 + flash * 3, 0.4 + charge * 0.5);
+    } else if (type === 'mineDropper') {
+        const untilMine = enemy.nextMineAt - time;
+        const deploy = untilMine >= 0 && untilMine < 350 ? 1 - untilMine / 350 : 0;
+        glow(0, h * 0.24, 2 + deploy * 4 + flash * 3, 0.25 + deploy * 0.6 + flash * 0.2);
+        glow(-w * 0.22, -h * 0.17, 2, 0.3 + pulse * 0.35);
+        glow(w * 0.22, -h * 0.17, 2, 0.65 - pulse * 0.35);
+    } else {
+        const noseUp = type === 'riser';
+        const direction = enemy.flipX ? -1 : 1;
+        const engineX = upright ? 0 : w * 0.29 * direction;
+        const engineY = upright ? h * (noseUp ? 0.29 : -0.32) : 0;
+        const length = 7 + pulse * 9 + Math.min(Math.abs(lateral) * 0.02, 4);
+        fx.fillStyle(color, 0.3 + pulse * 0.25);
+        if (upright) {
+            fx.fillTriangle(engineX - 3, engineY, engineX, engineY + length * (noseUp ? 1 : -1), engineX + 3, engineY);
+        } else {
+            fx.fillTriangle(engineX, -3, engineX + length * direction, 0, engineX, 3);
+        }
+        glow(engineX, engineY, 1.5 + pulse, 0.35 + pulse * 0.25);
+    }
+    if (type !== 'orbiter' && (charge > 0 || flash > 0)) {
+        // Keep the firing cue at the actual projectile origin, including rotated art.
+        const fire = getEnemyFireVector(enemy);
+        const dx = fire.x - enemy.x;
+        const dy = fire.y - enemy.y;
+        const c = Math.cos(enemy.rotation), sn = Math.sin(enemy.rotation);
+        glow(dx * c + dy * sn, -dx * sn + dy * c, 1 + charge * 2 + flash * 4, Math.max(charge, flash));
+    }
 }
 
 function approachValue(current, target, maxStep) {
@@ -5923,6 +6300,9 @@ function approachValue(current, target, maxStep) {
 
 function isEditableInputTarget(target) {
     if (!target) return false;
+    // Let real dock buttons keep standard keyboard activation; gameplay capture
+    // must not turn Space/Enter on a focused button into a shot or launch.
+    if (target.closest && target.closest('#touch-dock button')) return true;
     if (target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return true;
     const tagName = String(target.tagName || '').toLowerCase();
     return tagName === 'input' || tagName === 'textarea' || tagName === 'select' ||
@@ -6256,6 +6636,7 @@ function difficultyModeFill(mode) {
 }
 
 function formatDifficultyToggleLabel() {
+    if (coopEnabled) return '<  ' + formatDifficultyModeName() + '  >   ·  local co-op unranked';
     const mode = getDifficultyMode();
     const ranked = isRankedDifficultyMode(mode) && !isAssistEnabled();
     return '<  ' + formatDifficultyModeName(mode) + '  >   ·  '
@@ -6263,6 +6644,7 @@ function formatDifficultyToggleLabel() {
 }
 
 function formatUnrankedReasonLine() {
+    if (coopEnabled) return 'Local co-op run — leaderboard and personal best disabled';
     if (isAssistEnabled()) return 'Assist run — public leaderboard disabled';
     if (getDifficultyMode() !== 'normal') {
         return formatDifficultyModeName() + ' run — public leaderboard disabled';
@@ -6305,6 +6687,7 @@ function cycleDifficultyMode(dir) {
 }
 
 function formatAssistToggleLabel() {
+    if (coopEnabled) return 'ASSIST UNAVAILABLE IN LOCAL CO-OP';
     return isAssistEnabled()
         ? 'ASSIST ON  ·  unranked  ·  L3 continues'
         : 'ASSIST OFF · extra continues after the L3 flip';
@@ -6329,6 +6712,13 @@ function updateAssistHud() {
 
 function setAssistEnabled(next) {
     if (isPlaytestBotSession()) return isAssistEnabled();
+    if (coopEnabled) {
+        assistEnabled = false;
+        assistCheckpoint = null;
+        updateAssistHud();
+        refreshPauseOverlay();
+        return false;
+    }
     const on = Boolean(next);
     assistEnabled = on;
     saveAssistEnabled(on);
@@ -6469,6 +6859,7 @@ function setHudVisible(visible) {
 }
 
 function hideOpeningOverlay() {
+    hideMobileLaunchButton();
     if (!openingOverlay) return;
     (openingOverlay.nodes || []).forEach(node => {
         if (node && node.destroy) node.destroy();
@@ -6484,6 +6875,7 @@ function showOpeningOverlay(scene, onPlay) {
     hideOpeningOverlay();
     if (!scene || !scene.add) return;
     openingStartCallback = onPlay;
+    showMobileLaunchButton(onPlay);
     const nodes = [];
     const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.97)
         .setDepth(80).setScrollFactor(0).setInteractive();
@@ -6523,15 +6915,32 @@ function showOpeningOverlay(scene, onPlay) {
         nodes.push(bg, label);
     });
 
-    const playBg = scene.add.rectangle(400, 400, 310, 66, 0x12445c, 0.98)
+    const coopButton = scene.add.rectangle(400, 365, 310, 32, 0x0b1930, 0.96)
+        .setDepth(81).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const coopLabel = scene.add.text(400, 365, '', {
+        fontFamily: 'monospace', fontSize: '13px', fill: '#ffb8e8',
+        stroke: '#050816', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const toggleCoop = () => {
+        requestedCoopEnabled = !coopEnabled;
+        openingShownThisSession = false;
+        scene.scene.restart();
+    };
+    coopButton.on('pointerdown', toggleCoop);
+    coopLabel.on('pointerdown', toggleCoop);
+    nodes.push(coopButton, coopLabel);
+
+    const playBg = scene.add.rectangle(400, 425, 310, 66, 0x12445c, 0.98)
         .setStrokeStyle(2, 0x66f6ff, 0.95).setDepth(81).setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
-    const playLabel = scene.add.text(400, 400, 'LAUNCH', {
+    const playLabel = scene.add.text(400, 425, 'LAUNCH', {
         fontFamily: 'monospace', fontStyle: 'bold', fontSize: '24px', fill: '#ffffff',
         stroke: '#050816', strokeThickness: 4, letterSpacing: 3
     }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    const controls = scene.add.text(400, 466,
-        shouldShowTouchControls() ? 'DRAG TO FLY  ·  HOLD BOOST' : 'WASD / ARROWS TO FLY  ·  SHIFT / X TO BOOST  ·  SPACE TO FIRE', {
+    const controls = scene.add.text(400, 490,
+        shouldShowTouchControls() ? 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL' : (coopEnabled
+            ? 'P1 WASD + SPACE + L-SHIFT   ·   P2 ARROWS + ENTER + R-SHIFT'
+            : 'WASD / ARROWS TO FLY  ·  SHIFT / X TO BOOST  ·  SPACE TO FIRE'), {
             fontFamily: 'monospace', fontSize: '13px', fill: '#8aa0c8', align: 'center'
         }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     nodes.push(playBg, playLabel, controls);
@@ -6543,13 +6952,35 @@ function showOpeningOverlay(scene, onPlay) {
     };
     playBg.on('pointerdown', launch);
     playLabel.on('pointerdown', launch);
-    openingOverlay = { scene, nodes, difficultyButtons, keyHandler: null };
+    openingOverlay = { scene, nodes, difficultyButtons, coopButton, coopLabel, keyHandler: null };
     refreshOpeningDifficulty();
+    refreshOpeningCoop();
 
     scene.tweens.add({ targets: eyebrow, alpha: 1, duration: 450, ease: 'Sine.easeOut' });
     scene.tweens.add({ targets: title, alpha: 1, scale: 1, duration: 650, delay: 120, ease: 'Back.easeOut' });
     scene.tweens.add({ targets: rule, scaleX: 1, duration: 550, delay: 500, ease: 'Sine.easeOut' });
     scene.tweens.add({ targets: playBg, scaleX: 1.035, scaleY: 1.035, yoyo: true, repeat: -1, duration: 950 });
+}
+
+function showMobileLaunchButton(onLaunch) {
+    if (!shouldShowTouchControls() || typeof document === 'undefined') return;
+    const button = document.getElementById('touch-launch');
+    if (!button) return;
+    const launch = () => {
+        if (!openingActive || typeof onLaunch !== 'function') return;
+        if (sfx && sfx.unlock) sfx.unlock();
+        onLaunch();
+    };
+    button.onclick = launch;
+    button.classList.add('is-active');
+}
+
+function hideMobileLaunchButton() {
+    if (typeof document === 'undefined') return;
+    const button = document.getElementById('touch-launch');
+    if (!button) return;
+    button.onclick = null;
+    button.classList.remove('is-active');
 }
 
 function refreshOpeningDifficulty() {
@@ -6563,6 +6994,14 @@ function refreshOpeningDifficulty() {
     });
 }
 
+function refreshOpeningCoop() {
+    if (!openingOverlay || !openingOverlay.coopLabel) return;
+    const enabled = Boolean(coopEnabled);
+    openingOverlay.coopLabel.setText(enabled ? 'LOCAL TWO PLAYER: ON' : 'LOCAL TWO PLAYER: OFF');
+    openingOverlay.coopButton.setFillStyle(enabled ? 0x4a1f47 : 0x0b1930, 0.98);
+    openingOverlay.coopButton.setStrokeStyle(enabled ? 2 : 1, enabled ? 0xffa6e7 : 0x405878, enabled ? 1 : 0.65);
+}
+
 function hasSeenTutorial() {
     try { return window.localStorage.getItem(TUTORIAL_SEEN_KEY) === '1'; }
     catch (error) { return false; }
@@ -6574,7 +7013,7 @@ function maybeShowFirstRunTutorial(scene) {
     const touch = shouldShowTouchControls();
     const tutorialY = touch ? 382 : 500;
     const copy = touch
-        ? 'DRAG TO STEER\nHOLD BOOST TO BREAK THROUGH'
+        ? 'DRAG TO STEER\nHOLD FIRE / BOOST  ·  AUTO-FIRE IS OPTIONAL'
         : 'WASD / ARROWS  MOVE\nSHIFT / X / Z  BOOST   ·   SPACE  FIRE';
     const panel = scene.add.rectangle(400, tutorialY, 520, 72, 0x071220, 0.9)
         .setStrokeStyle(1, 0x66f6ff, 0.7).setDepth(45).setScrollFactor(0).setAlpha(0);
@@ -6804,6 +7243,12 @@ function trackBoostInput(event, isDown) {
     const inputId = getBoostInputId(event);
     if (!inputId) return false;
 
+    if (inputId === 'ShiftRight' && coopEnabled) {
+        if (isDown) heldBoostInputs.add(inputId);
+        else heldBoostInputs.delete(inputId);
+        return true;
+    }
+
     if (isDown) {
         heldBoostInputs.add(inputId);
     } else {
@@ -6828,6 +7273,8 @@ function clearBoostInput() {
     boostHeld = false;
     fireHeld = false;
     heldMoveInputs.clear();
+    heldP1MoveInputs.clear();
+    heldP2MoveInputs.clear();
     clearTouchActionState();
 }
 
@@ -6839,7 +7286,7 @@ function isBoostHeld() {
     if (botInput && typeof botInput.boost === 'boolean') return botInput.boost;
     return touchBoostHeld ||
         boostHeld ||
-        (boostKey && boostKey.isDown) ||
+        (!coopEnabled && boostKey && boostKey.isDown) ||
         (boostAltKey && boostAltKey.isDown) ||
         (boostZKey && boostZKey.isDown);
 }
@@ -6882,9 +7329,15 @@ function isMobileOrTabletDevice() {
 /** Apply mobile/tablet defaults (idempotent; safe to call more than once). */
 function applyMobileDeviceProfile() {
     const mobile = isMobileOrTabletDevice();
+    if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.classList.toggle('touch-device', mobile);
+    }
     mobilePerfMode = mobile;
     if (mobile) {
-        mobileAutoFire = true;
+        if (!mobileAutoFireInitialized) {
+            mobileAutoFire = true;
+            mobileAutoFireInitialized = true;
+        }
         // Prefer low FX until FPS proves we can step up.
         if (fxQualityTier !== 'low') fxQualityTier = 'low';
     }
@@ -6938,7 +7391,7 @@ function maybeShowOrientationHint(scene) {
             scene,
             400,
             300,
-            'ROTATE FOR BEST PLAY',
+            'PORTRAIT DOCK READY\nROTATE FOR A LARGER COMBAT VIEW',
             '#ffcc55',
             { screenSpace: true }
         );
@@ -6959,8 +7412,12 @@ function getMovementAxes() {
         return { x: touchMoveX, y: touchMoveY };
     }
 
-    const inputX = (isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0);
-    const inputY = (isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0);
+    const inputX = coopEnabled
+        ? ((heldP1MoveInputs.has('right') ? 1 : 0) - (heldP1MoveInputs.has('left') ? 1 : 0))
+        : ((isMoveHeld('right') ? 1 : 0) - (isMoveHeld('left') ? 1 : 0));
+    const inputY = coopEnabled
+        ? ((heldP1MoveInputs.has('down') ? 1 : 0) - (heldP1MoveInputs.has('up') ? 1 : 0))
+        : ((isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0));
     if (inputX === 0 && inputY === 0) return { x: 0, y: 0 };
 
     const length = Math.sqrt(inputX * inputX + inputY * inputY) || 1;
@@ -6989,6 +7446,11 @@ function clearTouchActionState() {
     touchBoostHeld = false;
 
     if (!touchControls) return;
+
+    if (touchControls.dom) {
+        resetDomTouchVisuals(touchControls);
+        return;
+    }
 
     touchControls.stickPointerId = null;
     touchControls.firePointerId = null;
@@ -7025,6 +7487,13 @@ function createTouchControls(scene) {
     destroyTouchControls();
     applyMobileDeviceProfile();
     if (!shouldShowTouchControls()) return;
+
+    // The HTML dock supplies native-size controls. Retain the canvas version
+    // only as a degraded fallback if an embed omitted the dock markup.
+    if (typeof document !== 'undefined' && document.getElementById('touch-dock')) {
+        createDomTouchControls(scene);
+        return;
+    }
 
     ensureExtraPointers(scene.input, 3);
 
@@ -7292,6 +7761,131 @@ function createTouchControls(scene) {
     };
 }
 
+function createDomTouchControls(scene) {
+    const dock = typeof document !== 'undefined' ? document.getElementById('touch-dock') : null;
+    if (!dock) return;
+    const stick = dock.querySelector('[data-touch="stick"]');
+    const knob = stick && stick.querySelector('.touch-stick-knob');
+    const fire = dock.querySelector('[data-touch="fire"]');
+    const boost = dock.querySelector('[data-touch="boost"]');
+    const auto = dock.querySelector('[data-touch="auto"]');
+    const pause = dock.querySelector('[data-touch="pause"]');
+    const mute = dock.querySelector('[data-touch="mute"]');
+    if (!stick || !knob || !fire || !boost || !auto || !pause || !mute) return;
+
+    const dockVisible = !openingActive && !gamePaused && !levelEnded && !victoryPending && !awaitingNextLevel;
+    dock.classList.add('is-active');
+    dock.style.display = dockVisible ? 'block' : 'none';
+    const controls = {
+        dom: true, dock, stick, knob, fireBtn: fire, boostBtn: boost, autoBtn: auto,
+        stickPointerId: null, firePointerId: null, boostPointerId: null,
+        container: {
+            visible: dockVisible,
+            setVisible(value) { this.visible = Boolean(value); dock.style.display = value ? 'block' : 'none'; },
+            destroy() { dock.classList.remove('is-active'); dock.style.display = ''; }
+        },
+        cleanup: null
+    };
+    touchControls = controls;
+
+    const resetStick = () => { knob.style.transform = 'translate(0, 0)'; stick.classList.remove('is-active'); };
+    const releaseStick = () => {
+        controls.stickPointerId = null;
+        touchMoveX = touchMoveY = 0;
+        touchMoveActive = false;
+        resetStick();
+    };
+    const updateStick = event => {
+        const rect = stick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = event.clientX - cx;
+        const dy = event.clientY - cy;
+        const max = Math.max(16, rect.width * 0.36);
+        const dist = Math.hypot(dx, dy) || 1;
+        const clamped = Math.min(dist, max);
+        const nx = dx / dist;
+        const ny = dy / dist;
+        knob.style.transform = 'translate(' + Math.round(nx * clamped) + 'px,' + Math.round(ny * clamped) + 'px)';
+        const deadzone = Math.max(10, rect.width * 0.14);
+        const strength = dist < deadzone ? 0 : Math.min(1, (dist - deadzone) / (max - deadzone));
+        touchMoveX = nx * Math.sqrt(strength);
+        touchMoveY = ny * Math.sqrt(strength);
+        touchMoveActive = true;
+        stick.classList.add('is-active');
+    };
+    const releaseFire = event => {
+        if (event && controls.firePointerId !== event.pointerId) return;
+        controls.firePointerId = null;
+        touchFireHeld = false;
+        fire.classList.remove('is-active');
+    };
+    const releaseBoost = event => {
+        if (event && controls.boostPointerId !== event.pointerId) return;
+        controls.boostPointerId = null;
+        touchBoostHeld = false;
+        boost.classList.remove('is-active');
+    };
+    const stopPointer = event => { if (event.cancelable) event.preventDefault(); };
+    const capturePointer = (element, pointerId) => {
+        try { if (element && element.setPointerCapture) element.setPointerCapture(pointerId); }
+        catch (error) { /* synthetic and cancelled pointers may not be capturable */ }
+    };
+    const onStickDown = event => {
+        if (controls.stickPointerId !== null) return;
+        stopPointer(event); controls.stickPointerId = event.pointerId; capturePointer(stick, event.pointerId); updateStick(event); if (sfx) sfx.unlock();
+    };
+    const onStickMove = event => { if (controls.stickPointerId === event.pointerId) { stopPointer(event); updateStick(event); } };
+    const onStickEnd = event => { if (controls.stickPointerId === event.pointerId) releaseStick(); };
+    const onFireDown = event => { if (controls.firePointerId !== null) return; stopPointer(event); controls.firePointerId = event.pointerId; capturePointer(fire, event.pointerId); touchFireHeld = true; fire.classList.add('is-active'); if (sfx) sfx.unlock(); };
+    const onBoostDown = event => { if (controls.boostPointerId !== null) return; stopPointer(event); controls.boostPointerId = event.pointerId; capturePointer(boost, event.pointerId); touchBoostHeld = true; boost.classList.add('is-active'); if (sfx) sfx.unlock(); };
+    const onAuto = event => { stopPointer(event); mobileAutoFire = !mobileAutoFire; resetDomTouchVisuals(controls); showFloatingText(scene, 400, 120, mobileAutoFire ? 'AUTO-FIRE ON' : 'AUTO-FIRE OFF', '#66f6ff', { screenSpace: true }); };
+    const onPause = event => { stopPointer(event); togglePause(scene); };
+    const onMute = event => { stopPointer(event); toggleMute(); resetDomTouchVisuals(controls); };
+    let utilityPointerAt = -Infinity;
+    const utilityPointer = action => event => { utilityPointerAt = performance.now(); action(event); };
+    const utilityClick = action => event => {
+        // Pointerdown is immediate on touch; keyboard clicks have detail=0 and
+        // remain available even immediately after a pointer action.
+        if (event.detail !== 0 && performance.now() - utilityPointerAt < 450) return;
+        action(event);
+    };
+    const onAutoDown = utilityPointer(onAuto);
+    const onPauseDown = utilityPointer(onPause);
+    const onMuteDown = utilityPointer(onMute);
+    const onAutoClick = utilityClick(onAuto);
+    const onPauseClick = utilityClick(onPause);
+    const onMuteClick = utilityClick(onMute);
+    const onCancel = () => { releaseStick(); releaseFire(); releaseBoost(); };
+    stick.addEventListener('pointerdown', onStickDown, { passive: false });
+    stick.addEventListener('pointermove', onStickMove, { passive: false });
+    stick.addEventListener('pointerup', onStickEnd); stick.addEventListener('pointercancel', onStickEnd); stick.addEventListener('lostpointercapture', onStickEnd);
+    fire.addEventListener('pointerdown', onFireDown, { passive: false }); fire.addEventListener('pointerup', releaseFire); fire.addEventListener('pointercancel', releaseFire); fire.addEventListener('lostpointercapture', releaseFire);
+    boost.addEventListener('pointerdown', onBoostDown, { passive: false }); boost.addEventListener('pointerup', releaseBoost); boost.addEventListener('pointercancel', releaseBoost); boost.addEventListener('lostpointercapture', releaseBoost);
+    auto.addEventListener('pointerdown', onAutoDown, { passive: false }); pause.addEventListener('pointerdown', onPauseDown, { passive: false }); mute.addEventListener('pointerdown', onMuteDown, { passive: false });
+    auto.addEventListener('click', onAutoClick); pause.addEventListener('click', onPauseClick); mute.addEventListener('click', onMuteClick);
+    window.addEventListener('blur', onCancel); document.addEventListener('visibilitychange', onCancel);
+    controls.cleanup = () => {
+        stick.removeEventListener('pointerdown', onStickDown); stick.removeEventListener('pointermove', onStickMove); stick.removeEventListener('pointerup', onStickEnd); stick.removeEventListener('pointercancel', onStickEnd); stick.removeEventListener('lostpointercapture', onStickEnd);
+        fire.removeEventListener('pointerdown', onFireDown); fire.removeEventListener('pointerup', releaseFire); fire.removeEventListener('pointercancel', releaseFire); fire.removeEventListener('lostpointercapture', releaseFire);
+        boost.removeEventListener('pointerdown', onBoostDown); boost.removeEventListener('pointerup', releaseBoost); boost.removeEventListener('pointercancel', releaseBoost); boost.removeEventListener('lostpointercapture', releaseBoost);
+        auto.removeEventListener('pointerdown', onAutoDown); pause.removeEventListener('pointerdown', onPauseDown); mute.removeEventListener('pointerdown', onMuteDown);
+        auto.removeEventListener('click', onAutoClick); pause.removeEventListener('click', onPauseClick); mute.removeEventListener('click', onMuteClick);
+        window.removeEventListener('blur', onCancel); document.removeEventListener('visibilitychange', onCancel);
+    };
+    resetDomTouchVisuals(controls);
+}
+
+function resetDomTouchVisuals(controls) {
+    if (!controls || !controls.dom) return;
+    controls.knob.style.transform = 'translate(0, 0)';
+    controls.stick.classList.remove('is-active');
+    controls.fireBtn.classList.toggle('is-active', Boolean(touchFireHeld));
+    controls.boostBtn.classList.toggle('is-active', Boolean(touchBoostHeld));
+    controls.autoBtn.textContent = mobileAutoFire ? 'AUTO: ON' : 'AUTO: OFF';
+    controls.autoBtn.setAttribute('aria-pressed', mobileAutoFire ? 'true' : 'false');
+}
+
 function ensureExtraPointers(inputPlugin, extraCount) {
     if (!inputPlugin || typeof inputPlugin.addPointer !== 'function') return;
     const manager = inputPlugin.manager;
@@ -7308,6 +7902,18 @@ function trackMovementInput(event, isDown) {
         heldMoveInputs.add(inputId);
     } else {
         heldMoveInputs.delete(inputId);
+    }
+
+    if (coopEnabled) {
+        const target = /^Key[WASD]$/.test(event.code || '') ? heldP1MoveInputs : heldP2MoveInputs;
+        if (isDown) target.add(inputId); else target.delete(inputId);
+        if (!isDown) {
+            const ship = target === heldP1MoveInputs ? player : playerTwo;
+            if (ship && ship.active) {
+                if ((inputId === 'up' || inputId === 'down') && !target.has('up') && !target.has('down')) ship.setVelocityY(0);
+                if ((inputId === 'left' || inputId === 'right') && !target.has('left') && !target.has('right')) ship.setVelocityX(0);
+            }
+        }
     }
 
     return true;
@@ -7425,6 +8031,11 @@ function releasePowerup(scene, powerup) {
 
 function resetPooledEnemyState(sprite) {
     if (!sprite) return;
+    if (sprite.enemyAnimationFx) sprite.enemyAnimationFx.destroy();
+    sprite.enemyAnimationFx = null;
+    sprite.enemyAnimationBank = 0;
+    sprite.enemyAnimationFiredAt = -Infinity;
+    sprite.enemyAnimationPhase = null;
     sprite.usesRadialShot = false;
     sprite.convergeVx = null;
     sprite.strafeAmplitude = null;
@@ -8468,7 +9079,7 @@ function endLevel(title, color, options = {}) {
     const savedName = playerName || sanitizePlayerName(getSavedPlayerName() || 'Pilot');
     const previousBest = getPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName);
     const eligibleResultScore = completed && !leaderboardDebugTainted ? displayScore : 0;
-    if (completed && skipLeaderboard && !leaderboardDebugTainted) {
+    if (completed && skipLeaderboard && !leaderboardDebugTainted && !coopEnabled) {
         recordPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName, displayScore);
     }
     const personalBestText = this.add.text(218, 178, 'PERSONAL BEST  ' + Math.max(previousBest, eligibleResultScore), {
@@ -8501,6 +9112,10 @@ function endLevel(title, color, options = {}) {
         assistHint.setText('ASSIST: ' + (isAssistEnabled() ? 'ON' : 'OFF'));
         assistHint.setFill(isAssistEnabled() ? '#ffe66d' : '#8aa0c8');
         if (!continueToNext && resultLineText && resultLineText.active) {
+            if (coopEnabled) {
+                resultLineText.setText('Local co-op run — leaderboard and personal best disabled');
+                return;
+            }
             const rankedNext = getDifficultyMode() === 'normal' && !isAssistEnabled();
             resultLineText.setText(rankedNext
                 ? (completed
@@ -9409,6 +10024,8 @@ window.__novawingDebug = {
             touchBoostHeld,
             touchMoveX,
             touchMoveY,
+            autoFire: Boolean(mobileAutoFire),
+            domDock: Boolean(touchControls && touchControls.dom),
             stickPointerId: touchControls ? touchControls.stickPointerId : null,
             firePointerId: touchControls ? touchControls.firePointerId : null,
             boostPointerId: touchControls ? touchControls.boostPointerId : null
@@ -9423,6 +10040,36 @@ window.__novawingDebug = {
             vy: player.body ? player.body.velocity.y : 0,
             levelEnded
         };
+    },
+    getCoopState() {
+        const describe = (ship, state) => ({
+            id: state ? state.id : null,
+            active: Boolean(ship && ship.active),
+            x: ship ? ship.x : null, y: ship ? ship.y : null,
+            vx: ship && ship.body ? ship.body.velocity.x : 0,
+            vy: ship && ship.body ? ship.body.velocity.y : 0,
+            lives: state ? state.lives : 0,
+            weaponLevel: state ? state.weaponLevel : 0,
+            shield: Boolean(state && state.hasShield),
+            boostEnergy: state ? state.boostEnergy : 0,
+            shots: state ? state.shots : 0
+        });
+        const p1 = describe(player, coopState);
+        const p2 = describe(playerTwo, coopState && coopState.p2);
+        return { enabled: coopEnabled, mode: coopEnabled ? 'local-coop' : 'solo', levelEnded: Boolean(levelEnded),
+            p1, p2, players: [p1, p2] };
+    },
+    applyCoopPlayerHit(id, options) {
+        const scene = getActiveScene();
+        const ship = Number(id) === 2 ? playerTwo : player;
+        const state = getCoopPilotState(ship);
+        if (!scene || !ship || !state) return null;
+        if (options && options.lethal) state.lives = 1;
+        if (ship === player) { lives = state.lives; hasShield = false; playerInvulnerableUntil = 0; }
+        state.hasShield = false;
+        state.invulnerableUntil = 0;
+        damagePlayer.call(scene, ship);
+        return window.__novawingDebug.getCoopState();
     },
     getBotSnapshot,
     setBotInput,

@@ -58,6 +58,43 @@ export async function caseCombatPolish(browser, base, evidenceDir) {
                 return bullet;
             };
 
+            // Blue interceptor animation must preserve physics and clean up on reuse.
+            const blue = makeEnemy('interceptor', 3, 560, 240);
+            blue.setVelocity(-150, 90);
+            const bodySize = [blue.body.width, blue.body.height];
+            blue.canShoot = true;
+            blue.nextShotAt = scene.time.now + 160;
+            updateEnemyAnimation(blue, scene.time.now, 16.67);
+            const blueFx = blue.enemyAnimationFx;
+            check(blue.angle < 0 && blue.angle >= -9, 'blue ship did not bank into its movement');
+            check(blue.body.velocity.x === -150 && blue.body.velocity.y === 90,
+                'animation changed interceptor velocity');
+            check(blue.body.width === bodySize[0] && blue.body.height === bodySize[1],
+                'animation resized interceptor hitbox');
+            check(blueFx && blueFx.commandBuffer.length > 0, 'engine/charge graphics missing');
+            blue.enemyAnimationFiredAt = scene.time.now;
+            updateEnemyAnimation(blue, scene.time.now + 50, 16.67);
+            check(Number.isFinite(blue.angle), 'shot recoil produced an invalid angle');
+            releaseSprite(blue);
+            check(!blue.enemyAnimationFx && !blueFx.scene, 'released interceptor retained its graphics');
+            check(blue.enemyAnimationFiredAt === -Infinity && blue.angle === 0,
+                'pooled interceptor retained animation state');
+
+            for (const type of Object.keys(ENEMY_TYPES)) {
+                const ship = makeEnemy(type, 3, 580, 250);
+                ship.setVelocity(-120, 60);
+                const dimensions = [ship.body.width, ship.body.height];
+                updateEnemyAnimation(ship, scene.time.now, 16.67);
+                check(ship.enemyAnimationFx?.commandBuffer.length > 0, type + ' animation missing');
+                check(Number.isFinite(ship.angle), type + ' angle invalid');
+                check(ship.body.velocity.x === -120 && ship.body.velocity.y === 60 &&
+                    ship.body.width === dimensions[0] && ship.body.height === dimensions[1],
+                    type + ' animation changed physics');
+                const fx = ship.enemyAnimationFx;
+                releaseSprite(ship);
+                check(!fx.scene && !ship.enemyAnimationFx, type + ' effect leaked');
+            }
+
             // Exercise the real collision handler with an upward-moving shot.
             const directionalEnemy = makeEnemy('strafer', 3, 420, 300);
             hitEnemy.call(scene, makeBullet(420, 320, 0, -500), directionalEnemy);

@@ -215,6 +215,177 @@ async function caseDesktopMove(browser, base, evidenceDir) {
     }
 }
 
+async function caseLocalCoop(browser, base, evidenceDir) {
+    const session = await openGame(browser, base, '?coop=1');
+    try {
+        const state = () => session.page.evaluate(() => {
+            const raw = window.__novawingDebug.getCoopState();
+            const players = raw && raw.players || [];
+            return { ...raw, p1: players.find((pilot) => pilot.id === 1), p2: players.find((pilot) => pilot.id === 2),
+                levelEnded: window.__novawingDebug.getBotSnapshot().levelEnded };
+        });
+        const before = await state();
+
+        // P1 (WASD) and P2 (arrows) must have separate input paths.  Move them
+        // one at a time, in opposite directions, so merged controls cannot pass.
+        await session.page.keyboard.down('KeyS');
+        await session.page.waitForTimeout(220);
+        const p1Moved = await state();
+        await session.page.keyboard.up('KeyS');
+        await session.page.keyboard.down('ArrowUp');
+        await session.page.waitForTimeout(220);
+        const p2Moved = await state();
+        await session.page.keyboard.up('ArrowUp');
+
+        // Space is P1 fire; Enter is P2 fire. State exposes per-pilot counters
+        // and active bullet ownership, avoiding a timing-sensitive sprite probe.
+        await session.page.keyboard.down('Space');
+        await session.page.waitForTimeout(260);
+        await session.page.keyboard.up('Space');
+        const p1Fired = await state();
+        await session.page.keyboard.down('Enter');
+        await session.page.waitForTimeout(260);
+        await session.page.keyboard.up('Enter');
+        const p2Fired = await state();
+
+        // A lethal P2 hit must leave P1 playing, then a fresh run must rebuild
+        // both pilots with their initial lives. This covers partner-down and
+        // reset without coupling the test to enemy spawn timing.
+        const hit = await session.page.evaluate(() => window.__novawingDebug.applyCoopPlayerHit(2, { lethal: true }));
+        await session.page.waitForTimeout(80);
+        const p2Down = await state();
+        await session.page.reload({ waitUntil: 'load', timeout: 30000 });
+        await waitForGame(session.page);
+        const reset = await state();
+
+        // Symmetry matters: P1 down must not stop P2's controls, fire loop, or
+        // independent right-shift boost. (This also catches code that treats
+        // P1 as the implicit camera/update owner.)
+        const p1Hit = await session.page.evaluate(() => window.__novawingDebug.applyCoopPlayerHit(1, { lethal: true }));
+        await session.page.keyboard.down('ArrowDown');
+        await session.page.keyboard.down('Enter');
+        await session.page.keyboard.down('ShiftRight');
+        await session.page.waitForTimeout(260);
+        await session.page.keyboard.up('ShiftRight');
+        await session.page.keyboard.up('Enter');
+        await session.page.keyboard.up('ArrowDown');
+        const p1DownP2Playing = await state();
+
+        const p1OnlyMoved = p1Moved.p1.y > before.p1.y + 2 &&
+            Math.abs(p1Moved.p2.y - before.p2.y) < 3;
+        const p2OnlyMoved = p2Moved.p2.y < p1Moved.p2.y - 2 &&
+            // One already-scheduled physics step may consume P1's released
+            // input; it must not receive sustained arrow-key movement.
+            Math.abs(p2Moved.p1.y - p1Moved.p1.y) < 8;
+        const p1Shot = p1Fired.p1.shots > p2Moved.p1.shots &&
+            p1Fired.p2.shots === p2Moved.p2.shots;
+        const p2Shot = p2Fired.p2.shots > p1Fired.p2.shots &&
+            p2Fired.p1.shots === p1Fired.p1.shots;
+        const independentDamage = hit && p2Down.p1.active && p2Down.p1.lives > 0 &&
+            !p2Down.p2.active && p2Down.p2.lives === 0 && !p2Down.levelEnded;
+        const resetOk = reset.enabled && reset.p1.active && reset.p2.active &&
+            reset.p1.lives === 3 && reset.p2.lives === 3;
+        const p2SurvivesP1 = p1Hit && !p1DownP2Playing.p1.active && p1DownP2Playing.p1.lives === 0 &&
+            p1DownP2Playing.p2.active && p1DownP2Playing.p2.y > reset.p2.y + 2 &&
+            p1DownP2Playing.p2.shots > reset.p2.shots &&
+            p1DownP2Playing.p2.boostEnergy < reset.p2.boostEnergy &&
+            p1DownP2Playing.p1.boostEnergy === reset.p1.boostEnergy;
+        const shot = path.join(evidenceDir, 'local-coop.png');
+        await session.page.screenshot({ path: shot });
+        const ok = before && before.enabled && p1OnlyMoved && p2OnlyMoved && p1Shot && p2Shot &&
+            independentDamage && resetOk && p2SurvivesP1 && session.pageErrors.length === 0;
+        return result('local-coop', ok, ok
+            ? 'independent movement/fire, partner-down lifecycle, reset'
+            : JSON.stringify({ before, p1Moved, p2Moved, p1Fired, p2Fired, hit, p2Down, reset, p1Hit, p1DownP2Playing, pageErrors: session.pageErrors }),
+        { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
+async function caseCoopModePicker(browser, base, evidenceDir) {
+    const context = await browser.newContext({ viewport: { width: 960, height: 720 }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err && err.message ? err.message : err)));
+    try {
+        await page.goto(new URL('/', base).toString(), { waitUntil: 'load', timeout: 30000 });
+        await page.waitForFunction(() => window.__novawingDebug && window.__novawingDebug.ready());
+        const canvas = await page.locator('#game-container canvas').boundingBox();
+        const point = (x, y) => ({ x: canvas.width * x / 800, y: canvas.height * y / 600 });
+        const opening = await page.evaluate(() => window.__novawingDebug.getOpeningState());
+        const before = await page.evaluate(() => window.__novawingDebug.getCoopState());
+        await page.locator('#game-container canvas').click({ position: point(400, 365) });
+        await page.waitForTimeout(350);
+        const enabled = await page.evaluate(() => window.__novawingDebug.getCoopState());
+        await page.locator('#game-container canvas').click({ position: point(400, 365) });
+        await page.waitForTimeout(350);
+        const solo = await page.evaluate(() => window.__novawingDebug.getCoopState());
+        const shot = path.join(evidenceDir, 'coop-mode-picker.png');
+        await page.screenshot({ path: shot });
+        const ok = opening.active && !before.enabled && enabled.enabled && enabled.mode === 'local-coop' &&
+            solo.enabled === false && solo.mode === 'solo' && pageErrors.length === 0;
+        return result('coop-mode-picker', ok, ok ? 'opening selector enables co-op and returns to solo' :
+            JSON.stringify({ opening, before, enabled, solo, pageErrors }), { screenshot: shot });
+    } finally {
+        await context.close();
+    }
+}
+
+async function caseCoopLevelScenarios(browser, base, evidenceDir) {
+    async function probe(search, action) {
+        const session = await openGame(browser, base, search);
+        try {
+            return await action(session);
+        } finally {
+            await session.context.close();
+        }
+    }
+    const l2 = await probe('?coop=1&level=2', async (session) => {
+        const before = await session.page.evaluate(() => ({
+            coop: window.__novawingDebug.getCoopState(), snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        await session.page.keyboard.down('ArrowDown');
+        await session.page.waitForTimeout(900);
+        await session.page.keyboard.up('ArrowDown');
+        const moved = await session.page.evaluate(() => ({
+            coop: window.__novawingDebug.getCoopState(), snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        const bossStarted = await session.page.evaluate(() => window.__novawingDebug.startBoss('standard'));
+        await session.page.waitForTimeout(400);
+        const boss = await session.page.evaluate(() => ({
+            coop: window.__novawingDebug.getCoopState(), snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        return { before, moved, bossStarted, boss, errors: session.pageErrors };
+    });
+    const l3 = await probe('?coop=1&level=3', async (session) => {
+        const started = await session.page.evaluate(() => window.__novawingDebug.startBoss('final'));
+        await session.page.waitForTimeout(450);
+        const before = await session.page.evaluate(() => ({
+            coop: window.__novawingDebug.getCoopState(), snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        await session.page.keyboard.down('ArrowLeft');
+        await session.page.keyboard.down('ArrowUp');
+        await session.page.waitForTimeout(320);
+        await session.page.keyboard.up('ArrowUp');
+        await session.page.keyboard.up('ArrowLeft');
+        const moved = await session.page.evaluate(() => ({
+            coop: window.__novawingDebug.getCoopState(), snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        return { started, before, moved, errors: session.pageErrors };
+    });
+    const l2Ok = l2.before.snap.world.height > 600 && l2.before.coop.p2.active &&
+        l2.moved.coop.p2.y > l2.before.coop.p2.y + 20 && l2.moved.snap.world.cameraY > 0 &&
+        l2.bossStarted && l2.boss.snap.boss && l2.boss.coop.p2.active && l2.errors.length === 0;
+    const l3Ok = l3.started && l3.before.snap.combatOrientation === 'up' &&
+        l3.before.snap.blackHole.active && l3.before.coop.p2.active &&
+        (Math.abs(l3.moved.coop.p2.x - l3.before.coop.p2.x) > 3 || Math.abs(l3.moved.coop.p2.y - l3.before.coop.p2.y) > 3) &&
+        l3.errors.length === 0;
+    return result('coop-level-scenarios', l2Ok && l3Ok, l2Ok && l3Ok
+        ? 'L2 shared camera/boss and L3 vertical black-hole P2 controls'
+        : JSON.stringify({ l2, l3 }));
+}
+
 async function casePause(browser, base, evidenceDir) {
     const session = await openGame(browser, base);
     try {
@@ -638,6 +809,9 @@ const CASES = {
     performance: casePerformance,
     boot: caseBoot,
     'desktop-move': caseDesktopMove,
+    'local-coop': caseLocalCoop,
+    'coop-mode-picker': caseCoopModePicker,
+    'coop-level-scenarios': caseCoopLevelScenarios,
     pause: casePause,
     difficulty: caseDifficulty,
     'l1-bot': caseL1Bot,
