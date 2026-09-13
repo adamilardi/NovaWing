@@ -231,7 +231,12 @@ const PLAYER_ANIMATION_KEYS = {
     hit: 'player-hit',
     powerup: 'player-powerup',
     victory: 'player-victory',
-    gameOver: 'player-game-over'
+    gameOver: 'player-game-over',
+    vertical: 'player-vertical-idle'
+};
+const ENEMY_ANIMATION_KEYS = {
+    regular: 'enemy-idle',
+    interceptor: 'enemy2-idle'
 };
 const OBSTACLE_VARIANTS = [
     { key: 'obstacle', speed: [-150, -105], scale: [0.72, 1.15], body: [48, 44], spin: [-95, 95] },
@@ -285,6 +290,9 @@ const HAZARD_RING = {
     modePrimary: 'collapse'
 };
 const MAX_LIVES = 5;
+const CONTINUE_COUNTDOWN_SECONDS = 9;
+const CONTINUE_RESTORE_LIVES = 3;
+const CONTINUE_IFRAMES_MS = 2500;
 const POWERUP_SCORE_BONUS = 250;
 const POWERUP_TYPES = {
     weapon: {
@@ -569,6 +577,8 @@ let levelTransitioning = false;
 let scoreText;
 let livesText;
 let coopText;
+let coopHud = [];
+let projectileTrails = null;
 let livesIcon;
 let weaponText;
 let boostText;
@@ -579,6 +589,12 @@ let assistEnabled = false;
 let difficultyMode = 'normal';
 let assistCheckpoint = null;
 let assistContinuePending = false;
+let continuesRemaining = 0;
+let continuesUsed = 0;
+let continueUsedThisRun = false;
+let continuePending = false;
+let continueInputArmed = false;
+let continueOverlay = null;
 let gamePaused = false;
 let pauseOverlay = null;
 let openingOverlay = null;
@@ -613,36 +629,47 @@ function preload() {
 }
 
 function createCombatTextures(scene) {
-    // Player bolt with soft cyan core glow
-    const bulletGfx = scene.add.graphics();
-    bulletGfx.fillStyle(0x66f6ff, 0.28);
-    bulletGfx.fillRoundedRect(0, 0, 28, 10, 4);
-    bulletGfx.fillStyle(0xffff99, 0.95);
-    bulletGfx.fillRoundedRect(4, 2, 20, 6, 3);
-    bulletGfx.fillStyle(0xffffff, 1);
-    bulletGfx.fillRoundedRect(8, 3, 12, 4, 2);
-    bulletGfx.generateTexture('bullet', 28, 10);
-    bulletGfx.destroy();
-
-    const heavyBulletGfx = scene.add.graphics();
-    heavyBulletGfx.fillStyle(0x3ad7ff, 0.35);
-    heavyBulletGfx.fillRoundedRect(0, 0, 34, 14, 5);
-    heavyBulletGfx.fillStyle(0x66f6ff, 0.95);
-    heavyBulletGfx.fillRoundedRect(4, 2, 26, 10, 4);
-    heavyBulletGfx.fillStyle(0xffffff, 1);
-    heavyBulletGfx.fillRoundedRect(10, 4, 14, 6, 3);
-    heavyBulletGfx.generateTexture('heavyBullet', 34, 14);
-    heavyBulletGfx.destroy();
-
-    const enemyBulletGfx = scene.add.graphics();
-    enemyBulletGfx.fillStyle(0xff3355, 0.35);
-    enemyBulletGfx.fillRoundedRect(0, 1, 22, 10, 4);
-    enemyBulletGfx.fillStyle(0xff4466, 1);
-    enemyBulletGfx.fillRoundedRect(2, 2, 18, 8, 3);
-    enemyBulletGfx.fillStyle(0xfff0aa, 1);
-    enemyBulletGfx.fillRoundedRect(3, 4, 8, 4, 2);
-    enemyBulletGfx.generateTexture('enemyBullet', 22, 12);
-    enemyBulletGfx.destroy();
+    // Distinct silhouettes, with the original texture bounds / collision sizes.
+    const bolt = scene.add.graphics();
+    bolt.fillStyle(0x49dfff, 0.22);
+    bolt.fillTriangle(0, 5, 22, 0, 28, 5);
+    bolt.fillTriangle(0, 5, 22, 10, 28, 5);
+    bolt.fillStyle(0x70eeff, 1);
+    bolt.fillRect(5, 3, 16, 4);
+    bolt.fillTriangle(21, 2, 28, 5, 21, 8);
+    bolt.fillStyle(0xf3ffff, 1);
+    bolt.fillRect(10, 4, 13, 2);
+    bolt.generateTexture('bullet', 28, 10);
+    bolt.clear();
+    bolt.fillStyle(0x83f8c8, 0.25);
+    bolt.fillTriangle(0, 5, 20, 0, 28, 5);
+    bolt.fillTriangle(0, 5, 20, 10, 28, 5);
+    bolt.lineStyle(2, 0x8dffd5, 1);
+    bolt.beginPath(); bolt.moveTo(9, 1); bolt.lineTo(23, 5); bolt.lineTo(9, 9); bolt.strokePath();
+    bolt.fillStyle(0xffffff, 1);
+    bolt.fillTriangle(17, 3, 26, 5, 17, 7);
+    bolt.generateTexture('spreadBullet', 28, 10);
+    bolt.clear();
+    bolt.fillStyle(0x51bfff, 0.22);
+    bolt.fillEllipse(18, 7, 32, 14);
+    bolt.fillStyle(0x5de4ff, 1);
+    bolt.fillTriangle(9, 1, 34, 7, 9, 13);
+    bolt.fillRect(4, 3, 9, 2); bolt.fillRect(4, 9, 9, 2);
+    bolt.fillStyle(0xf2ffff, 1);
+    bolt.fillTriangle(12, 4, 30, 7, 12, 10);
+    bolt.generateTexture('heavyBullet', 34, 14);
+    bolt.clear();
+    // Hostile rounds are warm, compact diamonds, distinct from friendly lances.
+    bolt.fillStyle(0xff385d, 0.25);
+    bolt.fillEllipse(11, 6, 22, 12);
+    bolt.fillStyle(0xff4966, 1);
+    bolt.fillTriangle(3, 6, 11, 1, 19, 6);
+    bolt.fillTriangle(3, 6, 11, 11, 19, 6);
+    bolt.fillStyle(0xffedb3, 1);
+    bolt.fillTriangle(7, 6, 11, 3, 15, 6);
+    bolt.fillTriangle(7, 6, 11, 9, 15, 6);
+    bolt.generateTexture('enemyBullet', 22, 12);
+    bolt.destroy();
 
     const missileGfx = scene.add.graphics();
     missileGfx.fillStyle(0xffaa33, 0.4);
@@ -1030,6 +1057,7 @@ function create() {
     });
     window.NovaWingAssets.install(this);
     createPlayerAnimations(this);
+    createEnemyAnimations(this);
     if (!sfx) {
         const startStyle = loadAudioStyle();
         if (typeof createSfx === 'function') {
@@ -1083,6 +1111,12 @@ function create() {
     hidePauseOverlay();
     assistCheckpoint = null;
     assistContinuePending = false;
+    hideContinueOverlay();
+    continuePending = false;
+    continueInputArmed = false;
+    continuesUsed = 0;
+    continueUsedThisRun = false;
+    continuesRemaining = 0;
     assistEnabled = resolveAssistEnabledAtBoot();
     difficultyMode = resolveDifficultyModeAtBoot();
     score = 0;
@@ -1113,6 +1147,8 @@ function create() {
     nebulaGraphics = null;
     vignette = null;
     hudPanel = null;
+    coopHud = [];
+    projectileTrails = null;
     shotsFired = 0;
     shotsHit = 0;
     enemiesKilled = 0;
@@ -1293,9 +1329,9 @@ function create() {
 
     // UI
     const hudTextStyle = {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         stroke: '#050816',
-        strokeThickness: 4
+        strokeThickness: 1
     };
 
     hudPanel = this.add.graphics();
@@ -1385,6 +1421,9 @@ function create() {
         ).setOrigin(0, 0.5).setDepth(10).setScrollFactor(0));
     }
 
+    createCoopHud(this);
+    projectileTrails = this.add.graphics().setDepth(1.9);
+
     shieldVisual = this.add.circle(player.x, player.y, 46, 0x55ffaa, 0.12);
     shieldVisual.setStrokeStyle(2, 0x55ffaa, 0.85);
     shieldVisual.setDepth(4);
@@ -1411,6 +1450,7 @@ function create() {
         if (!openingActive && levelStartTime > 0) return;
         openingActive = false;
         hideOpeningOverlay();
+        resetContinueStock();
         levelStartTime = this.time.now;
         levelAttemptStartTime = this.time.now;
         clearBoostInput();
@@ -1496,7 +1536,7 @@ function create() {
 }
 
 function update(time, delta) {
-    if (openingActive || levelEnded || victoryPending || awaitingNextLevel || gamePaused) return;
+    if (openingActive || levelEnded || victoryPending || awaitingNextLevel || gamePaused || continuePending) return;
 
     const frameDelta = Number.isFinite(delta) ? delta : 16.67;
     // Player movement
@@ -1635,6 +1675,8 @@ function update(time, delta) {
     bullets.getChildren().forEach(b => {
         if (b.active && isOffscreen(b, 30)) releaseSprite(b);
     });
+
+    updateProjectileTrails();
 
     enemies.getChildren().forEach(e => {
         if (!e.active) return;
@@ -2181,7 +2223,7 @@ function canApplyPlayerContactDamage(scene, ship = player) {
 }
 
 function damagePlayer(ship = player) {
-    if (levelEnded || victoryPending) return;
+    if (levelEnded || victoryPending || continuePending || assistContinuePending) return;
 
     const state = getCoopPilotState(ship);
     if (!ship || !ship.active || !state) return;
@@ -2234,6 +2276,7 @@ function damagePlayer(ship = player) {
             holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
             return;
         }
+        if (tryArcadeContinue(this)) return;
         if (ship === player) holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
         musicDirector.stop();
         sfx.gameOver();
@@ -2300,6 +2343,7 @@ function updateCoopPilotAnimation(ship, state) {
     if (combatOrientation === 'up') { ensureVerticalPlayerTexture(ship); return; }
     const next = state.boostIntensity > 0.2 ? PLAYER_ANIMATION_KEYS.boost : PLAYER_ANIMATION_KEYS.flight;
     ship.play(next, true);
+    applyPlayerShipSize(ship);
 }
 
 function fireBullet(time, shooter = player, pilotState = null) {
@@ -2312,24 +2356,24 @@ function fireBullet(time, shooter = player, pilotState = null) {
         // Vertical table (L3 top-down): fire toward top of screen (−Y).
         fired.push(launchBullet(muzzle.x, muzzle.y, 0, -690, currentWeapon >= 3 ? 'heavyBullet' : 'bullet', shooter));
         if (currentWeapon >= 2) {
-            fired.push(launchBullet(muzzle.x - 16, muzzle.y + 6, 0, -650, 'bullet', shooter));
-            fired.push(launchBullet(muzzle.x + 16, muzzle.y + 6, 0, -650, 'bullet', shooter));
+            fired.push(launchBullet(muzzle.x - 16, muzzle.y + 6, 0, -650, 'spreadBullet', shooter));
+            fired.push(launchBullet(muzzle.x + 16, muzzle.y + 6, 0, -650, 'spreadBullet', shooter));
         }
         if (currentWeapon >= 3) {
-            fired.push(launchBullet(muzzle.x - 6, muzzle.y + 10, -150, -630, 'bullet', shooter));
-            fired.push(launchBullet(muzzle.x + 6, muzzle.y + 10, 150, -630, 'bullet', shooter));
+            fired.push(launchBullet(muzzle.x - 6, muzzle.y + 10, -150, -630, 'spreadBullet', shooter));
+            fired.push(launchBullet(muzzle.x + 6, muzzle.y + 10, 150, -630, 'spreadBullet', shooter));
         }
     } else {
         // Horizontal (L1/L2): fire +X from the nose.
         const bulletX = muzzle.x;
         fired.push(launchBullet(bulletX, muzzle.y, 690, 0, currentWeapon >= 3 ? 'heavyBullet' : 'bullet', shooter));
         if (currentWeapon >= 2) {
-            fired.push(launchBullet(bulletX - 6, muzzle.y - 16, 650, 0, 'bullet', shooter));
-            fired.push(launchBullet(bulletX - 6, muzzle.y + 16, 650, 0, 'bullet', shooter));
+            fired.push(launchBullet(bulletX - 6, muzzle.y - 16, 650, 0, 'spreadBullet', shooter));
+            fired.push(launchBullet(bulletX - 6, muzzle.y + 16, 650, 0, 'spreadBullet', shooter));
         }
         if (currentWeapon >= 3) {
-            fired.push(launchBullet(bulletX - 10, muzzle.y - 6, 630, -150, 'bullet', shooter));
-            fired.push(launchBullet(bulletX - 10, muzzle.y + 6, 630, 150, 'bullet', shooter));
+            fired.push(launchBullet(bulletX - 10, muzzle.y - 6, 630, -150, 'spreadBullet', shooter));
+            fired.push(launchBullet(bulletX - 10, muzzle.y + 6, 630, 150, 'spreadBullet', shooter));
         }
     }
 
@@ -2354,7 +2398,7 @@ function launchBullet(x, y, velocityX, velocityY, textureKey, owner = player) {
     activateSprite(bullet, x, y);
     bullet.setVelocity(velocityX, velocityY);
     bullet.setDepth(2);
-    bullet.setAngle(velocityY * 0.08);
+    bullet.setRotation(Math.atan2(velocityY, velocityX));
     // Slightly smaller than the glow so hits line up with the bright core.
     bullet.body.setSize(bullet.width * 0.72, bullet.height * 0.7, true);
     bullet.damage = textureKey === 'heavyBullet' ? 2 : 1;
@@ -3195,6 +3239,7 @@ function spawnEnemy(options = {}) {
     applyEnemyTypeProfile.call(this, enemy, type, typeDef, options, x);
     applyDifficultyToEnemy(enemy);
     applyEnemyOrientation(enemy);
+    playEnemyIdleAnimation(enemy);
 
     if (Number.isFinite(options.convergeVx)) {
         enemy.convergeVx = options.convergeVx;
@@ -3586,7 +3631,7 @@ function spawnPathDeadEndWarning(region, escapeDir) {
     hazard.setBlendMode(Phaser.BlendModes.NORMAL);
 
     const label = scene.add.text(x, centerY - (escapeDir ? 18 : 0), 'DEAD END', {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: height > 160 ? '18px' : '15px',
         fill: '#ffe066',
         stroke: '#2a0008',
@@ -3604,7 +3649,7 @@ function spawnPathDeadEndWarning(region, escapeDir) {
         chevron.setTint(0xffe066);
 
         subLabel = scene.add.text(x, centerY + 54, escapeDir === 'up' ? 'FLY UP' : 'FLY DOWN', {
-            fontFamily: 'monospace',
+            fontFamily: 'monospace', resolution: 2,
             fontSize: '13px',
             fill: '#ff99aa',
             stroke: '#2a0008',
@@ -3714,7 +3759,7 @@ function showPathWarningHud(scene, message) {
 
     if (!pathWarningHud || !pathWarningHud.active) {
         pathWarningHud = scene.add.text(400, 88, message, {
-            fontFamily: 'monospace',
+            fontFamily: 'monospace', resolution: 2,
             fontSize: '18px',
             fill: '#ffe066',
             stroke: '#2a0008',
@@ -5585,6 +5630,7 @@ function isLeaderboardEligibleSession() {
             return false;
         }
         if (isAssistEnabled()) return false;
+        if (continueUsedThisRun) return false;
         if (getDifficultyMode() !== 'normal') return false;
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
@@ -5772,16 +5818,85 @@ function updateLivesText() {
     if (livesIcon) livesIcon.setVisible(lives > 0);
 }
 
+function createCoopHud(scene) {
+    coopHud = [];
+    if (!coopEnabled) return;
+    // Reuse the outer HUD footprint, reserving the center for the shared score.
+    hudPanel.clear();
+    hudPanel.fillStyle(0x07121e, 0.9);
+    hudPanel.fillRoundedRect(8, 8, 230, 82, 8);
+    hudPanel.fillRoundedRect(562, 8, 230, 82, 8);
+    hudPanel.fillRoundedRect(274, 8, 252, 82, 8);
+    scoreText.setPosition(400, 40).setOrigin(0.5, 0).setFontSize(16);
+    pauseText.setPosition(400, 68);
+    for (const [index, x, color] of [[0, 8, 0x66f6ff], [1, 562, 0xffa6e7]]) {
+        hudPanel.lineStyle(1, color, 0.65);
+        hudPanel.strokeRoundedRect(x, 8, 230, 82, 8);
+        const cssColor = '#' + color.toString(16).padStart(6, '0');
+        const label = (dx, y, text, size = 14) => scene.add.text(x + dx, y, text, {
+            fontFamily: 'monospace', resolution: 2, fontSize: size, color: '#e8f0ff'
+        }).setDepth(10).setScrollFactor(0);
+        const title = label(12, 14, 'P' + (index + 1), 16).setColor(cssColor);
+        const icon = scene.add.image(x + 63, 24, PLAYER_DEFAULT_TEXTURE)
+            .setDisplaySize(30, 16).setFlipX(true).setDepth(10).setScrollFactor(0);
+        if (index === 1) icon.setTint(color);
+        const life = label(94, 15, '', 14);
+        const weapon = label(12, 39, '', 13);
+        const boost = label(12, 64, 'BOOST', 12).setColor(cssColor);
+        const track = scene.add.rectangle(x + 66, 70, 108, 5, 0x20354a).setOrigin(0, 0.5).setDepth(10).setScrollFactor(0);
+        const meter = scene.add.rectangle(x + 66, 70, 108, 5, color).setOrigin(0, 0.5).setDepth(10).setScrollFactor(0);
+        const percent = label(182, 62, '', 12).setColor(cssColor);
+        const marker = scene.add.text(0, 0, 'P' + (index + 1), {
+            fontFamily: 'monospace', resolution: 2, fontSize: 12, color: cssColor,
+            backgroundColor: '#07121e', padding: { x: 4, y: 2 }
+        }).setOrigin(0.5, 1).setDepth(6);
+        coopHud.push({ title, icon, life, weapon, boost, track, meter, percent, marker });
+    }
+}
+
 function updateCoopText() {
     if (!coopText) return;
-    if (!coopEnabled || !coopState || !coopState.p2) {
-        coopText.setText('');
-        return;
+    coopText.setText('');
+    if (!coopEnabled || !coopState || !coopState.p2) return;
+    for (const item of [weaponText, livesText, livesIcon, boostText, statusText, ...boostSegments]) {
+        if (item) item.setVisible(false);
     }
-    const p1Shield = coopState.hasShield ? ' S' : '';
-    const p2Shield = coopState.p2.hasShield ? ' S' : '';
-    coopText.setText('CO-OP  P1 ×' + coopState.lives + ' W' + coopState.weaponLevel + ' B' + Math.round(boostEnergy) + p1Shield +
-        '   P2 ×' + coopState.p2.lives + ' W' + coopState.p2.weaponLevel + ' B' + Math.round(coopState.p2.boostEnergy) + p2Shield + '   SHARED SCORE');
+    const states = [coopState, coopState.p2];
+    const ships = [player, playerTwo];
+    coopHud.forEach((hud, index) => {
+        const state = states[index], ship = ships[index];
+        const alive = Boolean(ship && ship.active && state.lives > 0);
+        const energy = Phaser.Math.Clamp(index === 0 ? boostEnergy : state.boostEnergy, 0, 100);
+        hud.life.setText(alive ? 'LIVES ' + state.lives : 'DOWN');
+        hud.life.setColor(alive ? '#e8f0ff' : '#ff8d9e');
+        const weaponName = ['SINGLE', 'TRIPLE', 'SPREAD'][Math.min(2, Math.max(0, state.weaponLevel - 1))];
+        hud.weapon.setText(alive ? weaponName + (state.hasShield ? '  • SHIELD' : '') : 'PARTNER CONTINUES');
+        hud.icon.setAlpha(alive ? 1 : 0.3);
+        hud.meter.setDisplaySize(108 * (alive ? energy / 100 : 0), 5);
+        hud.percent.setText(alive ? Math.round(energy) + '%' : '—');
+        hud.marker.setVisible(alive && !openingActive && !levelEnded && !levelTransitioning);
+        if (alive) hud.marker.setPosition(ship.x, ship.y - ship.displayHeight * 0.35 - 8);
+    });
+}
+
+function updateProjectileTrails() {
+    if (!projectileTrails) return;
+    projectileTrails.clear();
+    if (fxQualityTier === 'low') return;
+    bullets.getChildren().forEach(bullet => {
+        if (!bullet.active || !bullet.body) return;
+        const velocity = bullet.body.velocity;
+        const speed = Math.hypot(velocity.x, velocity.y);
+        if (!speed) return;
+        const heavy = bullet.texture.key === 'heavyBullet';
+        const length = mobilePerfMode ? 10 : heavy ? 24 : 16;
+        const dx = velocity.x / speed, dy = velocity.y / speed;
+        const color = bullet.ownerPlayer === playerTwo ? 0xffa6e7
+            : bullet.texture.key === 'spreadBullet' ? 0x8dffd5 : 0x66eaff;
+        projectileTrails.lineStyle(heavy ? 3 : 2, color, 0.24);
+        projectileTrails.lineBetween(bullet.x - dx * 8, bullet.y - dy * 8,
+            bullet.x - dx * (8 + length), bullet.y - dy * (8 + length));
+    });
 }
 
 function updateWeaponText() {
@@ -6164,7 +6279,10 @@ function updateEnemyMovement(enemy, frameDelta) {
 // Graphics are owned by the pooled enemy and disposed on release/reset.
 function updateEnemyAnimation(enemy, time, frameDelta) {
     if (!enemy.active || !ENEMY_TYPES[enemy.enemyType]) return;
-    if (enemy.enemyType !== 'interceptor' || enemy.texture.key !== 'enemy2' || isVerticalScroll()) {
+    const interceptorArt = enemy.enemyType === 'interceptor' && !isVerticalScroll() &&
+        enemyUsesIdleSheet(enemy, 'enemy2-flight');
+    if (enemy.enemyType !== 'interceptor' || isVerticalScroll() ||
+        (enemy.texture.key !== 'enemy2' && !interceptorArt)) {
         updateRosterEnemyAnimation(enemy, time, frameDelta);
         return;
     }
@@ -6190,10 +6308,16 @@ function updateEnemyAnimation(enemy, time, frameDelta) {
     const thrust = 0.5 + 0.3 * Math.sin(phase) + 0.2 * Math.sin(phase * 1.73);
     const engineX = width * 0.29;
     const length = 14 + thrust * 12 + Math.abs(lateral) * 0.025;
-    fx.fillStyle(0x168cff, 0.25 + thrust * 0.15);
-    fx.fillTriangle(engineX, -7, engineX + length, 0, engineX, 7);
-    fx.fillStyle(0x8dffff, 0.45 + thrust * 0.25);
-    fx.fillTriangle(engineX, -3, engineX + length * 0.75, 0, engineX, 3);
+    const bakedThrust = enemyHasBakedThrust(enemy);
+    if (!bakedThrust) {
+        fx.fillStyle(0x168cff, 0.25 + thrust * 0.15);
+        fx.fillTriangle(engineX, -7, engineX + length, 0, engineX, 7);
+        fx.fillStyle(0x8dffff, 0.45 + thrust * 0.25);
+        fx.fillTriangle(engineX, -3, engineX + length * 0.75, 0, engineX, 3);
+    } else {
+        fx.fillStyle(0x8dffff, 0.18 + thrust * 0.12);
+        fx.fillCircle(engineX, 0, 2 + thrust * 2);
+    }
 
     // Telegraph only a shot that is eligible to fire in the current lane.
     const untilShot = enemy.nextShotAt - time;
@@ -6274,11 +6398,13 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
         const engineX = upright ? 0 : w * 0.29 * direction;
         const engineY = upright ? h * (noseUp ? 0.29 : -0.32) : 0;
         const length = 7 + pulse * 9 + Math.min(Math.abs(lateral) * 0.02, 4);
-        fx.fillStyle(color, 0.3 + pulse * 0.25);
-        if (upright) {
-            fx.fillTriangle(engineX - 3, engineY, engineX, engineY + length * (noseUp ? 1 : -1), engineX + 3, engineY);
-        } else {
-            fx.fillTriangle(engineX, -3, engineX + length * direction, 0, engineX, 3);
+        if (!enemyHasBakedThrust(enemy)) {
+            fx.fillStyle(color, 0.3 + pulse * 0.25);
+            if (upright) {
+                fx.fillTriangle(engineX - 3, engineY, engineX, engineY + length * (noseUp ? 1 : -1), engineX + 3, engineY);
+            } else {
+                fx.fillTriangle(engineX, -3, engineX + length * direction, 0, engineX, 3);
+            }
         }
         glow(engineX, engineY, 1.5 + pulse, 0.35 + pulse * 0.25);
     }
@@ -6324,6 +6450,20 @@ function handleKeyboardDown(event) {
         } else if (!event.repeat && event.code === 'ArrowRight') {
             cycleDifficultyMode(1);
             refreshOpeningDifficulty();
+        }
+        event.preventDefault();
+        return;
+    }
+
+    if (continuePending) {
+        if (!event.repeat) {
+            const code = event.code || '';
+            const key = String(event.key || '').toLowerCase();
+            const decline = code === 'Escape' || key === 'escape';
+            const accept = code === 'Space' || code === 'Enter' || code === 'KeyC'
+                || key === ' ' || key === 'enter' || key === 'c';
+            if (decline) declineArcadeContinue();
+            else if (accept && continueInputArmed) acceptArcadeContinue();
         }
         event.preventDefault();
         return;
@@ -6646,6 +6786,7 @@ function formatDifficultyToggleLabel() {
 function formatUnrankedReasonLine() {
     if (coopEnabled) return 'Local co-op run — leaderboard and personal best disabled';
     if (isAssistEnabled()) return 'Assist run — public leaderboard disabled';
+    if (continueUsedThisRun) return 'Continued run — public leaderboard disabled';
     if (getDifficultyMode() !== 'normal') {
         return formatDifficultyModeName() + ' run — public leaderboard disabled';
     }
@@ -6659,6 +6800,11 @@ function setDifficultyMode(next) {
     saveDifficultyMode(mode);
     // The opening is pre-run, so players can browse modes before choosing.
     if (mode !== 'normal' && !openingActive) markSessionLeaderboardIneligible();
+    if (openingActive || (typeof levelStartTime === 'number' && levelStartTime === 0)) {
+        resetContinueStock();
+    } else {
+        syncContinueStockToMode();
+    }
     updateAssistHud();
     refreshPauseOverlay();
     if (!gamePaused && !openingActive) {
@@ -6769,7 +6915,7 @@ function maybeArmAssistCheckpoint(segDef) {
 function tryAssistContinue(scene) {
     if (!scene || !isAssistEnabled()) return false;
     if (!assistCheckpoint || !assistCheckpoint.segmentId) return false;
-    if (assistContinuePending || levelEnded || victoryPending || awaitingNextLevel) return false;
+    if (assistContinuePending || continuePending || levelEnded || victoryPending || awaitingNextLevel) return false;
 
     assistContinuePending = true;
     lives = 3;
@@ -6834,6 +6980,228 @@ function restoreAssistCheckpoint(scene) {
     advanceLevelSegment(scene, assistCheckpoint.segmentId, 'assistContinue');
 }
 
+function continueStockForMode(mode) {
+    const id = parseDifficultyModeName(mode || getDifficultyMode()) || 'normal';
+    if (typeof getDifficultyContinues === 'function') {
+        return getDifficultyContinues(id);
+    }
+    const n = Number(getDifficultyModeMetadata(id).continues);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function syncContinueStockToMode() {
+    continuesRemaining = Math.max(0, continueStockForMode() - continuesUsed);
+}
+
+function resetContinueStock() {
+    hideContinueOverlay();
+    continuePending = false;
+    continueInputArmed = false;
+    continuesUsed = 0;
+    continueUsedThisRun = false;
+    continuesRemaining = continueStockForMode();
+}
+
+function getContinueState() {
+    return {
+        pending: Boolean(continuePending),
+        remaining: continuesRemaining,
+        used: continuesUsed,
+        allowed: continueStockForMode(),
+        usedThisRun: Boolean(continueUsedThisRun)
+    };
+}
+
+function formatContinueStockLine() {
+    const left = Math.max(0, continuesRemaining);
+    if (left === 1) return '1 CONTINUE LEFT';
+    return left + ' CONTINUES LEFT';
+}
+
+function tryArcadeContinue(scene) {
+    if (!scene || levelEnded || victoryPending || awaitingNextLevel || continuePending) return false;
+    if (isPlaytestBotSession()) return false;
+    if (coopEnabled && hasAnyCoopPilotAlive()) return false;
+    syncContinueStockToMode();
+    if (continuesRemaining <= 0) return false;
+
+    continuePending = true;
+    continueInputArmed = false;
+    if (player && player.body) player.setVelocity(0, 0);
+    if (playerTwo && playerTwo.body) playerTwo.setVelocity(0, 0);
+    holdPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
+    if (sfx && sfx.warning) sfx.warning();
+    if (sfx && sfx.setEngine) sfx.setEngine(0);
+    if (scene.physics) scene.physics.pause();
+    if (scene.tweens && scene.tweens.pauseAll) scene.tweens.pauseAll();
+    if (scene.time) scene.time.paused = true;
+    if (touchControls && touchControls.container) touchControls.container.setVisible(false);
+    showContinueOverlay(scene);
+    return true;
+}
+
+function showContinueOverlay(scene) {
+    hideContinueOverlay();
+    if (!scene || !scene.add) return;
+
+    const touch = shouldShowTouchControls();
+    const nodes = [];
+    const dim = scene.add.rectangle(400, 300, 800, 600, 0x050814, 0.74)
+        .setDepth(40).setScrollFactor(0).setInteractive();
+    const title = scene.add.text(400, 168, 'CONTINUE?', {
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold',
+        fontSize: '48px', fill: '#ffe66d', stroke: '#050816', strokeThickness: 8
+    }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
+    const count = scene.add.text(400, 268, String(CONTINUE_COUNTDOWN_SECONDS), {
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold',
+        fontSize: '84px', fill: '#ffffff', stroke: '#050816', strokeThickness: 8
+    }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
+    const stock = scene.add.text(400, 348, formatContinueStockLine(), {
+        fontFamily: 'monospace', resolution: 2, fontSize: '16px', fill: '#c7ddff',
+        stroke: '#050816', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
+    const hint = scene.add.text(400, 400, touch
+        ? 'TAP TO KEEP FLYING  ·  WAIT TO END THE RUN'
+        : 'FIRE / ENTER TO KEEP FLYING  ·  ESC TO END', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa0c8',
+        stroke: '#050816', strokeThickness: 4, align: 'center'
+    }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
+    const ranked = isRankedDifficultyMode() && !isAssistEnabled() && !continueUsedThisRun;
+    const note = scene.add.text(400, 442, ranked
+        ? 'Using a continue makes this Hotshot run unranked'
+        : 'Continued runs do not post to the public leaderboard', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8',
+        stroke: '#050816', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
+    nodes.push(dim, title, count, stock, hint, note);
+
+    const accept = () => {
+        if (continueInputArmed) acceptArcadeContinue(scene);
+    };
+    dim.on('pointerdown', accept);
+    title.setInteractive({ useHandCursor: true }).on('pointerdown', accept);
+    count.setInteractive({ useHandCursor: true }).on('pointerdown', accept);
+
+    const startedAt = Date.now();
+    const tickTimer = setInterval(() => {
+        if (!continuePending) return;
+        const left = Math.max(0, CONTINUE_COUNTDOWN_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+        if (count && count.active) count.setText(String(left));
+        if (left <= 0) declineArcadeContinue(scene);
+    }, 200);
+    const armTimer = setTimeout(() => {
+        continueInputArmed = true;
+    }, 280);
+
+    continueOverlay = { scene, nodes, count, stock, tickTimer, armTimer };
+}
+
+function hideContinueOverlay() {
+    if (!continueOverlay) {
+        continueInputArmed = false;
+        return;
+    }
+    if (continueOverlay.armTimer) clearTimeout(continueOverlay.armTimer);
+    if (continueOverlay.tickTimer) clearInterval(continueOverlay.tickTimer);
+    (continueOverlay.nodes || []).forEach(node => {
+        if (node && node.destroy) node.destroy();
+    });
+    continueOverlay = null;
+    continueInputArmed = false;
+}
+
+function reviveShipFromContinue(scene, ship, state) {
+    if (!ship || !state) return;
+    state.lives = CONTINUE_RESTORE_LIVES;
+    state.invulnerableUntil = scene.time.now + CONTINUE_IFRAMES_MS;
+    const x = Number.isFinite(ship.x) ? ship.x : 120;
+    const y = Number.isFinite(ship.y) ? ship.y : 300;
+    if (!ship.active) {
+        ship.enableBody(true, x, y, true, true);
+    }
+    if (ship.body) ship.setVelocity(0, 0);
+    ship.clearTint();
+    if (ship === playerTwo) ship.setTint(0xffa6e7);
+    applyPlayerOrientation(ship, combatOrientation === 'up' ? 'up' : 'right');
+    if (combatOrientation !== 'up') {
+        playPlayerAnimation(ship, PLAYER_ANIMATION_KEYS.flight, true);
+    }
+}
+
+function restoreArcadeContinue(scene) {
+    lives = CONTINUE_RESTORE_LIVES;
+    playerInvulnerableUntil = scene.time.now + CONTINUE_IFRAMES_MS;
+    playerAnimationOverride = null;
+    playerAnimationOverrideUntil = 0;
+    if (boostEnergy < 50) boostEnergy = 50;
+    boostLocked = false;
+    isBoosting = false;
+    deactivateGroup(enemyBullets);
+
+    reviveShipFromContinue(scene, player, coopState);
+    if (coopEnabled && playerTwo) {
+        reviveShipFromContinue(scene, playerTwo, coopState && coopState.p2);
+    }
+    if (coopState) {
+        coopState.lives = lives;
+        coopState.invulnerableUntil = playerInvulnerableUntil;
+        if (coopState.p2) {
+            coopState.p2.lives = CONTINUE_RESTORE_LIVES;
+            coopState.p2.invulnerableUntil = playerInvulnerableUntil;
+        }
+    }
+    updateLivesText();
+    updateCoopText();
+    updateBoostUi();
+    updateAssistHud();
+    showFloatingText(scene, 400, 140, 'CONTINUE', '#ffe66d', { screenSpace: true });
+    flashVignette(scene, 0xffe66d, 0.32);
+}
+
+function acceptArcadeContinue(scene) {
+    const active = scene || getActiveScene();
+    if (!active || !continuePending || levelEnded || victoryPending) return false;
+    if (continuesRemaining <= 0) {
+        declineArcadeContinue(active);
+        return false;
+    }
+
+    continuePending = false;
+    continueInputArmed = false;
+    continuesRemaining -= 1;
+    continuesUsed += 1;
+    continueUsedThisRun = true;
+    markSessionLeaderboardIneligible();
+    hideContinueOverlay();
+    if (active.time) active.time.paused = false;
+    restoreArcadeContinue(active);
+    if (active.tweens && active.tweens.resumeAll) active.tweens.resumeAll();
+    if (active.physics && active.physics.world && active.physics.world.isPaused) {
+        active.physics.resume();
+    }
+    if (touchControls && touchControls.container) touchControls.container.setVisible(true);
+    clearBoostInput();
+    return true;
+}
+
+function declineArcadeContinue(scene) {
+    const active = scene || getActiveScene();
+    if (!continuePending) return false;
+    continuePending = false;
+    continueInputArmed = false;
+    hideContinueOverlay();
+    if (active && active.time) active.time.paused = false;
+    if (active && active.tweens && active.tweens.resumeAll) active.tweens.resumeAll();
+    if (!active) return false;
+    holdPlayerAnimation(active, PLAYER_ANIMATION_KEYS.gameOver, Infinity);
+    if (musicDirector) musicDirector.stop();
+    if (sfx && sfx.gameOver) sfx.gameOver();
+    endLevel.call(active, 'GAME OVER', '#ff5555', {
+        skipLeaderboard: !isLeaderboardEligibleSession()
+    });
+    return true;
+}
+
 function getActiveScene() {
     return game && game.scene && game.scene.scenes && game.scene.scenes[0]
         ? game.scene.scenes[0]
@@ -6844,7 +7212,7 @@ function canPause() {
     if (isPlaytestBotSession()) return false;
     if (openingActive) return false;
     if (levelEnded || victoryPending || awaitingNextLevel) return false;
-    if (assistContinuePending) return false;
+    if (assistContinuePending || continuePending) return false;
     return true;
 }
 
@@ -6882,43 +7250,49 @@ function showOpeningOverlay(scene, onPlay) {
     nodes.push(dim);
 
     const eyebrow = scene.add.text(400, 100, 'THE LAST STARFIGHTER SQUADRON', {
-        fontFamily: 'monospace', fontSize: '13px', fill: '#8aa0c8', letterSpacing: 3
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', letterSpacing: 3
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setAlpha(0);
     const title = scene.add.text(400, 176, 'NOVAWING', {
-        fontFamily: 'monospace', fontStyle: 'bold', fontSize: '64px', fill: '#eafcff',
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '64px', fill: '#eafcff',
         stroke: '#176c9a', strokeThickness: 8, letterSpacing: 6
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setScale(0.82).setAlpha(0);
     const rule = scene.add.rectangle(400, 220, 360, 2, 0x66f6ff, 0.85)
         .setDepth(81).setScrollFactor(0).setScale(0, 1);
     const mission = scene.add.text(400, 250, 'CHOOSE FLIGHT MODE', {
-        fontFamily: 'monospace', fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
+        fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     nodes.push(eyebrow, title, rule, mission);
 
     const difficultyButtons = [];
     const labels = { easy: 'SPACE CADET', normal: 'HOTSHOT', hard: 'SUPERNOVA' };
+    const continueCaptions = { easy: '3 CONTINUES', normal: '1 CONTINUE', hard: 'NO CONTINUES' };
     DIFFICULTY_MODES.forEach((mode, index) => {
         const x = 210 + index * 190;
         const bg = scene.add.rectangle(x, 310, 166, 52, 0x0b1930, 0.96)
             .setDepth(81).setScrollFactor(0).setInteractive({ useHandCursor: true });
-        const label = scene.add.text(x, 310, labels[mode], {
-            fontFamily: 'monospace', fontSize: '14px', fill: '#b8c8e8',
+        const label = scene.add.text(x, 302, labels[mode], {
+            fontFamily: 'monospace', resolution: 2, fontSize: '14px', fill: '#b8c8e8',
             stroke: '#050816', strokeThickness: 3
         }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        const caption = scene.add.text(x, 324, continueCaptions[mode], {
+            fontFamily: 'monospace', resolution: 2, fontSize: '11px', fill: '#6d7d99',
+            stroke: '#050816', strokeThickness: 3
+        }).setOrigin(0.5).setDepth(82).setScrollFactor(0);
         const choose = () => {
             setDifficultyMode(mode);
             refreshOpeningDifficulty();
         };
         bg.on('pointerdown', choose);
         label.on('pointerdown', choose);
-        difficultyButtons.push({ mode, bg, label });
-        nodes.push(bg, label);
+        caption.setInteractive({ useHandCursor: true }).on('pointerdown', choose);
+        difficultyButtons.push({ mode, bg, label, caption });
+        nodes.push(bg, label, caption);
     });
 
     const coopButton = scene.add.rectangle(400, 365, 310, 32, 0x0b1930, 0.96)
         .setDepth(81).setScrollFactor(0).setInteractive({ useHandCursor: true });
     const coopLabel = scene.add.text(400, 365, '', {
-        fontFamily: 'monospace', fontSize: '13px', fill: '#ffb8e8',
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#ffb8e8',
         stroke: '#050816', strokeThickness: 3
     }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
     const toggleCoop = () => {
@@ -6934,14 +7308,14 @@ function showOpeningOverlay(scene, onPlay) {
         .setStrokeStyle(2, 0x66f6ff, 0.95).setDepth(81).setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
     const playLabel = scene.add.text(400, 425, 'LAUNCH', {
-        fontFamily: 'monospace', fontStyle: 'bold', fontSize: '24px', fill: '#ffffff',
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '24px', fill: '#ffffff',
         stroke: '#050816', strokeThickness: 4, letterSpacing: 3
     }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
     const controls = scene.add.text(400, 490,
         shouldShowTouchControls() ? 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL' : (coopEnabled
             ? 'P1 WASD + SPACE + L-SHIFT   ·   P2 ARROWS + ENTER + R-SHIFT'
             : 'WASD / ARROWS TO FLY  ·  SHIFT / X TO BOOST  ·  SPACE TO FIRE'), {
-            fontFamily: 'monospace', fontSize: '13px', fill: '#8aa0c8', align: 'center'
+            fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', align: 'center'
         }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     nodes.push(playBg, playLabel, controls);
 
@@ -6991,6 +7365,7 @@ function refreshOpeningDifficulty() {
         button.bg.setFillStyle(active ? 0x173f5c : 0x0b1930, 0.98);
         button.bg.setStrokeStyle(active ? 2 : 1, active ? 0x66f6ff : 0x405878, active ? 1 : 0.65);
         button.label.setFill(active ? '#ffffff' : '#8aa0c8');
+        if (button.caption) button.caption.setFill(active ? '#ffe66d' : '#6d7d99');
     });
 }
 
@@ -7011,14 +7386,14 @@ function maybeShowFirstRunTutorial(scene) {
     if (isPlaytestBotSession() || hasSeenTutorial()) return;
     try { window.localStorage.setItem(TUTORIAL_SEEN_KEY, '1'); } catch (error) {}
     const touch = shouldShowTouchControls();
-    const tutorialY = touch ? 382 : 500;
+    const tutorialY = touch ? 180 : 500;
     const copy = touch
         ? 'DRAG TO STEER\nHOLD FIRE / BOOST  ·  AUTO-FIRE IS OPTIONAL'
         : 'WASD / ARROWS  MOVE\nSHIFT / X / Z  BOOST   ·   SPACE  FIRE';
     const panel = scene.add.rectangle(400, tutorialY, 520, 72, 0x071220, 0.9)
         .setStrokeStyle(1, 0x66f6ff, 0.7).setDepth(45).setScrollFactor(0).setAlpha(0);
     const label = scene.add.text(400, tutorialY, copy, {
-        fontFamily: 'monospace', fontSize: '15px', fill: '#e8f0ff', align: 'center',
+        fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#e8f0ff', align: 'center',
         lineSpacing: 7, stroke: '#050816', strokeThickness: 3
     }).setOrigin(0.5).setDepth(46).setScrollFactor(0).setAlpha(0);
     const tween = scene.tweens.add({ targets: [panel, label], alpha: 1, duration: 250, hold: 3200, yoyo: true,
@@ -7089,7 +7464,7 @@ function showPauseOverlay(scene) {
     nodes.push(dim);
 
     const title = scene.add.text(400, 92, 'PAUSED', {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: '36px',
         fill: '#e8f0ff',
         stroke: '#050816',
@@ -7130,7 +7505,7 @@ function showPauseOverlay(scene) {
     const hint = scene.add.text(400, 468, shouldShowTouchControls()
         ? 'HOTSHOT without Assist qualifies for the leaderboard'
         : 'P/Esc resume  ·  D difficulty  ·  A assist  ·  R restart', {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: '14px',
         fill: '#8aa0c8',
         stroke: '#050816',
@@ -7154,7 +7529,7 @@ function addPauseMenuButton(scene, y, label, fill, onClick) {
     bg.setDepth(51).setScrollFactor(0);
     bg.setInteractive({ useHandCursor: true });
     const text = scene.add.text(400, y, label, {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: '15px',
         fill: fill,
         stroke: '#050816',
@@ -7292,7 +7667,7 @@ function isBoostHeld() {
 }
 
 function isFireHeld() {
-    if (gamePaused) return false;
+    if (gamePaused || continuePending) return false;
     if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
     // Touch devices auto-fire so one thumb can stay on the stick (A11 / Fire).
     if (mobileAutoFire && !levelEnded && !victoryPending) return true;
@@ -7504,7 +7879,7 @@ function createTouchControls(scene) {
 
     const depth = 30;
     const labelStyle = {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: layout.autoFireLabel ? '16px' : '14px',
         fill: '#e8f0ff',
         stroke: '#050816',
@@ -7580,7 +7955,7 @@ function createTouchControls(scene) {
     muteBtn.setStrokeStyle(2, 0x8aa0c8, 0.8);
     muteBtn.setInteractive();
     const muteLabel = scene.add.text(470, 560, 'MUTE', {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: '11px',
         fill: '#c7ddff',
         stroke: '#050816',
@@ -7591,7 +7966,7 @@ function createTouchControls(scene) {
     pauseBtn.setStrokeStyle(2, 0x8aa0c8, 0.8);
     pauseBtn.setInteractive();
     const pauseLabel = scene.add.text(330, 560, 'II', {
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontSize: '12px',
         fill: '#c7ddff',
         stroke: '#050816',
@@ -8031,6 +8406,7 @@ function releasePowerup(scene, powerup) {
 
 function resetPooledEnemyState(sprite) {
     if (!sprite) return;
+    if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
     if (sprite.enemyAnimationFx) sprite.enemyAnimationFx.destroy();
     sprite.enemyAnimationFx = null;
     sprite.enemyAnimationBank = 0;
@@ -8052,6 +8428,7 @@ function resetPooledEnemyState(sprite) {
 }
 
 function deactivateGroup(group, releaseChild = releaseSprite) {
+    if (group === bullets && projectileTrails) projectileTrails.clear();
     if (!group || typeof group.getChildren !== 'function') return;
     group.getChildren().forEach(child => {
         if (child.active) releaseChild(child);
@@ -8564,7 +8941,7 @@ function createPilotNameInput(scene, gameX, gameY, gameWidth) {
         outline: 'none',
         background: '#081225',
         color: '#ffffff',
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         fontWeight: '700',
         textAlign: 'center',
         boxShadow: '0 0 14px rgba(102, 246, 255, .25)',
@@ -8960,7 +9337,7 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
     const text = scene.add.text(x, y, message, {
         fontSize: '17px',
         fill: color,
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         stroke: '#050816',
         strokeThickness: 4
     }).setOrigin(0.5).setDepth(12);
@@ -8981,6 +9358,10 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
 }
 
 function endLevel(title, color, options = {}) {
+    continuePending = false;
+    hideContinueOverlay();
+    coopHud.forEach(hud => hud.marker.setVisible(false));
+    if (projectileTrails) projectileTrails.clear();
     hideFirstRunTutorial();
     const continueToNext = Boolean(options.continueToNext);
     if (continueToNext) {
@@ -9050,13 +9431,13 @@ function endLevel(title, color, options = {}) {
     const titleText = this.add.text(400, 52, title, {
         fontSize: '34px',
         fill: color,
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     const resultLineText = this.add.text(400, 88, resultLine, {
         fontSize: '15px',
         fill: completed ? '#66f6ff' : '#aab2c8',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     const formatResultStats = (timeMs) => [
@@ -9071,10 +9452,10 @@ function endLevel(title, color, options = {}) {
     const statsPanel = this.add.rectangle(218, 287, 310, 310, 0x091329, 0.88)
         .setStrokeStyle(1, 0x314d7a, 0.9).setDepth(11).setScrollFactor(0);
     const statsHeading = this.add.text(218, 151, 'RUN SUMMARY', {
-        fontSize: '16px', fill: '#8aa4ff', fontFamily: 'monospace'
+        fontSize: '16px', fill: '#8aa4ff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
     const scoreText = this.add.text(218, 115, 'SCORE  ' + displayScore, {
-        fontSize: '25px', fill: '#ffe66d', fontFamily: 'monospace', fontStyle: 'bold'
+        fontSize: '25px', fill: '#ffe66d', fontFamily: 'monospace', resolution: 2, fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
     const savedName = playerName || sanitizePlayerName(getSavedPlayerName() || 'Pilot');
     const previousBest = getPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName);
@@ -9083,26 +9464,26 @@ function endLevel(title, color, options = {}) {
         recordPersonalBestScore(displayScope, resultDifficulty, resultAssist, savedName, displayScore);
     }
     const personalBestText = this.add.text(218, 178, 'PERSONAL BEST  ' + Math.max(previousBest, eligibleResultScore), {
-        fontSize: '14px', fill: '#66f6ff', fontFamily: 'monospace'
+        fontSize: '14px', fill: '#66f6ff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
     const statsText = this.add.text(92, 207, formatResultStats(completionTimeMs), {
         fontSize: '16px',
         fill: '#c7ddff',
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         align: 'left'
     }).setOrigin(0, 0).setDepth(12).setScrollFactor(0).setLineSpacing(7);
 
     const difficultyHint = this.add.text(218, 370, formatDifficultyToggleLabel(), {
         fontSize: '14px',
         fill: difficultyModeFill(),
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     difficultyHint.setInteractive({ useHandCursor: true });
 
     const assistHint = this.add.text(218, 393, formatAssistToggleLabel(), {
         fontSize: '14px',
         fill: isAssistEnabled() ? '#ffe66d' : '#8aa0c8',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     assistHint.setInteractive({ useHandCursor: true });
 
@@ -9141,7 +9522,7 @@ function endLevel(title, color, options = {}) {
     const leaderboardTitle = this.add.text(555, 151, getLeaderboardScopeLabel(displayScope) + ' LEADERBOARD', {
         fontSize: '17px',
         fill: '#ffffff',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     let selectedLeaderboardScope = displayScope;
@@ -9155,7 +9536,7 @@ function endLevel(title, color, options = {}) {
     const leaderboardText = this.add.text(405, 208, formatCompactLeaderboard(currentLeaderboard), {
         fontSize: '12px',
         fill: '#c7ddff',
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', resolution: 2,
         align: 'left'
     }).setOrigin(0, 0).setDepth(11).setScrollFactor(0).setLineSpacing(4);
 
@@ -9174,7 +9555,7 @@ function endLevel(title, color, options = {}) {
         const text = this.add.text(tab.x, 180, tab.label, {
             fontSize: '13px',
             fill: tab.scope === displayScope ? '#ffe66d' : '#8aa0c8',
-            fontFamily: 'monospace'
+            fontFamily: 'monospace', resolution: 2
         }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
         text.setInteractive({ useHandCursor: true });
         return { ...tab, text };
@@ -9200,7 +9581,7 @@ function endLevel(title, color, options = {}) {
     });
 
     const nameLabel = this.add.text(218, 430, completed && !skipLeaderboard ? 'PILOT NAME' : '', {
-        fontSize: '13px', fill: '#8aa4ff', fontFamily: 'monospace'
+        fontSize: '13px', fill: '#8aa4ff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     const pilotInput = completed && !skipLeaderboard
         ? createPilotNameInput(this, 218, 458, 245)
@@ -9216,13 +9597,13 @@ function endLevel(title, color, options = {}) {
     const shareStatusText = this.add.text(555, 430, '', {
         fontSize: '14px',
         fill: '#66f6ff',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     const shareText = this.add.text(555, 458, 'SHARE SCORE', {
         fontSize: '16px',
         fill: '#ffe66d',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setVisible(false).setScrollFactor(0);
     shareText.setInteractive({ useHandCursor: true });
     shareText.on('pointerdown', () => {
@@ -9234,7 +9615,7 @@ function endLevel(title, color, options = {}) {
         .setStrokeStyle(2, 0x66f6ff, 0.9).setDepth(11).setScrollFactor(0)
         .setVisible(Boolean(pilotInput)).setInteractive({ useHandCursor: true });
     const submitText = this.add.text(218, 505, 'SUBMIT SCORE', {
-        fontSize: '16px', fill: '#66f6ff', fontFamily: 'monospace'
+        fontSize: '16px', fill: '#66f6ff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0).setVisible(Boolean(pilotInput));
     submitText.setInteractive({ useHandCursor: true });
 
@@ -9243,12 +9624,12 @@ function endLevel(title, color, options = {}) {
         .setStrokeStyle(2, 0x8aa4ff, 0.9).setDepth(11).setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
     const restartText = this.add.text(restartX, 558, 'RETRY', {
-        fontSize: '18px', fill: '#c7ddff', fontFamily: 'monospace'
+        fontSize: '18px', fill: '#c7ddff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0).setInteractive({ useHandCursor: true });
     const actionText = this.add.text(525, 558, continueToNext ? 'NEXT LEVEL' : 'RETRY', {
         fontSize: '18px',
         fill: continueToNext ? '#06121a' : '#c7ddff',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     const actionBg = this.add.rectangle(525, 558, 210, 42, continueToNext ? 0x66f6ff : 0x252d43, 1)
         .setStrokeStyle(2, continueToNext ? 0x66f6ff : 0x8aa4ff, 1).setDepth(11).setScrollFactor(0)
@@ -9584,21 +9965,24 @@ function shakeCombatCamera(scene, duration, intensity) {
 
 
 function createPlayerAnimations(scene) {
+    const assets = window.NovaWingAssets || {};
     createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.flight, [
         'player-flight-0',
-        'player-flight-2'
-    ], 4, -1);
-    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.boost, [
+        'player-flight-1',
+        'player-flight-4',
+        'player-flight-1'
+    ], 5, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.boost, assets.playerBoostKeys || [
         'player-action-boost',
         'player-flight-3'
-    ], 7, -1);
+    ], 12, -1);
     createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.hit, [
         'player-action-spin',
         'player-action-inverted'
     ], 8, -1);
     createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.powerup, [
         'player-celebration-powerup',
-        'player-flight-1'
+        'player-flight-peace'
     ], 6, -1);
     createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.victory, [
         'player-celebration-victory',
@@ -9609,14 +9993,29 @@ function createPlayerAnimations(scene) {
         'player-action-inverted',
         'player-action-spin'
     ], 4, -1);
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.vertical, assets.playerVerticalKeys || [
+        'playerVertical'
+    ], 8, -1);
+}
+
+function createEnemyAnimations(scene) {
+    const assets = window.NovaWingAssets || {};
+    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.regular, assets.enemyFlightKeys || ['enemy'], 8, -1);
+    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.interceptor, assets.enemy2FlightKeys || ['enemy2'], 8, -1);
 }
 
 function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
-    if (scene.anims.exists(key)) return;
+    const keys = (textureKeys || []).filter(textureKey => scene.textures.exists(textureKey));
+    if (!keys.length) return;
+    if (scene.anims.exists(key)) {
+        const existing = scene.anims.get(key);
+        if (existing && existing.frames && existing.frames.length === keys.length) return;
+        scene.anims.remove(key);
+    }
 
     scene.anims.create({
         key,
-        frames: textureKeys.map(textureKey => ({ key: textureKey })),
+        frames: keys.map(textureKey => ({ key: textureKey })),
         frameRate,
         repeat
     });
@@ -9689,6 +10088,7 @@ function playPlayerAnimation(sprite, animationKey, restart = false) {
 
     currentPlayerAnimation = animationKey;
     sprite.play(animationKey);
+    applyPlayerShipSize(sprite);
 
     if (restart && sprite.anims && typeof sprite.anims.restart === 'function' &&
         sprite.anims.currentAnim && sprite.anims.currentAnim.key === animationKey) {
@@ -9702,17 +10102,56 @@ function ensureVerticalPlayerTexture(sprite) {
     const scene = sprite.scene;
     const verticalKey = (currentLevelArt && currentLevelArt.playerVertical) || 'playerVertical';
     if (!scene || !scene.textures || !scene.textures.exists(verticalKey)) return;
-    const onVertical = sprite.texture && sprite.texture.key === verticalKey;
-    if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
-    if (!onVertical) {
-        sprite.setTexture(verticalKey);
-        currentPlayerAnimation = null;
-    }
     sprite.setFlipX(false);
     sprite.setRotation(0);
     sprite.setAngle(0);
     const def = window.NovaWingAssets.sprite(verticalKey, 'playerVertical');
+    const useCycle = verticalKey === 'playerVertical' &&
+        scene.anims && scene.anims.exists(PLAYER_ANIMATION_KEYS.vertical) &&
+        scene.textures.exists('player-vertical-0');
+    if (useCycle) {
+        if (!sprite.anims || !sprite.anims.currentAnim ||
+            sprite.anims.currentAnim.key !== PLAYER_ANIMATION_KEYS.vertical) {
+            sprite.play(PLAYER_ANIMATION_KEYS.vertical);
+        }
+        currentPlayerAnimation = PLAYER_ANIMATION_KEYS.vertical;
+    } else {
+        const onVertical = sprite.texture && sprite.texture.key === verticalKey;
+        if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
+        if (!onVertical) {
+            sprite.setTexture(verticalKey);
+            currentPlayerAnimation = null;
+        }
+    }
     applyShipSize(sprite, def.displayWidth, def.body);
+}
+
+function enemyUsesIdleSheet(enemy, prefix) {
+    const key = enemy && enemy.texture && enemy.texture.key;
+    return key === prefix.replace(/-flight$/, '') || (typeof key === 'string' && key.startsWith(prefix + '-'));
+}
+
+function enemyHasBakedThrust(enemy) {
+    const animKey = enemy && enemy.anims && enemy.anims.currentAnim && enemy.anims.currentAnim.key;
+    return animKey === ENEMY_ANIMATION_KEYS.regular || animKey === ENEMY_ANIMATION_KEYS.interceptor;
+}
+
+function playEnemyIdleAnimation(enemy) {
+    if (!enemy || !enemy.scene || !enemy.scene.anims || isVerticalScroll()) return;
+    const type = enemy.enemyType;
+    const animKey = type === 'interceptor'
+        ? ENEMY_ANIMATION_KEYS.interceptor
+        : type === 'regular'
+            ? ENEMY_ANIMATION_KEYS.regular
+            : null;
+    if (!animKey || !enemy.scene.anims.exists(animKey)) return;
+    const firstFrame = animKey === ENEMY_ANIMATION_KEYS.interceptor ? 'enemy2-flight-0' : 'enemy-flight-0';
+    if (!enemy.scene.textures.exists(firstFrame)) return;
+    enemy.play(animKey, true);
+    const sheet = animKey === ENEMY_ANIMATION_KEYS.interceptor
+        ? window.NovaWingAssets.enemyCycleSheets.enemy2
+        : window.NovaWingAssets.enemyCycleSheets.enemy;
+    if (sheet) applyShipSize(enemy, sheet.displayWidth, sheet.body);
 }
 
 
@@ -9877,6 +10316,9 @@ function getBotSnapshot() {
         victoryPending: Boolean(victoryPending),
         awaitingNextLevel: Boolean(awaitingNextLevel),
         paused: Boolean(gamePaused),
+        continuePending: Boolean(continuePending),
+        continuesRemaining,
+        continueUsedThisRun: Boolean(continueUsedThisRun),
         assist: isAssistEnabled(),
         assistCheckpoint: assistCheckpoint && assistCheckpoint.segmentId
             ? assistCheckpoint.segmentId
@@ -10038,7 +10480,8 @@ window.__novawingDebug = {
             y: player.y,
             vx: player.body ? player.body.velocity.x : 0,
             vy: player.body ? player.body.velocity.y : 0,
-            levelEnded
+            levelEnded,
+            continuePending: Boolean(continuePending)
         };
     },
     getCoopState() {
@@ -10130,11 +10573,20 @@ window.__novawingDebug = {
             lives: lives,
             levelEnded: Boolean(levelEnded),
             assistContinuePending: Boolean(assistContinuePending),
+            continuePending: Boolean(continuePending),
+            continuesRemaining,
             checkpoint: assistCheckpoint && assistCheckpoint.segmentId
                 ? assistCheckpoint.segmentId
                 : null,
             segment: levelSegment
         };
+    },
+    getContinueState,
+    acceptContinue() {
+        return acceptArcadeContinue(getActiveScene());
+    },
+    declineContinue() {
+        return declineArcadeContinue(getActiveScene());
     },
     getTotalLevels: totalLevels,
     /**

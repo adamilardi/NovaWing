@@ -20,6 +20,7 @@ boss mechanics, menu presentation, and the URL selection fix.
 | Boss health | 80% | Authored health | Same as Hotshot |
 | Boss projectile speed | 80% | 100% | 112% |
 | Boss attack delay | 125% | 100% | 82% |
+| Continues after last ship | 3 | 1 (unranks the run) | None |
 
 Supernova's old health multiplier rounded a 2-HP enemy up to 3 HP. Removing that
 multiplier keeps weapons satisfying while speed, firing cadence, and spawn density

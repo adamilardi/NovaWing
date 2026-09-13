@@ -48,12 +48,13 @@ Default gate (after a gameplay change):
 npm run verify
 ```
 
-Cases: `boot`, `desktop-move`, `pause`, `difficulty`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` / `VERIFY_L2_MS` default 90s, `VERIFY_L3_MS` default 180s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
+Cases: `boot`, `desktop-move`, `pause`, `difficulty`, `continues`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` / `VERIFY_L2_MS` default 90s, `VERIFY_L3_MS` default 180s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
 
 One mapped feature:
 
 ```bash
 node scripts/verify-novawing.mjs --case boot
+node scripts/verify-novawing.mjs --case continues
 node scripts/verify-novawing.mjs --case l1-bot
 node scripts/verify-novawing.mjs --case l2-bot
 node scripts/verify-novawing.mjs --case l3-bot
@@ -112,7 +113,7 @@ Proof files stay under `.verify-runs/`.
 
 | Command | What it proves |
 |---|---|
-| `npm run verify` | Boot/pause/difficulty, then heuristic bot on L1+L2+L3 |
+| `npm run verify` | Boot/pause/difficulty/continues, then heuristic bot on L1+L2+L3 |
 | `npm run verify:doctor` | Boot only |
 | `npm run verify:full` | Same, plus RL policy on L1–L3 if weights exist |
 | `node scripts/verify-novawing.mjs --case <ids>` | Subset |

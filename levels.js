@@ -48,6 +48,8 @@
  *   4. segment.difficulty      — that segment only (waves vs boss)
  *   5. Player difficulty       — Easy / Normal / Hard from pause / results.
  *        Easy/Hard reuse DIFFICULTY_PRESETS. Only Normal is ranked.
+ *        Easy and Normal grant arcade continues on death; Hard does not.
+ *        Using a continue on Hotshot unranks the run.
  *        ?diff=easy|normal|hard (mid = normal) sets the mode for this session.
  *   6. URL overlay             — playtest knobs on top of the selected mode.
  *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4  (also unranked)
@@ -212,15 +214,18 @@
     const DIFFICULTY_MODE_METADATA = {
         easy: {
             label: 'Space Cadet',
-            description: 'Slower shots. Room to recover.'
+            description: 'Slower shots. Room to recover. 3 continues.',
+            continues: 3
         },
         normal: {
             label: 'Hotshot',
-            description: 'A fair fight. A little swagger.'
+            description: 'A fair fight. A little swagger. 1 continue.',
+            continues: 1
         },
         hard: {
             label: 'Supernova',
-            description: 'Fast shots. Crowded skies. Bring it.'
+            description: 'Fast shots. Crowded skies. No continues.',
+            continues: 0
         }
     };
     // Casual overlay: same knobs as easy, plus opener-soft interceptor aim.
@@ -299,6 +304,18 @@
             return 'normal';
         }
         return null;
+    }
+
+    /**
+     * Arcade continues granted when the last ship is lost.
+     * Hard / unknown modes return 0. Easy and Normal keep a finite stock.
+     */
+    function getDifficultyContinues(mode) {
+        const id = normalizeDifficultyMode(mode) || (mode == null || mode === '' ? 'normal' : null);
+        const meta = id && DIFFICULTY_MODE_METADATA[id];
+        const n = meta ? Number(meta.continues) : 0;
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return Math.min(9, Math.floor(n));
     }
 
     /**
@@ -824,6 +841,7 @@
         readDifficultyQueryOverlay: readDifficultyQueryOverlay,
         getDifficultyPreset: getDifficultyPreset,
         normalizeDifficultyMode: normalizeDifficultyMode,
+        getDifficultyContinues: getDifficultyContinues,
         scaleCountedStat: scaleCountedStat,
         DIFFICULTY_DEFAULTS: DIFFICULTY_DEFAULTS,
         TIER_DIFFICULTY: TIER_DIFFICULTY,
@@ -863,6 +881,7 @@
     root.readDifficultyQueryOverlay = readDifficultyQueryOverlay;
     root.getDifficultyPreset = getDifficultyPreset;
     root.normalizeDifficultyMode = normalizeDifficultyMode;
+    root.getDifficultyContinues = getDifficultyContinues;
     root.scaleCountedStat = scaleCountedStat;
     root.DIFFICULTY_MODE_METADATA = DIFFICULTY_MODE_METADATA;
     root.getLevelBossScore = getLevelBossScore;

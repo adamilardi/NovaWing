@@ -21,6 +21,7 @@ import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
 import { casePolish } from './verify-polish.mjs';
 import { caseCombatPolish } from './verify-combat-polish.mjs';
+import { caseGraphicsPolish } from './verify-graphics-polish.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -593,6 +594,82 @@ async function caseDifficulty(browser, base, evidenceDir) {
     }
 }
 
+async function caseContinues(browser, base, evidenceDir) {
+    async function lethal(session) {
+        return session.page.evaluate(() => {
+            const hit = window.__novawingDebug.applyPlayerHit({ lethal: true });
+            return {
+                hit,
+                continue: window.__novawingDebug.getContinueState(),
+                snap: window.__novawingDebug.getBotSnapshot()
+            };
+        });
+    }
+
+    const easy = await openGame(browser, base, '?diff=easy');
+    let easyPrompt;
+    let easyAccepted;
+    let easyDeclined;
+    try {
+        easyPrompt = await lethal(easy);
+        const shot = path.join(evidenceDir, 'continues.png');
+        await easy.page.screenshot({ path: shot });
+        await easy.page.waitForTimeout(350);
+        await easy.page.keyboard.press('Space');
+        await easy.page.waitForTimeout(80);
+        easyAccepted = await easy.page.evaluate(() => ({
+            continue: window.__novawingDebug.getContinueState(),
+            snap: window.__novawingDebug.getBotSnapshot(),
+            player: window.__novawingDebug.getPlayerState()
+        }));
+        const second = await lethal(easy);
+        await easy.page.waitForTimeout(80);
+        await easy.page.keyboard.press('Escape');
+        await easy.page.waitForTimeout(80);
+        easyDeclined = await easy.page.evaluate(() => ({
+            continue: window.__novawingDebug.getContinueState(),
+            snap: window.__novawingDebug.getBotSnapshot()
+        }));
+        easy.second = second;
+        easy.shot = shot;
+    } finally {
+        await easy.context.close();
+    }
+
+    const hard = await openGame(browser, base, '?diff=hard');
+    let hardHit;
+    try {
+        hardHit = await lethal(hard);
+    } finally {
+        await hard.context.close();
+    }
+
+    const promptOk = easyPrompt && easyPrompt.continue && easyPrompt.continue.pending
+        && easyPrompt.continue.remaining === 3
+        && easyPrompt.snap && !easyPrompt.snap.levelEnded
+        && easyPrompt.snap.lives === 0;
+    const acceptOk = easyAccepted && easyAccepted.continue && !easyAccepted.continue.pending
+        && easyAccepted.continue.remaining === 2
+        && easyAccepted.continue.usedThisRun
+        && easyAccepted.snap && !easyAccepted.snap.levelEnded
+        && easyAccepted.snap.lives === 3
+        && easyAccepted.player && easyAccepted.player.continuePending === false;
+    const declineOk = easy.second && easy.second.continue && easy.second.continue.pending
+        && easyDeclined && !easyDeclined.continue.pending
+        && easyDeclined.snap && easyDeclined.snap.levelEnded;
+    const hardOk = hardHit && hardHit.continue && !hardHit.continue.pending
+        && hardHit.continue.allowed === 0
+        && hardHit.snap && hardHit.snap.levelEnded
+        && hardHit.snap.lives === 0;
+    const errors = [...easy.pageErrors, ...hard.pageErrors];
+    const ok = promptOk && acceptOk && declineOk && hardOk && errors.length === 0;
+    return result('continues', ok, ok
+        ? 'easy continue/accept/decline, supernova game over'
+        : JSON.stringify({
+            easyPrompt, easyAccepted, second: easy.second, easyDeclined, hardHit, errors
+        }), { screenshot: easy.shot });
+}
+
 async function readPilot(page) {
     return page.evaluate(() => ({
         snap: window.__novawingDebug.getBotSnapshot(),
@@ -805,6 +882,7 @@ async function caseRlPolicy(browser, base, evidenceDir) {
 const CASES = {
     polish: casePolish,
     'combat-polish': caseCombatPolish,
+    'graphics-polish': caseGraphicsPolish,
     content: caseContent,
     performance: casePerformance,
     boot: caseBoot,
@@ -814,6 +892,7 @@ const CASES = {
     'coop-level-scenarios': caseCoopLevelScenarios,
     pause: casePause,
     difficulty: caseDifficulty,
+    continues: caseContinues,
     'l1-bot': caseL1Bot,
     'l2-bot': caseL2Bot,
     'l2-canyon': caseL2Canyon,
@@ -827,12 +906,12 @@ function selectedCases() {
     if (WANT_DOCTOR) return ['boot'];
     if (WANT_FULL) {
         return [
-            'boot', 'desktop-move', 'pause', 'difficulty',
+            'boot', 'desktop-move', 'pause', 'difficulty', 'continues',
             'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
         ];
     }
     return [
-        'boot', 'desktop-move', 'pause', 'difficulty',
+        'boot', 'desktop-move', 'pause', 'difficulty', 'continues',
         'l1-bot', 'l2-bot', 'l3-bot'
     ];
 }

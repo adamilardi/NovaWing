@@ -4,6 +4,54 @@
 const PLAYER_DISPLAY_WIDTH = 154;
 const PLAYER_SHEET_WIDTH = 832;
 const PLAYER_SHEET_FRAME_HEIGHT = 312;
+const PLAYER_CYCLE_SHEETS = {
+    flight: {
+        sourceKey: 'playerFlightCycleSource',
+        path: 'assets/player-flight-cycle.png',
+        frameWidth: 600,
+        frameHeight: 360,
+        frameCount: 7,
+        hasAlpha: true
+    },
+    boost: {
+        sourceKey: 'playerBoostCycleSource',
+        path: 'assets/player-boost-cycle.png',
+        frameWidth: 600,
+        frameHeight: 360,
+        frameCount: 5,
+        hasAlpha: true
+    },
+    vertical: {
+        sourceKey: 'playerVerticalCycleSource',
+        path: 'assets/player-vertical-cycle.png',
+        frameWidth: 384,
+        frameHeight: 700,
+        frameCount: 7,
+        hasAlpha: true
+    }
+};
+const ENEMY_CYCLE_SHEETS = {
+    enemy: {
+        sourceKey: 'enemyFlightCycleSource',
+        path: 'assets/enemy-flight-cycle.png',
+        frameWidth: 640,
+        frameHeight: 200,
+        frameCount: 5,
+        hasAlpha: true,
+        displayWidth: 112,
+        body: { w: 0.55, h: 0.48, ox: 0.10, oy: 0.24 }
+    },
+    enemy2: {
+        sourceKey: 'enemy2FlightCycleSource',
+        path: 'assets/enemy2-flight-cycle.png',
+        frameWidth: 640,
+        frameHeight: 200,
+        frameCount: 4,
+        hasAlpha: true,
+        displayWidth: 112,
+        body: { w: 0.52, h: 0.46, ox: 0.10, oy: 0.26 }
+    }
+};
 const BAKED_SPRITE_ASSETS = {
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
@@ -23,7 +71,8 @@ const BAKED_SPRITE_ASSETS = {
 const SPRITES = {
     player: {
         displayWidth: PLAYER_DISPLAY_WIDTH,
-        body: { w: 0.42, h: 0.40, ox: 0.30, oy: 0.30 }
+        // Cycle cells are left-locked on the nose; keep the world hitbox on the hull.
+        body: { w: 0.42, h: 0.25, ox: 0.12, oy: 0.52 }
     },
     // L3 top-down player (nose up, thrusters down) — PR4b Imagine art.
     playerVertical: {
@@ -131,11 +180,8 @@ const PLAYER_SHEETS = {
         path: 'assets/player-celebration-sheet.jpg'
     }
 };
-const PLAYER_FRAMES = [
-    { key: 'player-flight-0', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(0) },
-    { key: 'player-flight-1', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(1) },
-    { key: 'player-flight-2', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(2) },
-    { key: 'player-flight-3', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(3) },
+const PLAYER_FRAMES = sheetRowFrames(PLAYER_CYCLE_SHEETS.flight, 'player-flight').concat([
+    { key: 'player-flight-peace', sourceKey: PLAYER_SHEETS.flight.sourceKey, crop: getPlayerSheetRowCrop(1) },
     { key: 'player-action-ready', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(0) },
     { key: 'player-action-inverted', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(1) },
     { key: 'player-action-spin', sourceKey: PLAYER_SHEETS.action.sourceKey, crop: getPlayerSheetRowCrop(2) },
@@ -144,7 +190,11 @@ const PLAYER_FRAMES = [
     { key: 'player-celebration-spin', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(1) },
     { key: 'player-celebration-powerup', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(2) },
     { key: 'player-celebration-ko', sourceKey: PLAYER_SHEETS.celebration.sourceKey, crop: getPlayerSheetRowCrop(3) }
-];
+], sheetRowFrames(PLAYER_CYCLE_SHEETS.boost, 'player-boost'),
+    sheetRowFrames(PLAYER_CYCLE_SHEETS.vertical, 'player-vertical'));
+const ENEMY_FRAMES = sheetRowFrames(ENEMY_CYCLE_SHEETS.enemy, 'enemy-flight')
+    .concat(sheetRowFrames(ENEMY_CYCLE_SHEETS.enemy2, 'enemy2-flight'));
+const SPRITE_FRAMES = PLAYER_FRAMES.concat(ENEMY_FRAMES);
 
 Object.entries(BAKED_SPRITE_ASSETS).forEach(([key, asset]) => {
     SPRITES[key] = Object.assign({ hasAlpha: true }, SPRITES[key], asset);
@@ -154,9 +204,13 @@ const AUDIO_TRACKS = {
     boss: { procedural: 'boss' }
 };
 function preload(scene) {
-    Object.values(SPRITES).concat(Object.values(PLAYER_SHEETS)).forEach(asset => {
-        if (asset.path && asset.sourceKey) scene.load.image(asset.sourceKey, asset.path);
-    });
+    Object.values(SPRITES)
+        .concat(Object.values(PLAYER_SHEETS))
+        .concat(Object.values(PLAYER_CYCLE_SHEETS))
+        .concat(Object.values(ENEMY_CYCLE_SHEETS))
+        .forEach(asset => {
+            if (asset.path && asset.sourceKey) scene.load.image(asset.sourceKey, asset.path);
+        });
     Object.entries(AUDIO_TRACKS).forEach(([key, track]) => {
         if (track.urls) scene.load.audio(key, track.urls);
     });
@@ -167,15 +221,21 @@ function install(scene) {
         if (sprite.hasAlpha) installImageTexture(scene, key, sprite.sourceKey);
         else if (sprite.crop) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
     });
-    PLAYER_FRAMES.forEach(frame => {
-        createTransparentTexture(scene, frame.key, frame.sourceKey, frame.crop, { trim: false });
+    SPRITE_FRAMES.forEach(frame => {
+        createTransparentTexture(scene, frame.key, frame.sourceKey, frame.crop, {
+            trim: false,
+            keyGray: !frame.hasAlpha
+        });
     });
 }
 function sprite(key, fallback) {
     return SPRITES[key] || SPRITES[fallback];
 }
 function files() {
-    return [...new Set(Object.values(SPRITES).concat(Object.values(PLAYER_SHEETS))
+    return [...new Set(Object.values(SPRITES)
+        .concat(Object.values(PLAYER_SHEETS))
+        .concat(Object.values(PLAYER_CYCLE_SHEETS))
+        .concat(Object.values(ENEMY_CYCLE_SHEETS))
         .filter(asset => asset.path).map(asset => asset.path)
         .concat(Object.values(AUDIO_TRACKS).flatMap(track => track.urls || [])))];
 }
@@ -186,6 +246,28 @@ function getPlayerSheetRowCrop(row) {
         width: PLAYER_SHEET_WIDTH,
         height: PLAYER_SHEET_FRAME_HEIGHT
     };
+}
+function sheetRowFrames(sheet, keyPrefix) {
+    const frames = [];
+    for (let i = 0; i < sheet.frameCount; i += 1) {
+        frames.push({
+            key: keyPrefix + '-' + i,
+            sourceKey: sheet.sourceKey,
+            crop: {
+                x: 0,
+                y: i * sheet.frameHeight,
+                width: sheet.frameWidth,
+                height: sheet.frameHeight
+            },
+            hasAlpha: true
+        });
+    }
+    return frames;
+}
+function sheetFrameKeys(sheet, keyPrefix) {
+    const keys = [];
+    for (let i = 0; i < sheet.frameCount; i += 1) keys.push(keyPrefix + '-' + i);
+    return keys;
 }
 
 
@@ -209,7 +291,12 @@ function installImageTexture(scene, key, sourceKey) {
 
 
 function createTransparentTexture(scene, key, sourceKey, crop, options = {}) {
-    if (scene.textures.exists(key)) return;
+    if (scene.textures.exists(key)) {
+        const existing = scene.textures.get(key);
+        const image = existing && existing.getSourceImage && existing.getSourceImage();
+        if (image && image.width === crop.width && image.height === crop.height) return;
+        scene.textures.remove(key);
+    }
 
     const source = scene.textures.get(sourceKey).getSourceImage();
     const canvas = document.createElement('canvas');
@@ -230,9 +317,11 @@ function createTransparentTexture(scene, key, sourceKey, crop, options = {}) {
         crop.height
     );
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    removeGrayBackground(imageData.data);
-    ctx.putImageData(imageData, 0, 0);
+    if (options.keyGray !== false) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        removeGrayBackground(imageData.data);
+        ctx.putImageData(imageData, 0, 0);
+    }
 
     const outputCanvas = options.trim === false ? canvas : trimTransparentCanvas(canvas);
     const texture = scene.textures.addCanvas(key, outputCanvas);
@@ -297,8 +386,24 @@ function trimTransparentCanvas(canvas) {
 }
 
 
-const api = { sprites: SPRITES, playerSheets: PLAYER_SHEETS, playerFrames: PLAYER_FRAMES,
-    tracks: AUDIO_TRACKS, preload, install, sprite, files };
+const api = {
+    sprites: SPRITES,
+    playerSheets: PLAYER_SHEETS,
+    playerCycleSheets: PLAYER_CYCLE_SHEETS,
+    enemyCycleSheets: ENEMY_CYCLE_SHEETS,
+    playerFrames: PLAYER_FRAMES,
+    enemyFrames: ENEMY_FRAMES,
+    playerFlightKeys: sheetFrameKeys(PLAYER_CYCLE_SHEETS.flight, 'player-flight'),
+    playerBoostKeys: sheetFrameKeys(PLAYER_CYCLE_SHEETS.boost, 'player-boost'),
+    playerVerticalKeys: sheetFrameKeys(PLAYER_CYCLE_SHEETS.vertical, 'player-vertical'),
+    enemyFlightKeys: sheetFrameKeys(ENEMY_CYCLE_SHEETS.enemy, 'enemy-flight'),
+    enemy2FlightKeys: sheetFrameKeys(ENEMY_CYCLE_SHEETS.enemy2, 'enemy2-flight'),
+    tracks: AUDIO_TRACKS,
+    preload,
+    install,
+    sprite,
+    files
+};
 if (typeof module === 'object' && module.exports) module.exports = api;
 else root.NovaWingAssets = api;
 })(typeof window !== 'undefined' ? window : globalThis);

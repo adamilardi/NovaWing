@@ -64,6 +64,19 @@ test('player presets order combat pressure while preserving hard two-hit counts'
     assert.equal(Levels.scaleCountedStat(2, easy.enemyHealthScale), 1);
 });
 
+test('easy and normal grant arcade continues and supernova does not', () => {
+    assert.equal(Levels.getDifficultyContinues('easy'), 3);
+    assert.equal(Levels.getDifficultyContinues('Space Cadet'), 3);
+    assert.equal(Levels.getDifficultyContinues('normal'), 1);
+    assert.equal(Levels.getDifficultyContinues('Hotshot'), 1);
+    assert.equal(Levels.getDifficultyContinues('hard'), 0);
+    assert.equal(Levels.getDifficultyContinues('Supernova'), 0);
+    assert.equal(Levels.getDifficultyContinues('impossible'), 0);
+    assert.equal(Levels.DIFFICULTY_MODE_METADATA.hard.continues, 0);
+    assert.ok(Levels.DIFFICULTY_MODE_METADATA.easy.description.includes('3 continues'));
+    assert.ok(Levels.DIFFICULTY_MODE_METADATA.hard.description.includes('No continues'));
+});
+
 test('difficulty query preset is overlaid by explicit numeric knobs only', () => {
     const overlay = Levels.readDifficultyQueryOverlay(
         '?diff=easy&enemyHealthScale=0.8&enemyCadenceScale=1.7&unknown=999'
