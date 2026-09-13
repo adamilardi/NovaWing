@@ -1448,8 +1448,8 @@ function create() {
         openingActive = false;
         hideOpeningOverlay();
         resetContinueStock();
-        levelStartTime = this.time.now;
-        levelAttemptStartTime = this.time.now;
+        levelStartTime = playtestNow(this);
+        levelAttemptStartTime = playtestNow(this);
         clearBoostInput();
         if (this.physics && this.physics.world && this.physics.world.isPaused) this.physics.resume();
         setHudVisible(true);
@@ -2084,7 +2084,7 @@ function applyShieldPowerup(scene, x, y) {
     hasShield = true;
     if (coopState) coopState.hasShield = true;
     updateStatusText();
-    updateShieldVisual(scene.time.now);
+    updateShieldVisual(playtestNow(scene));
     showFloatingText(scene, x, y - 24, 'SHIELD', POWERUP_TYPES.shield.color);
 }
 
@@ -2194,7 +2194,7 @@ function hitEnemyBulletWithObstacle(enemyBullet) {
 
 function hitPlayerShot(ship, enemyBullet) {
     if (enemyBullet.isBossLaser) {
-        const now = this.time.now;
+        const now = playtestNow(this);
         if (now < (enemyBullet.nextHitEffectAt || 0)) return;
         enemyBullet.nextHitEffectAt = now + 220;
         createExplosion(this, ship.x + 24, ship.y, 12);
@@ -2218,7 +2218,7 @@ function canApplyPlayerContactDamage(scene, ship = player) {
     if (levelEnded || victoryPending) return false;
     if (!scene || !scene.time) return false;
     const state = getCoopPilotState(ship);
-    return scene.time.now >= (ship === player ? playerInvulnerableUntil : (state ? state.invulnerableUntil : 0));
+    return playtestNow(scene) >= (ship === player ? playerInvulnerableUntil : (state ? state.invulnerableUntil : 0));
 }
 
 function damagePlayer(ship = player) {
@@ -2227,7 +2227,7 @@ function damagePlayer(ship = player) {
     const state = getCoopPilotState(ship);
     if (!ship || !ship.active || !state) return;
 
-    const now = this.time.now;
+    const now = playtestNow(this);
     if (now < (ship === player ? playerInvulnerableUntil : state.invulnerableUntil)) return;
     const cooldown = isPlaytestBotSession()
         ? PLAYTEST_BOT_DAMAGE_COOLDOWN_MS
@@ -3346,7 +3346,7 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
         enemy.homeX = spawnX;
     }
     if (typeDef.move === 'mineDropper') {
-        enemy.nextMineAt = this.time.now + 500;
+        enemy.nextMineAt = playtestNow(this) + 500;
         enemy.mineIntervalMs = 900;
     }
 
@@ -3382,7 +3382,7 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
         ? [cadenceMs(900), cadenceMs(1500)]
         : null;
     const delayRange = splitterDelay || defaultDelay;
-    enemy.nextShotAt = this.time.now + (
+    enemy.nextShotAt = playtestNow(this) + (
         Number.isFinite(options.nextShotDelay)
             ? options.nextShotDelay
             : Phaser.Math.Between(delayRange[0], delayRange[1])
@@ -3403,7 +3403,7 @@ function applyInterceptorTierProfile(enemy, options) {
     enemy.canShoot = typeof options.canShoot === 'boolean'
         ? options.canShoot
         : Math.random() < fireChance;
-    enemy.nextShotAt = this.time.now + (
+    enemy.nextShotAt = playtestNow(this) + (
         Number.isFinite(options.nextShotDelay)
             ? options.nextShotDelay
             : Phaser.Math.Between(
@@ -3668,7 +3668,7 @@ function spawnPathDeadEndWarning(region, escapeDir) {
     pathWarningMarkers.push({
         parts: pulseTargets,
         baseVelocityX: WALL_SCROLL_SPEED,
-        createdAt: scene.time.now
+        createdAt: playtestNow(scene)
     });
 }
 
@@ -4194,7 +4194,7 @@ function startBossFight(encounterKey) {
         ? profile.escapeTimeoutMs
         : profile.timeoutMs;
     if (Number.isFinite(escapeTimeout) && escapeTimeout > 0) {
-        bossEscapeTimeoutAt = this.time.now + escapeTimeout;
+        bossEscapeTimeoutAt = playtestNow(this) + escapeTimeout;
     }
 
     // Prefer authored bossArenaY (falls back to startY via defineLevel).
@@ -4250,7 +4250,7 @@ function startBossFight(encounterKey) {
     syncLevelMusic('boss');
     bossHealth = bossMaxHealth;
     bossPhase = 1;
-    bossNextVolleyAt = this.time.now + 1400;
+    bossNextVolleyAt = playtestNow(this) + 1400;
     bossNextDroneAt = Infinity;
     bossNextLaserAt = Infinity;
 
@@ -4477,7 +4477,7 @@ function updateBossPhase() {
     if (nextPhase <= bossPhase) return;
 
     bossPhase = nextPhase;
-    const now = this.time.now;
+    const now = playtestNow(this);
     const message = bossPhase === 2 ? 'PHASE 2: DRONES DEPLOYED' : 'PHASE 3: LASER LANES';
     const color = bossPhase === 2 ? '#ffcc55' : '#ff6677';
     showFloatingText(this, 400, 110, message, color, { screenSpace: true });
@@ -4802,7 +4802,7 @@ function completeLevel() {
     const isFinalLevel = currentLevel >= totalLevels();
     const clearedLevel = currentLevel;
     const levelScope = getLevelLeaderboardScope(clearedLevel);
-    const levelTimeMs = Math.max(0, this.time.now - levelAttemptStartTime);
+    const levelTimeMs = Math.max(0, playtestNow(this) - levelAttemptStartTime);
     const levelScore = Math.max(0, score - levelStartScore);
     const levelKills = Math.max(0, enemiesKilled - levelStartKills);
     const levelAccuracy = getLevelRunAccuracy();
@@ -4847,7 +4847,7 @@ function completeLevel() {
     }
 
     victoryPending = true;
-    const completionTimeMs = this.time.now - levelStartTime;
+    const completionTimeMs = playtestNow(this) - levelStartTime;
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
     musicDirector.stop();
     sfx.victory();
@@ -4906,7 +4906,7 @@ function startLevel(levelId, options = {}) {
     const levelDef = getLevelDef(currentLevel);
     applyLevelArt(this, currentLevel);
     applyBackgroundTheme(this, currentLevel);
-    levelAttemptStartTime = this.time.now;
+    levelAttemptStartTime = playtestNow(this);
     levelStartScore = score;
     levelStartKills = enemiesKilled;
     levelStartShotsFired = shotsFired;
@@ -4957,7 +4957,7 @@ function startLevel(levelId, options = {}) {
     previousOpenBands = null;
     clearPathDeadEndWarnings(this);
     lastWavePatternKey = null;
-    playerInvulnerableUntil = this.time.now + 1500;
+    playerInvulnerableUntil = playtestNow(this) + 1500;
 
     // Play-test bot: top up lives between stages so mid-campaign deaths after a
     // hard boss fight don't make later levels un-testable.
@@ -5131,7 +5131,7 @@ function enterBossSegment(scene, segDef) {
             targetRadius: 90,
             telegraphEndsAt: 0,
             lethalEndsAt: 0,
-            cooldownEndsAt: scene.time.now + 2500
+            cooldownEndsAt: playtestNow(scene) + 2500
         };
     } else {
         clearBlackHoleState();
@@ -5246,7 +5246,7 @@ function enterTransition(scene, segDef) {
     if (player && player.active) {
         player.setVelocity(0, 0);
     }
-    playerInvulnerableUntil = scene.time.now + 4500;
+    playerInvulnerableUntil = playtestNow(scene) + 4500;
 
     // Design K13: transition is stinger-only (no boss loop under the flip).
     syncLevelMusic('transition');
@@ -5339,7 +5339,7 @@ function enterTransition(scene, segDef) {
         scrollMode = 'vertical';
         combatOrientation = 'up';
         levelTransitioning = false;
-        playerInvulnerableUntil = Math.max(playerInvulnerableUntil, scene.time.now + 800);
+        playerInvulnerableUntil = Math.max(playerInvulnerableUntil, playtestNow(scene) + 800);
         finishLevelSegment(scene, 'transitionComplete');
     });
 }
@@ -5730,10 +5730,19 @@ function getPlaytestTimeScale() {
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+function playtestNow(scene) {
+    if (Number.isFinite(playtestClockMs) && playtestClockMs > 0) return playtestClockMs;
+    if (scene && scene.time && Number.isFinite(scene.time.now)) return scene.time.now;
+    return 0;
+}
+
 function applyPlaytestClock(scene) {
     const scale = getPlaytestTimeScale();
     if (!scene) return;
-    if (scene.physics && scene.physics.world) scene.physics.world.timeScale = scale;
+    if (scene.physics && scene.physics.world) {
+        // Phaser 3.55 Arcade: values above 1 slow the world. Clock/Tweens use the opposite.
+        scene.physics.world.timeScale = scale === 1 ? 1 : 1 / scale;
+    }
     if (scene.time) scene.time.timeScale = scale;
     if (scene.tweens) scene.tweens.timeScale = scale;
 }
@@ -6206,8 +6215,8 @@ function updateEnemyMovement(enemy, frameDelta) {
     if (enemy.enemyType === 'mineDropper') {
         updateScrollVelocity(enemy);
         const scene = enemy.scene;
-        if (scene && scene.time && scene.time.now >= (enemy.nextMineAt || 0)) {
-            enemy.nextMineAt = scene.time.now + (enemy.mineIntervalMs || 900);
+        if (scene && scene.time && playtestNow(scene) >= (enemy.nextMineAt || 0)) {
+            enemy.nextMineAt = playtestNow(scene) + (enemy.mineIntervalMs || 900);
             const mine = spawnObstacle.call(scene, {
                 x: enemy.x,
                 y: enemy.y + 20,
@@ -6217,7 +6226,7 @@ function updateEnemyMovement(enemy, frameDelta) {
                 skipPathClamp: true,
                 allowDuringBoss: false
             });
-            if (mine) enemy.enemyAnimationFiredAt = scene.time.now;
+            if (mine) enemy.enemyAnimationFiredAt = playtestNow(scene);
         }
         return;
     }
@@ -6947,7 +6956,7 @@ function hideContinueOverlay() {
 function reviveShipFromContinue(scene, ship, state) {
     if (!ship || !state) return;
     state.lives = CONTINUE_RESTORE_LIVES;
-    state.invulnerableUntil = scene.time.now + CONTINUE_IFRAMES_MS;
+    state.invulnerableUntil = playtestNow(scene) + CONTINUE_IFRAMES_MS;
     const x = Number.isFinite(ship.x) ? ship.x : 120;
     const y = Number.isFinite(ship.y) ? ship.y : 300;
     if (!ship.active) {
@@ -6964,7 +6973,7 @@ function reviveShipFromContinue(scene, ship, state) {
 
 function restoreArcadeContinue(scene) {
     lives = CONTINUE_RESTORE_LIVES;
-    playerInvulnerableUntil = scene.time.now + CONTINUE_IFRAMES_MS;
+    playerInvulnerableUntil = playtestNow(scene) + CONTINUE_IFRAMES_MS;
     playerAnimationOverride = null;
     playerAnimationOverrideUntil = 0;
     if (boostEnergy < 50) boostEnergy = 50;
@@ -7094,13 +7103,13 @@ function showOpeningOverlay(scene, onPlay) {
 
     const eyebrow = scene.add.text(400, 100, 'THE LAST STARFIGHTER SQUADRON', {
         fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', letterSpacing: 3
-    }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setAlpha(0);
+    }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     const title = scene.add.text(400, 176, 'NOVAWING', {
         fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '64px', fill: '#eafcff',
         stroke: '#176c9a', strokeThickness: 10, letterSpacing: 6
-    }).setOrigin(0.5).setDepth(81).setScrollFactor(0).setScale(0.82).setAlpha(0);
+    }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     const rule = scene.add.rectangle(400, 220, 360, 2, 0x66f6ff, 0.85)
-        .setDepth(81).setScrollFactor(0).setScale(0, 1);
+        .setDepth(81).setScrollFactor(0);
     const mission = scene.add.text(400, 250, 'CHOOSE FLIGHT MODE', {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
@@ -7173,9 +7182,6 @@ function showOpeningOverlay(scene, onPlay) {
     refreshOpeningDifficulty();
     refreshOpeningCoop();
 
-    scene.tweens.add({ targets: eyebrow, alpha: 1, duration: 450, ease: 'Sine.easeOut' });
-    scene.tweens.add({ targets: title, alpha: 1, scale: 1, duration: 650, delay: 120, ease: 'Back.easeOut' });
-    scene.tweens.add({ targets: rule, scaleX: 1, duration: 550, delay: 500, ease: 'Sine.easeOut' });
     scene.tweens.add({ targets: playBg, scaleX: 1.035, scaleY: 1.035, yoyo: true, repeat: -1, duration: 950 });
 }
 
@@ -9259,7 +9265,7 @@ function endLevel(title, color, options = {}) {
     }
 
     const accuracy = getRunAccuracy();
-    const completionTimeMs = options.completionTimeMs || Math.max(0, this.time.now - levelStartTime);
+    const completionTimeMs = options.completionTimeMs || Math.max(0, playtestNow(this) - levelStartTime);
     const completed = Boolean(options.completed);
     const skipLeaderboard = Boolean(options.skipLeaderboard);
     const displayScope = sanitizeLeaderboardScope(options.scope || 'campaign');
@@ -9920,7 +9926,7 @@ function holdPlayerAnimation(scene, animationKey, durationMs) {
     playerAnimationOverride = animationKey;
     playerAnimationOverrideUntil = durationMs === Infinity
         ? Infinity
-        : scene.time.now + durationMs;
+        : playtestNow(scene) + durationMs;
     playPlayerAnimation(player, animationKey, true);
 }
 
@@ -10150,7 +10156,7 @@ function getBotSnapshot() {
 
     return {
         ready: Boolean(player && player.active),
-        time: game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0].time.now : 0,
+        time: playtestNow(game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0] : null),
         phase: gamePhase,
         segment: levelSegment,
         scrollMode: scrollMode,
@@ -10177,8 +10183,8 @@ function getBotSnapshot() {
         levelName: levelDef && levelDef.name ? levelDef.name : null,
         levelProgressMs: typeof levelProgressMs === 'number' ? levelProgressMs : 0,
         levelDurationMs: getActiveDurationMs(),
-        elapsedMs: (typeof levelStartTime === 'number' && game && game.scene && game.scene.scenes[0])
-            ? Math.max(0, game.scene.scenes[0].time.now - levelStartTime)
+        elapsedMs: (typeof levelStartTime === 'number')
+            ? Math.max(0, playtestNow(game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0] : null) - levelStartTime)
             : 0,
         score,
         lives,
