@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { defaultLaunchOptions, appendPlaytestTimeScale } from './chrome.mjs';
 import {
     OBS_VERSION,
     OBS_SIZE,
@@ -39,9 +39,7 @@ export { REWARD_WIN, REWARD_DEATH, stepReward, applyTerminalReward };
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
-const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const HEADLESS = process.env.HEADLESS === '0' ? false
-    : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
+const HEADLESS = process.env.HEADLESS !== '0';
 const EPISODES = Math.max(1, Number(process.env.EPISODES || 5));
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const SAMPLE_MS = Number(process.env.SAMPLE_MS || 50);
@@ -142,6 +140,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('demo', String(episodeIndex));
+    appendPlaytestTimeScale(url);
     url.searchParams.set('expert', EXPERT);
     if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
     // Heuristic speedrun bias (progress boost + intro-boss DPS). Default on for demos.

@@ -1,5 +1,7 @@
 # Content authoring
 
+Ship feel and public-page work belong in [POLISH.md](POLISH.md), not here.
+
 `levels.js` defines the campaign. `src/assets.js` registers art and music files;
 `src/level-flow.js` defines encounter rewards, successors and validation;
 `src/audio-director.js` selects music. Enemy behavior and wave spawners remain in

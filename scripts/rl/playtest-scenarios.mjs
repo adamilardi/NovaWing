@@ -19,14 +19,12 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { defaultLaunchOptions, appendPlaytestTimeScale } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
-const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const HEADLESS = process.env.HEADLESS === '0' ? false
-    : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
+const HEADLESS = process.env.HEADLESS !== '0';
 const TRIALS = Math.max(1, Number(process.env.TRIALS || 1));
 const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
@@ -196,6 +194,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('playtest', scenarioId);
     url.searchParams.set('level', String(scenario.level));
+    appendPlaytestTimeScale(url);
 
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },

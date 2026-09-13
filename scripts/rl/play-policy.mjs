@@ -12,14 +12,12 @@ import { fileURLToPath } from 'url';
 import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { defaultLaunchOptions, appendPlaytestTimeScale } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
-const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const HEADLESS = process.env.HEADLESS === '0' ? false
-    : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
+const HEADLESS = process.env.HEADLESS !== '0';
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
@@ -120,6 +118,7 @@ async function main() {
         const url = new URL(BASE);
         url.searchParams.set('bot', String(Date.now()));
         url.searchParams.set('policy', '1');
+        appendPlaytestTimeScale(url);
         if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
         if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
         if (process.env.SEGMENT) url.searchParams.set('segment', String(process.env.SEGMENT));

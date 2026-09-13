@@ -94,7 +94,7 @@ describe('level authoring surface', () => {
 
         const empty = Levels.readDifficultyQueryOverlay('?level=3&bot=1');
         assert.deepEqual(empty, {});
-        assert.deepEqual(Levels.readDifficultyQueryOverlay('?assist=1'), {});
+        assert.deepEqual(Levels.readDifficultyQueryOverlay('?unknown=1'), {});
     });
 
     it('normalizes easy / mid / hard player mode names', () => {
@@ -108,21 +108,20 @@ describe('level authoring surface', () => {
         assert.equal(Levels.normalizeDifficultyMode(''), null);
     });
 
-    it('ships an assist preset that is easier than defaults and distinct from hard', () => {
-        const assist = Levels.getDifficultyPreset('assist');
+    it('ships easy / hard presets and ignores unknown names', () => {
         const easy = Levels.getDifficultyPreset('easy');
         const hard = Levels.getDifficultyPreset('hard');
         const defaults = Levels.DIFFICULTY_DEFAULTS;
-        assert.ok(assist.playerIFramesMs > defaults.playerIFramesMs);
-        assert.ok(assist.enemyCadenceScale > 1);
-        assert.ok(assist.enemyHealthScale < 1);
-        assert.ok(assist.bossTempoScale > 1);
-        assert.equal(assist.softInterceptorAim, true);
-        assert.equal(assist.enemyHealthScale, easy.enemyHealthScale);
+        assert.ok(easy.playerIFramesMs > defaults.playerIFramesMs);
+        assert.ok(easy.enemyCadenceScale > 1);
+        assert.ok(easy.enemyHealthScale < 1);
+        assert.ok(easy.bossTempoScale > 1);
+        assert.equal(easy.softInterceptorAim, true);
         assert.equal(hard.enemyHealthScale, defaults.enemyHealthScale);
         assert.ok(hard.enemyShotSpeedScale > defaults.enemyShotSpeedScale);
         assert.equal(hard.softInterceptorAim, undefined);
         assert.deepEqual(Levels.getDifficultyPreset('nope'), {});
+        assert.deepEqual(Levels.getDifficultyPreset('assist'), {});
     });
 
     it('ships L1 with an opener difficulty bag', () => {

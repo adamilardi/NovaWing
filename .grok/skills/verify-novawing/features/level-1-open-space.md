@@ -20,11 +20,11 @@ Preconditions:
 - `?bot=1&level=1` so the session is unranked and the bot has a life buffer.
 - Heuristic pilot from `scripts/play-bot.mjs`.
 
-- **Play.** Run `node scripts/verify-novawing.mjs --case l1-bot` (included in `npm run verify`). The heuristic bot flies until win, death, or 90s (`VERIFY_L1_MS`). Progress or score must move. `pageerror` must be empty. Screenshot `.verify-runs/<id>/l1-bot.png`. Death is allowed.
+- **Play.** Run `node scripts/verify-novawing.mjs --case l1-bot` (included in `npm run verify`). The heuristic bot flies until win, death, or the L1 cap (`VERIFY_L1_MS`, default 120s). Progress or score must move. `pageerror` must be empty. Screenshot `.verify-runs/<id>/l1-bot.png`. Death is allowed.
 - **RL bot (optional).** `npm run verify:full` plays the policy on L1–L3 when `rl/weights/bc-policy.json` exists.
 
 ## Gotchas
 
 - Bot death is not a syntax bug. Fail on throw, freeze, or zero progress.
 - `?bot=1` extra lives change balance. Do not treat bot score as a ranked run.
-- The default gate plays until death, win, or 90s. It does not require a boss kill.
+- The default gate plays until death, win, or the L1 cap. It does not require a boss kill.

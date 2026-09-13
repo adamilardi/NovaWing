@@ -16,7 +16,7 @@ import net from 'net';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { defaultHeadless, defaultLaunchOptions, appendPlaytestTimeScale } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
 import { casePolish } from './verify-polish.mjs';
@@ -25,9 +25,7 @@ import { caseGraphicsPolish } from './verify-graphics-polish.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const HEADLESS = process.env.HEADLESS === '0' ? false
-    : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
+const HEADLESS = defaultHeadless();
 
 const args = process.argv.slice(2);
 const WANT_DOCTOR = args.includes('--doctor');
@@ -162,6 +160,7 @@ async function openGame(browser, base, search = '') {
         else await dialog.accept();
     });
     const url = new URL(search || '/', base);
+    if (url.searchParams.has('bot')) appendPlaytestTimeScale(url);
     const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 30000 });
     await waitForGame(page);
     await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
@@ -393,7 +392,7 @@ async function casePause(browser, base, evidenceDir) {
         const before = await session.page.evaluate(() => window.__novawingDebug.getPlayerState());
         await session.page.keyboard.press('KeyP');
         await session.page.waitForTimeout(80);
-        const paused = await session.page.evaluate(() => window.__novawingDebug.getAssist().paused);
+        const paused = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
         await session.page.keyboard.down('ArrowDown');
         await session.page.waitForTimeout(250);
         const frozen = await session.page.evaluate(() => window.__novawingDebug.getPlayerState());
@@ -402,7 +401,7 @@ async function casePause(browser, base, evidenceDir) {
         await session.page.screenshot({ path: shot });
         await session.page.keyboard.press('Escape');
         await session.page.waitForTimeout(80);
-        const resumed = await session.page.evaluate(() => window.__novawingDebug.getAssist().paused);
+        const resumed = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
         const stayed = before && frozen && Math.abs(frozen.y - before.y) < 3 && Math.abs(frozen.vy) < 8;
         const ok = paused && stayed && resumed === false && session.pageErrors.length === 0;
         return result('pause', ok, ok
@@ -435,7 +434,6 @@ async function caseDifficulty(browser, base, evidenceDir) {
             if (window.__novawingDebug.setDifficultyMode) {
                 window.__novawingDebug.setDifficultyMode('normal');
             }
-            if (window.__novawingDebug.setAssist) window.__novawingDebug.setAssist(false);
         });
         await session.page.keyboard.press('KeyP');
         await session.page.waitForTimeout(60);
@@ -477,7 +475,7 @@ async function caseDifficulty(browser, base, evidenceDir) {
         await waitForGame(session.page);
         await session.page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } });
         await session.page.keyboard.press('KeyP');
-        await session.page.waitForFunction(() => window.__novawingDebug.getAssist().paused);
+        await session.page.waitForFunction(() => window.__novawingDebug.getBotSnapshot().paused);
         await session.page.waitForTimeout(60);
         const persisted = await session.page.evaluate(() => ({
             mode: window.__novawingDebug.getDifficultyMode(),

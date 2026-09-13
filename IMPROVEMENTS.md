@@ -1,142 +1,91 @@
-# NovaWing Improvements
+# NovaWing improvements
 
-Living roadmap from the 2026-07 code review and follow-up work.
-Status: `done` · `in_progress` · `todo`
+Living engineering and product-ops backlog.
 
----
+**Current priority:** release polish in [docs/POLISH.md](docs/POLISH.md).
+That plan is the ship gate. Fun stretch ideas that must not block v1 live in
+[GAMEPLAY_IDEAS.md](GAMEPLAY_IDEAS.md).
 
-## Recently shipped (code review fixes)
-
-- [x] **I-frame ram exploit** — contacts during invulnerability no longer grant free kills/score
-- [x] **CORS lockdown** — API only echoes same-origin `Origin` (no `*`)
-- [x] **CF run rate-limit race** — insert-then-verify; over-limit runs deleted
-- [x] **Body size DoS** — early `Content-Length` reject + post-read byte check
-- [x] **Atomic leaderboard write (D1)** — mark run used + insert entry in one batch
-- [x] **Spoofable rate-limit key** — local server honors `X-Forwarded-For` only when `TRUST_PROXY=1`
-- [x] **`npm start`** script for local server
-- [x] **Leaderboard Slice A** — lock score/kills/accuracy at run complete
-- [x] **Campaign L1–L3** — OPEN SPACE, THE CANYON, SINGULARITY RUN (segmented finale)
+Status: `done` · `todo` · `later`
 
 ---
 
-## Active track: Engineering health *(current priority)*
+## Shipped
 
-Goal: keep the game shippable as `game.js` grows, without blocking content polish.
+- Campaign L1–L3 (OPEN SPACE, THE CANYON, SINGULARITY RUN)
+- Title, HUD, pause, continues, first-run hint, results + DOM pilot name,
+  share, local co-op, mobile touch dock
+- Difficulty: Space Cadet / Hotshot / Supernova (storage IDs `easy` /
+  `normal` / `hard`). Ranked = Hotshot
+- Leaderboard Slice A — lock score/kills/accuracy at run complete
+- Phaser 3.55.2 CDN pin **with SRI** (availability fallback still open)
+- I-frame ram exploit closed; CORS same-origin; run rate-limit and body-size
+  guards; atomic D1 leaderboard write
+- `npm start`, `npm run check` in GitHub Actions, `npm run verify` Playwright
+  harness
+- Asset catalog, level-flow, audio director, shared `run-rules.cjs`,
+  public-only `dist/` build
 
-### EH-1. CI / smoke — `in_progress`
+## Release blockers (see POLISH.md)
 
-- [x] `npm run check` syntax-gates core JS (includes `audio.js`)
-- [x] Run `npm run check` in GitHub Actions on PR / push (`.github/workflows/ci.yml`)
-- [ ] Optional Playwright smoke (`scripts/test-mobile.mjs` or short bot) on PR
-- [ ] Fail deploy if check fails (document: always `npm run check` before `npm run deploy`)
+Do these before more systems or module extraction.
 
-### EH-2. Modularize `game.js` — `in_progress`
+- [ ] Human Hotshot campaign clear (no `?level=`)
+- [ ] L3 vertical opener + black-hole preview readability
+- [ ] Hit-stop and REALITY SHEAR stinger
+- [ ] Favicon, description, OG tags, preload/error UI
+- [ ] Vendor Phaser (or CDN + local fallback)
+- [ ] Align `GAME_VERSION` with script `?v=` cache-bust
+- [ ] Playwright smoke on PR; `npm run check` before every `npm run deploy`
+- [ ] Production deploy + remote D1 migrations if needed
 
-`game.js` was ~7.9k lines / ~230 functions with many module-level `let`s. Prefer the existing **IIFE + global** pattern (`levels.js`) so build stays `cp` into `dist/` (no bundler required yet).
+## Engineering later
 
-**Extraction order (small, mergeable slices):**
+Not a v1 gate unless a bug forces it.
 
-| Order | Module | Approx. lines | Notes |
-|-------|--------|---------------|--------|
-| 1 | `audio.js` (`createSfx`) | ~400 | **done** — few deps; no scene state |
-| 2 | `net.js` | ~200 | run token, leaderboard fetch/submit |
-| 3 | `black-hole.js` | ~300 | forces, hazard rings, visuals API |
-| 4 | `boss.js` | ~600 | fight, volleys, drones, lasers, escape |
-| 5 | `segments.js` | ~400 | L3 advance/enter handlers |
-| 6 | `waves.js` | ~500 | pattern registry + spawners |
+### Modularize `game.js`
 
-Rules:
+`game.js` is ~10.6k lines. Prefer the existing IIFE + `window.NovaWing*`
+pattern (`levels.js`, `audio.js`) so build stays copy-into-`dist/`.
 
-- One module per PR when possible; keep `npm run check` + manual smoke green.
-- Do **not** freeze campaign length; keep `getTotalLevels()` live.
-- Shared mutable state either stays on a thin `game.js` runtime object or remains module `let`s with explicit `window.NovaWing*` APIs (same as levels).
-- Defer a bundler (esbuild) until module count makes script-tag order painful.
+| Order | Module | Notes |
+| --- | --- | --- |
+| 1 | `audio.js` | **done** |
+| 2 | `net.js` | run token, leaderboard fetch/submit |
+| 3 | `black-hole.js` | forces, hazard rings, visuals |
+| 4 | `boss.js` | fight, volleys, drones, lasers, escape |
+| 5 | `segments.js` | L3 advance/enter handlers |
+| 6 | `waves.js` | pattern registry + spawners |
 
-### EH-3. Pin Phaser + SRI — `todo`
+One module per change when possible. Do not freeze campaign length; keep
+`getTotalLevels()` live. Defer a bundler until script-tag order hurts.
 
-- [ ] Vendor Phaser into the repo / `dist` **or** pin CDN URL with subresource integrity
-- [ ] Avoid un-pinned third-party script supply-chain risk (version is pinned to 3.55.2 today)
+### Local server
 
-### EH-4. Local server robustness — `todo`
+- [ ] Persist run tokens so a restart mid-run does not drop completions
+- [ ] Document local vs Cloudflare behavior
+- [ ] `TRUST_PROXY=1` only when `server.js` sits behind a trusted proxy
 
-- [ ] Persist run tokens (file/SQLite) so restarts mid-run do not drop completions
-- [ ] Document local vs Cloudflare behavior differences
+### Leaderboard integrity
 
-### EH-5. Keep RL / bots on a side track — `in_progress` (process)
+Slice A is done. Slice B/C only if competitive abuse appears.
 
-- RL training (`rl/`, `scripts/rl/`) must not gate game releases.
-- Ship criteria for the game: playable L1–L3, leaderboard complete path, `npm run check` green.
-- **OBS v2** (`OBS_SIZE=176`): segment / orientation / black-hole features; re-record demos after bump.
-- **Speedrun loop**: curriculum gates (L2/L3 unlock on win rate), promote `bc-policy-best` only on faster clears, REINFORCE gated on policy wins.
-- **Playtest**: `npm run rl:playtest` scenario harness + death taxonomy (`playtest-latest.json`).
-- Details: `rl/README.md` (includes **why learning is slow** + next training fixes).
+- [ ] Periodic heartbeats; reject impossible progress jumps
+- [ ] Optional compact kill log to recompute score server-side
+- [ ] Per-name / per-IP submit limits; shadow-reject repeat junk
+- Client-side games cannot be fully cheat-proof without an authoritative
+  sim. Slice A closes the “mutate stats after complete” window.
 
-**Next RL session (when free CPU again):** expert-only BC until first L1 eval clear (`PPO=0`); oversample boss demos; early-stop loop on repeated 0% eval. PPO+GAE lives in `rl/train_rl.py` once policy wins exist.
+### RL / bots
 
-### EH-6. Deploy hygiene — `todo`
+Side track. Must not gate releases. Details: `rl/README.md`.
 
-- [ ] Commit outstanding review/hardening + L3 when ready
-- [ ] Deploy (`npm run deploy`) and confirm remote D1 migrations if needed
-- [ ] Set `TRUST_PROXY=1` only when local `server.js` is behind a trusted reverse proxy
-
----
-
-## Product / integrity backlog
-
-### 2. In-game pilot name UI
-
-- [ ] Replace `window.prompt` with an on-canvas / DOM name field on the result screen
-- [ ] Better mobile UX (no blocking dialog)
-- [ ] Keep localStorage name memory
-
-### 3. Leaderboard integrity (anti-cheat)
-
-#### Slice A — lock stats at run complete — **done**
-
-- [x] Design: PATCH `/api/run` locks score, kills, accuracy with the server time
-- [x] POST `/api/leaderboard` accepts only `name` + `runId` + `version`; stats come from the locked run
-- [x] Migration `0004_run_locked_stats.sql` + `schema.sql` + local server parity
-- [x] Client sends final stats on complete (after boss kill award)
-- [x] Tighter plausibility checks (score ceiling, kill-rate vs wall clock)
-- [x] Re-PATCH returns immutable locked stats (no rewrite)
-
-#### Slice B — stronger verification *(later)*
-
-- [ ] Periodic run heartbeats (phase, kills, score) during play
-- [ ] Reject completions that jump past impossible progress for elapsed time
-- [ ] Optional compact event log (kills by type) to recompute score server-side
-- [ ] Separate “verified” vs offline/local boards in the UI
-
-#### Slice C — structural limits *(later)*
-
-- [ ] Per-name / per-IP submit rate limits on leaderboard POST
-- [ ] Soft ban / shadow-reject for repeated implausible attempts
-- [ ] Auth or proof-of-work only if competitive abuse appears
-
-### 7. Gameplay / polish
-
-See **`GAMEPLAY_IDEAS.md`** for the full list. Short pointer:
-
-- [ ] Combo meter + boost grazing
-- [ ] Hit-stop / shake juice
-- [ ] L2 path rewards; L3 pacing / transition juice
-- [ ] In-game name UI (also listed above)
-
----
-
-## Suggested work order (engineering-health first)
-
-1. **CI** for `npm run check` (and keep it green)
-2. **Extract modules** in EH-2 order (`audio.js` first)
-3. **Phaser vendor/SRI**
-4. In-game pilot name UI (mobile post-run UX)
-5. Gameplay juice from `GAMEPLAY_IDEAS.md` when ready for fun pass
-6. Leaderboard Slice B only if competitive abuse appears
-
----
+Ship criteria for the game: playable L1–L3, leaderboard complete path,
+`npm run verify` green. Policy weights are not a ship criterion.
 
 ## Notes
 
-- Client-side games cannot be fully cheat-proof without authoritative simulation. Slice A removes the “mutate stats after complete” window and centralizes validation; it does not stop a modified client from lying once at complete time.
-- `GAME_VERSION` should bump when scoring rules change in a way that invalidates old comparisons.
-- Gameplay ideas live in `GAMEPLAY_IDEAS.md` so this file stays engineering/product-ops focused.
+- Bump `GAME_VERSION` when scoring rules change in a way that invalidates
+  old comparisons. Keep it in lockstep with the script `?v=` query.
+- Author new levels and recorded music via [docs/CONTENT_AUTHORING.md](docs/CONTENT_AUTHORING.md).
+- Difficulty knobs: [docs/DIFFICULTY_TUNING.md](docs/DIFFICULTY_TUNING.md).

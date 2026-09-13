@@ -15,8 +15,9 @@ test('difficulty mode aliases normalize to the three canonical ids', () => {
         assert.deepEqual(Levels.getDifficultyPreset(alias), Levels.getDifficultyPreset(expected), alias);
         assert.equal(Levels.normalizeDifficultyMode(alias.toUpperCase()), expected, alias);
     }
-    for (const value of ['', null, 'impossible', 'casual-plus']) {
+    for (const value of ['', null, 'impossible', 'casual-plus', 'assist']) {
         assert.equal(Levels.normalizeDifficultyMode(value), null, String(value));
+        assert.deepEqual(Levels.getDifficultyPreset(value), {}, String(value));
     }
 });
 

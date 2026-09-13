@@ -14,12 +14,11 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { appendPlaytestTimeScale } from './rl/chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
-const HAS_DISPLAY = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const HEADLESS = process.env.HEADLESS === '0' ? false
-    : (process.env.HEADLESS === '1' ? true : !HAS_DISPLAY);
+const HEADLESS = process.env.HEADLESS !== '0';
 // Full campaign (L1 + L2) can take ~3–4 minutes with boost; default wide enough.
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const LOG_MS = Number(process.env.LOG_MS || 2000);
@@ -1853,6 +1852,7 @@ async function runOnce(browser, trialIndex) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('trial', String(trialIndex));
+    appendPlaytestTimeScale(url);
     if (process.env.LEVEL) {
         url.searchParams.set('level', String(process.env.LEVEL));
     }

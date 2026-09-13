@@ -21,6 +21,29 @@ export function resolveChromePath() {
 }
 
 /**
+ * Headless unless HEADLESS=0. Headed Chromium steals desktop focus.
+ */
+export function defaultHeadless() {
+    return process.env.HEADLESS !== '0';
+}
+
+/**
+ * Bot/RL clock vs wall time. Humans stay at 1x. Override with TIMESCALE=1.
+ */
+export function defaultPlaytestTimeScale() {
+    const n = Number(process.env.TIMESCALE);
+    if (Number.isFinite(n) && n > 0) return Math.min(16, n);
+    return 8;
+}
+
+export function appendPlaytestTimeScale(url) {
+    if (!url.searchParams.has('timescale')) {
+        url.searchParams.set('timescale', String(defaultPlaytestTimeScale()));
+    }
+    return url;
+}
+
+/**
  * @returns {import('playwright').LaunchOptions}
  */
 export function defaultLaunchOptions(headless) {

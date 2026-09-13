@@ -12,8 +12,8 @@ The game loads in a browser, shows the NovaWing canvas, and a desktop player can
 ## How to get to it (user POV)
 
 - Open the local URL in a desktop browser (default `http://127.0.0.1:4000/`).
-- Click or tap the canvas once to unlock audio.
-- Hold Arrow Down / S to move.
+- Choose a flight mode and press Launch (click LAUNCH, Space, or Enter).
+- Hold Arrow Down / S to move. A first click also unlocks audio.
 
 ## Driving it with verify-novawing
 
@@ -29,4 +29,5 @@ Preconditions:
 
 - Phaser CDN must be reachable; a blocked `cdn.jsdelivr.net` fails boot, not the canvas CSS.
 - Touch devices auto-fire and show virtual sticks. Desktop move proof is keyboard only.
-- Clicking the canvas is required before some audio paths; movement still works without it.
+- The title overlay swallows movement keys (arrows cycle difficulty). `waitForGame` clicks the canvas so Launch is done before `desktop-move`.
+- Clicking the canvas unlocks audio. Movement after Launch still works without that click.

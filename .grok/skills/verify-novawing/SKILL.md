@@ -48,7 +48,7 @@ Default gate (after a gameplay change):
 npm run verify
 ```
 
-Cases: `boot`, `desktop-move`, `pause`, `difficulty`, `continues`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` / `VERIFY_L2_MS` default 90s, `VERIFY_L3_MS` default 180s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
+Cases: `boot`, `desktop-move`, `pause`, `difficulty`, `continues`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` default 120s, `VERIFY_L2_MS` default 150s, `VERIFY_L3_MS` default 240s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
 
 One mapped feature:
 
@@ -69,23 +69,24 @@ npm run verify:full
 Manual / heuristic bot (campaign, needs a server on `NOVAWING_URL` or :4000):
 
 ```bash
-HEADLESS=1 RECORD_VIDEO=0 DURATION_MS=90000 npm run bot
+RECORD_VIDEO=0 DURATION_MS=90000 npm run bot
 ```
 
 Named playtest scenarios (heuristic by default, `EXPERT=policy` for the RL weights):
 
 ```bash
-SCENARIO=l1-start,l2-canyon,l3-intro TRIALS=1 HEADLESS=1 npm run rl:playtest
-EXPERT=policy SCENARIO=l1-start TRIALS=1 HEADLESS=1 npm run rl:playtest
+SCENARIO=l1-start,l2-canyon,l3-intro TRIALS=1 npm run rl:playtest
+EXPERT=policy SCENARIO=l1-start TRIALS=1 npm run rl:playtest
 ```
 
 Stable handles:
 
 - Canvas: `#game-container canvas`
 - Debug: `window.__novawingDebug` (`ready`, `getBotSnapshot`, `getPlayerState`, `setBotInput`, `togglePause`, `getDifficultyMode`, `setSegment`)
-- Query: `?bot=1` (unranked, extra lives), `?level=1|2|3`, `?diff=easy|normal|hard`
+- Query: `?bot=1` (unranked, extra lives, 8× clock), `?level=1|2|3`, `?diff=easy|normal|hard`, `?timescale=` (bot clock; `TIMESCALE=1` keeps real time)
+- Chromium: headless unless `HEADLESS=0`. Headed windows steal desktop focus.
 
-User-path keys for pause/difficulty: `P` / `Esc` pause, `D` / arrows cycle difficulty, `A` assist. Do not use debug setters for those cases.
+User-path keys for pause/difficulty: `P` / `Esc` pause, `D` / arrows cycle difficulty. Do not use debug setters for those cases.
 
 `setSegment` is allowed only for the L3 jump entry in `features/level-3-singularity.md`. It is not a substitute for a campaign clear.
 

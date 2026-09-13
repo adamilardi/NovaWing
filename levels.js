@@ -53,8 +53,6 @@
  *        ?diff=easy|normal|hard (mid = normal) sets the mode for this session.
  *   6. URL overlay             — playtest knobs on top of the selected mode.
  *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4  (also unranked)
- *   7. Assist mode             — L3 continues after the flip. Unranked.
- *        Force with ?assist=1. Does not replace Easy/Normal/Hard combat.
  *
  * Put only the keys you want to change. Omitted keys inherit the layer above.
  *
@@ -228,13 +226,6 @@
             continues: 0
         }
     };
-    // Casual overlay: same knobs as easy, plus opener-soft interceptor aim.
-    // Ranked boards never see this — Assist sessions are leaderboard-ineligible.
-    DIFFICULTY_PRESETS.assist = Object.assign({}, DIFFICULTY_PRESETS.easy, {
-        softInterceptorAim: true,
-        interceptorAimScale: 0.55,
-        interceptorShotLead: 90
-    });
 
     function parseDifficultyBoolean(value) {
         if (typeof value === 'string') {

@@ -155,7 +155,7 @@ async function testDomTouchControls(page) {
     // Resume is a Phaser canvas pause-menu button; use a touch tap at its
     // game-space location rather than a keyboard shortcut.
     const canvas = await page.locator('#game-container canvas').boundingBox();
-    await page.locator('#game-container canvas').tap({ position: { x: canvas.width / 2, y: canvas.height * 334 / 600 } });
+    await page.locator('#game-container canvas').tap({ position: { x: canvas.width / 2, y: canvas.height * 292 / 600 } });
     await page.waitForTimeout(70);
     const resumed = await state();
     if (paused.touch.domDock && paused.touch.hasControls === false && pausedRotated.touch.hasControls === false && !paused.fire && resumed.touch.hasControls && !resumed.touch.touchMoveActive) pass('mobile dock pause/resume survives rotation');
@@ -445,14 +445,14 @@ async function testMobile(browser) {
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: pause.x, y: pause.y, id: 40 }] });
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(80);
-    const paused = await page.evaluate(() => ({ assist: __novawingDebug.getAssist(), touch: __novawingDebug.getTouchState() }));
-    // PAUSE overlay's actual RESUME button sits at game y=334.
-    const resume = await gameToClient(page, 400, 334);
+    const paused = await page.evaluate(() => ({ paused: __novawingDebug.getBotSnapshot().paused, touch: __novawingDebug.getTouchState() }));
+    // PAUSE overlay's actual RESUME button sits at game y=292.
+    const resume = await gameToClient(page, 400, 292);
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: resume.x, y: resume.y, id: 41 }] });
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(80);
-    const resumed = await page.evaluate(() => ({ assist: __novawingDebug.getAssist(), touch: __novawingDebug.getTouchState() }));
-    if (paused.assist.paused && !paused.touch.hasControls && !resumed.assist.paused && resumed.touch.hasControls) {
+    const resumed = await page.evaluate(() => ({ paused: __novawingDebug.getBotSnapshot().paused, touch: __novawingDebug.getTouchState() }));
+    if (paused.paused && !paused.touch.hasControls && !resumed.paused && resumed.touch.hasControls) {
         pass('mobile touch pause/resume');
     } else {
         fail('mobile touch pause/resume', JSON.stringify({ paused, resumed }));

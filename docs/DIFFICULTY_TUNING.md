@@ -1,11 +1,8 @@
-# Difficulty tuning — September 5, 2026
+# Difficulty tuning
 
-Requested: tune the three difficulty modes, give them fun names, use cheaper
-subagents for implementation and testing, and keep a note. Two GPT-5.6 Luna
-subagents handled tuning and regression coverage; the main agent integrated
-boss mechanics, menu presentation, and the URL selection fix.
-
-## Player experience
+Three modes. `levels.js` owns the values and display names; `game.js` applies
+them and presents the controls. Pause with P or Esc, then click the
+difficulty control or press D. The same names appear on the HUD and results.
 
 | Setting | Space Cadet | Hotshot | Supernova |
 | --- | --- | --- | --- |
@@ -14,57 +11,40 @@ boss mechanics, menu presentation, and the URL selection fix.
 | Enemy movement speed | 90% | 100% | 112% |
 | Enemy projectile speed | 78% | 100% | 112% |
 | Enemy firing delay | 135% | 100% | 78% |
-| Time between waves | 2.1–2.8 seconds | 1.65–2.3 seconds | 1.25–1.7 seconds |
-| Protection after damage | 1.4 seconds | 0.9 seconds | 0.7 seconds |
+| Time between waves | 2.1–2.8 s | 1.65–2.3 s | 1.25–1.7 s |
+| Protection after damage | 1.4 s | 0.9 s | 0.7 s |
 | Boost restored per ordinary kill | 24 | 16 | 10 |
 | Boss health | 80% | Authored health | Same as Hotshot |
 | Boss projectile speed | 80% | 100% | 112% |
 | Boss attack delay | 125% | 100% | 82% |
 | Continues after last ship | 3 | 1 (unranks the run) | None |
 
-Supernova's old health multiplier rounded a 2-HP enemy up to 3 HP. Removing that
-multiplier keeps weapons satisfying while speed, firing cadence, and spawn density
-supply the challenge. Space Cadet now slows enemy and boss projectiles as well as
-spacing attacks out. Its tracking and boost drain are gentler too. Hotshot's
-level-two interceptor aim now bridges the opener and final level rather than
-jumping immediately to the final-level aim strength.
+Supernova does not multiply enemy HP (the old multiplier rounded a 2-HP
+enemy up to 3). Speed, firing cadence, and spawn density supply the
+challenge. Space Cadet also slows enemy and boss projectiles and spaces
+attacks out. Tracking and boost drain are gentler. Hotshot’s level-two
+interceptor aim bridges the opener and the finale.
 
-Boss speed applies to both velocity components, preserving trajectories in
-horizontal and vertical encounters. Boss health is scaled once at spawn, including
-segmented intro/final encounters. Existing enemies keep their spawn-time stats
-when modes change; recovery settings and subsequent spawns/attacks use the newly
-selected mode. Authored corridor geometry and black-hole hazards remain part of
-the route challenge.
+Boss speed applies to both velocity components, so trajectories stay
+honest in horizontal and vertical fights. Boss health is scaled once at
+spawn, including segmented intro/final encounters. Existing enemies keep
+spawn-time stats when the mode changes; recovery settings and later
+spawns/attacks use the new mode. Authored corridors and black-hole hazards
+stay part of the route.
 
-## Compatibility and controls
+## Compatibility
 
-Pause with P or Esc, then click the difficulty control or press D to cycle modes.
-The same names appear on the HUD and results screen. Pause descriptions explain
-the three experiences. Existing `easy`, `normal`, and `hard` storage IDs and URLs
-remain supported; public-name URL aliases are supported too. Hotshot is the
-standard leaderboard mode; existing Assist/debug eligibility rules still apply.
+Storage IDs and URLs remain `easy` / `normal` / `hard`. Public-name URL
+aliases are supported. Hotshot is the standard leaderboard mode. Debug
+query flags still unrank a run.
 
-A recognized URL mode now chooses the initial human mode without permanently
-overriding later menu choices. Explicit numeric playtest overrides still apply.
-Bot sessions retain their existing query-preset behavior.
+A recognized URL mode chooses the initial human mode without permanently
+overriding later menu choices. Explicit numeric playtest overlays still
+apply and unrank. Bot sessions keep their query-preset behavior.
 
-`levels.js` owns the tuning values and display metadata. `game.js` applies the
-settings and presents the controls. No deployment or commit is part of this work.
+How to overlay knobs on a level or segment: see the tuning block at the top
+of `levels.js` and [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md).
 
-## Validation
-
-- `npm test`: all six test files pass, including aliases, preset lookups,
-  ordered pressure, integer HP, and explicit query overrides.
-- `npm run check` and `git diff --check`: pass.
-- `npm run build`: refreshed the local playable build.
-- Browser difficulty case: pass. Evidence:
-  `.verify-runs/2026-09-05T22-57-55-277Z/report.json` and `difficulty.png`.
-  Verified visible labels, keyboard cycling, persistence after reload, human URL
-  mode switching with a numeric override, and the Supernova URL alias.
-- Real encounter/volley code probes: horizontal boss HP 173 / 216 / 216;
-  approach-axis missile speeds 304 / 380 / 425.6 for Space Cadet / Hotshot /
-  Supernova. Vertical encounter HP and projectile ordering also pass. These
-  probes invoke the firing path directly to avoid entrance-animation timing.
-
-Human play feedback is still useful for judging the overall feel; regression
-checks do not establish campaign completion rates.
+Human play feedback still judges overall feel. Regression checks do not
+establish campaign completion rates. Release playtest expectations:
+[POLISH.md](POLISH.md).

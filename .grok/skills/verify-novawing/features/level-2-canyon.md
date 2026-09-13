@@ -19,7 +19,7 @@ Preconditions:
 - Isolated verify server or live `NOVAWING_URL`.
 - `?bot=1&level=2`.
 
-- **Play.** Run `node scripts/verify-novawing.mjs --case l2-bot` (included in `npm run verify`). The heuristic bot flies THE CANYON until win, death, or 90s (`VERIFY_L2_MS`). Walls must appear. Progress or score must move. Screenshot `.verify-runs/<id>/l2-bot.png`. Death is allowed.
+- **Play.** Run `node scripts/verify-novawing.mjs --case l2-bot` (included in `npm run verify`). The heuristic bot flies THE CANYON until win, death, or the L2 cap (`VERIFY_L2_MS`, default 150s). Walls must appear. Progress or score must move. Screenshot `.verify-runs/<id>/l2-bot.png`. Death is allowed.
 
 ## Gotchas
 
