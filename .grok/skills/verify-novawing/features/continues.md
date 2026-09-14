@@ -5,8 +5,8 @@ On last-life death, Space Cadet and Hotshot offer an arcade continue. Supernova 
 ## Sub-features
 
 - `continue-prompt` shows CONTINUE? with remaining stock on Space Cadet and Hotshot.
-- `continue-accept` Fire / Enter / C / tap keeps flying with restored lives.
-- `continue-decline` Esc or timeout ends the run.
+- `continue-accept` Fire / Enter / C / A / tap keeps flying with restored lives.
+- `continue-decline` Esc, B, or timeout ends the run.
 - `continue-supernova` last-life death on Supernova is game over.
 
 ## How to get to it (user POV)
@@ -26,4 +26,5 @@ Preconditions:
 
 - `?diff=` itself unranks. This case proves the overlay, not a ranked Hotshot continue.
 - Bot sessions (`?bot=1`) skip the continue overlay.
-- Local co-op has no arcade continue. A downed partner does not open this prompt.
+- Local co-op does not open this prompt while a partner is still alive (`PARTNER CONTINUES`). If both ships are out of lives, the overlay can still appear.
+- The default `--case continues` proves Space Cadet stock and Supernova none. Hotshot's single continue is authored, not that case.

@@ -7,7 +7,7 @@
  *   npm run verify
  *   npm run verify:doctor
  *   npm run verify:full
- *   node scripts/verify-novawing.mjs --case boot,pause
+ *   node scripts/verify-novawing.mjs --case boot,controller,pause
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -210,6 +210,59 @@ async function caseDesktopMove(browser, base, evidenceDir) {
         return result('desktop-move', ok, ok
             ? `y ${before.y.toFixed(1)} -> ${during.y.toFixed(1)} vy=${during.vy.toFixed(1)}`
             : JSON.stringify({ before, during, pageErrors: session.pageErrors }), { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
+async function caseController(browser, base, evidenceDir) {
+    const session = await openGame(browser, base);
+    try {
+        const before = await session.page.evaluate(() => {
+            window.__novawingDebug.setGamepad(0, { connected: true });
+            return window.__novawingDebug.getPlayerState();
+        });
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { axes: [0, 1] }));
+        await session.page.waitForTimeout(280);
+        const during = await session.page.evaluate(() => ({
+            player: window.__novawingDebug.getPlayerState(),
+            pad: window.__novawingDebug.getGamepadState()
+        }));
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { axes: [0, 0] }));
+
+        await session.page.evaluate(() => {
+            window.__novawingDebug.setGamepad(0, { buttons: { 9: 1 } });
+            window.__novawingDebug.setGamepad(0, { buttons: { 9: 0 } });
+        });
+        const paused = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
+        await session.page.evaluate(() => {
+            window.__novawingDebug.setGamepad(0, { buttons: { 9: 1 } });
+            window.__novawingDebug.setGamepad(0, { buttons: { 9: 0 } });
+        });
+        const resumed = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
+
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { buttons: { 7: 1 } }));
+        const firing = await session.page.evaluate(() => window.__novawingDebug.isFireHeld());
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { buttons: { 7: 0, 6: 1 } }));
+        const boosting = await session.page.evaluate(() => window.__novawingDebug.isBoostHeld());
+        await session.page.evaluate(() => window.__novawingDebug.clearGamepads());
+
+        const shot = path.join(evidenceDir, 'controller.png');
+        await session.page.screenshot({ path: shot });
+        const moved = before && during.player && (during.player.vy > 20 || during.player.y > before.y + 2);
+        const ok = moved && paused === true && resumed === false && firing && boosting &&
+            session.pageErrors.length === 0;
+        return result('controller', ok, ok
+            ? `y ${before.y.toFixed(1)} -> ${during.player.y.toFixed(1)} vy=${during.player.vy.toFixed(1)} pause/fire/boost`
+            : JSON.stringify({
+                before,
+                during,
+                paused,
+                resumed,
+                firing,
+                boosting,
+                pageErrors: session.pageErrors
+            }), { screenshot: shot });
     } finally {
         await session.context.close();
     }
@@ -885,6 +938,7 @@ const CASES = {
     performance: casePerformance,
     boot: caseBoot,
     'desktop-move': caseDesktopMove,
+    controller: caseController,
     'local-coop': caseLocalCoop,
     'coop-mode-picker': caseCoopModePicker,
     'coop-level-scenarios': caseCoopLevelScenarios,
@@ -904,12 +958,12 @@ function selectedCases() {
     if (WANT_DOCTOR) return ['boot'];
     if (WANT_FULL) {
         return [
-            'boot', 'desktop-move', 'pause', 'difficulty', 'continues',
+            'boot', 'desktop-move', 'controller', 'pause', 'difficulty', 'continues',
             'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
         ];
     }
     return [
-        'boot', 'desktop-move', 'pause', 'difficulty', 'continues',
+        'boot', 'desktop-move', 'controller', 'pause', 'difficulty', 'continues',
         'l1-bot', 'l2-bot', 'l3-bot'
     ];
 }

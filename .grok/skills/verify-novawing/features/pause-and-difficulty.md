@@ -11,7 +11,7 @@ Pause freezes the ship. Space Cadet / Hotshot / Supernova change combat knobs fr
 
 ## How to get to it (user POV)
 
-- Press `P` or `Esc`, or tap `II`.
+- Press `P`, `Esc`, or Start, or tap `II`.
 - Click the mode button or press `D` / Left / Right.
 - Resume with `P`, `Esc`, Enter, or Resume.
 

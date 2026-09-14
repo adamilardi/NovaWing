@@ -7,7 +7,8 @@ This directory is the maintained source for verifying player-facing NovaWing beh
 - Launch with `node scripts/verify-novawing.mjs` so the run owns a disposable port, unless `VERIFY_URL` / `NOVAWING_URL` is set.
 - Require `#game-container canvas` and `window.__novawingDebug.ready() === true`.
 - Zero `pageerror` events.
-- `?bot=1` sessions are unranked and must not write the public leaderboard.
+- `?bot=1` sessions are unranked, extra lives, and run an 8× playtest clock (`TIMESCALE=1` for realtime).
+- Chromium is headless unless `HEADLESS=0`.
 - Never drive an instance this run did not start, except an explicit reused URL.
 
 ## Driving conventions
@@ -29,7 +30,7 @@ This directory is the maintained source for verifying player-facing NovaWing beh
 
 ## Features
 
-- [Boot and controls](./boot-and-controls.md) covers load, canvas, desktop move.
+- [Boot and controls](./boot-and-controls.md) covers load, canvas, desktop move, and Standard Gamepad.
 - [Pause and difficulty](./pause-and-difficulty.md) covers pause freeze and Space Cadet / Hotshot / Supernova.
 - [Continues](./continues.md) covers last-life arcade continues on Space Cadet and Hotshot, and none on Supernova.
 - [Level 1 open space](./level-1-open-space.md) covers the heuristic bot playing OPEN SPACE.

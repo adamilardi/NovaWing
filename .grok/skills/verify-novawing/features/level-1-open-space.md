@@ -27,4 +27,5 @@ Preconditions:
 
 - Bot death is not a syntax bug. Fail on throw, freeze, or zero progress.
 - `?bot=1` extra lives change balance. Do not treat bot score as a ranked run.
+- `?bot=1` also runs the 8× playtest clock. Snapshot `timeScale` is the multiplier. `TIMESCALE=1` keeps realtime.
 - The default gate plays until death, win, or the L1 cap. It does not require a boss kill.

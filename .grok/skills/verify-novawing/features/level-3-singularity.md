@@ -28,3 +28,4 @@ Preconditions:
 - Intro boss is an escape, not a kill. Overkill still calls escape.
 - After the flip the camera stays pinned. Vertical combat is incoming traffic on +Y, not a following camera.
 - Black-hole swallow is a play death class, not a boot failure.
+- `?bot=1` runs the 8× playtest clock. Wall-clock caps still apply (`VERIFY_L3_MS`).

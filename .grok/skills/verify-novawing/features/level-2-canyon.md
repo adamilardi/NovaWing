@@ -25,3 +25,4 @@ Preconditions:
 
 - Debug `?level=2` skips the L1 loadout. Weapon 1 at canyon start is expected.
 - Debug `?level=2` is how the default gate reaches the canyon without a L1 clear.
+- `?bot=1` runs the 8× playtest clock. Walls must still appear.

@@ -63,6 +63,21 @@ export function installInPagePilot() {
         return snap && (snap.scrollMode === 'vertical' || snap.combatOrientation === 'up');
     }
 
+    function clockScale(snap) {
+        const n = Number(snap && snap.timeScale);
+        return Number.isFinite(n) && n > 0 ? n : 1;
+    }
+
+    function simVel(v, snap) {
+        return (Number(v) || 0) * clockScale(snap);
+    }
+
+    function timeToHit(dist, vel, snap) {
+        const v = simVel(vel, snap);
+        if (!v) return Infinity;
+        return dist / v;
+    }
+
     function worldHeight(snap) {
         return (snap.world && snap.world.height) || 600;
     }
@@ -146,15 +161,16 @@ export function installInPagePilot() {
         };
     }
 
-    function timeToCollision(px, py, pw, ph, threat, horizon) {
+    function timeToCollision(px, py, pw, ph, threat, horizon, snap) {
         horizon = horizon == null ? 2.6 : horizon;
         const hs = halfSize(threat);
         const needX = pw + hs.hw + 8;
         const needY = ph + hs.hh + 10;
         const dx0 = threat.x - px;
         const dy0 = threat.y - py;
-        const vx = threat.vx || 0;
-        const vy = threat.vy || 0;
+        const scale = clockScale(snap);
+        const vx = (threat.vx || 0) * scale;
+        const vy = (threat.vy || 0) * scale;
 
         if (Math.abs(dx0) <= needX && Math.abs(dy0) <= needY) return 0;
 
@@ -229,6 +245,7 @@ export function installInPagePilot() {
             const w = walls[i];
             out.push(Object.assign({}, w, {
                 kind: 'wall',
+                vx: w.vx || -128,
                 w: (w.w || 96) + 14,
                 h: (w.h || 40) + 12
             }));
@@ -305,7 +322,7 @@ export function installInPagePilot() {
                 expanded.h = (t.h || 40) + 16;
             }
 
-            const ttc = timeToCollision(x, y, pw, ph, expanded, 2.6);
+            const ttc = timeToCollision(x, y, pw, ph, expanded, 2.6, snap);
             if (ttc < Infinity) {
                 minTtc = Math.min(minTtc, ttc);
                 if (ttc < 0.07) score += 1600;
@@ -641,16 +658,17 @@ export function installInPagePilot() {
                 expanded.w = (t.w || 96) + 12;
                 expanded.h = (t.h || 40) + 14;
             }
-            const ttc = timeToCollision(p.x, p.y, pw, ph, expanded, 2.4);
+            const ttc = timeToCollision(p.x, p.y, pw, ph, expanded, 2.4, snap);
             if (ttc < minTtc) {
                 minTtc = ttc;
                 kind = t.kind;
                 if (t.kind === 'laser' || t.kind === 'bullet' || t.kind === 'enemy' || t.kind === 'wall') {
+                    const scale = clockScale(snap);
                     if (vertical) {
-                        const predX = t.x + (t.vx || 0) * Math.min(ttc, 0.35);
+                        const predX = t.x + (t.vx || 0) * scale * Math.min(ttc, 0.35);
                         dodgeDir = predX >= p.x ? -1 : 1;
                     } else {
-                        const predY = t.y + (t.vy || 0) * Math.min(ttc, 0.35);
+                        const predY = t.y + (t.vy || 0) * scale * Math.min(ttc, 0.35);
                         dodgeDir = predY >= p.y ? -1 : 1;
                     }
                 }
@@ -681,15 +699,15 @@ export function installInPagePilot() {
             }
             if (vertical) {
                 const vy = b.vy || 0;
-                const fromAbove = b.y < p.y - 8 && vy > 16;
-                const fromBelow = b.y > p.y + 8 && vy < -12;
+                const fromAbove = b.y < p.y - 8 && vy > 8;
+                const fromBelow = b.y > p.y + 8 && vy < -8;
                 if (!fromAbove && !fromBelow) continue;
-                if (fromAbove && b.y < p.y - 560) continue;
+                if (fromAbove && b.y < p.y - 640) continue;
                 if (fromBelow && b.y > p.y + 320) continue;
-                const tHit = (p.y - b.y) / vy;
-                if (tHit < 0 || tHit > 0.95) continue;
-                const predX = b.x + (b.vx || 0) * tHit;
-                if (Math.abs(predX - p.x) < 52 && tHit < minTtc) {
+                const tHit = timeToHit(p.y - b.y, vy, snap);
+                if (tHit < 0 || tHit > 1.35) continue;
+                const predX = b.x + simVel(b.vx, snap) * tHit;
+                if (Math.abs(predX - p.x) < 64 && tHit < minTtc) {
                     minTtc = tHit;
                     dodgeDir = predX >= p.x ? -1 : 1;
                     kind = 'bullet';
@@ -701,13 +719,28 @@ export function installInPagePilot() {
             // Phase-1 spawn is ~403px out (tHit≈1.06); 0.95 dropped the opening
             // frame of each volley so ttc/pressured lagged the gap finder.
             if (b.x < p.x - 30 || b.x > p.x + 640) continue;
-            const tHit = (b.x - p.x) / -vx;
+            const tHit = timeToHit(b.x - p.x, -vx, snap);
             if (tHit < 0 || tHit > 1.35) continue;
-            const predY = b.y + (b.vy || 0) * tHit;
+            const predY = b.y + simVel(b.vy, snap) * tHit;
             if (Math.abs(predY - p.y) < 56 && tHit < minTtc) {
                 minTtc = tHit;
                 dodgeDir = predY >= p.y ? -1 : 1;
                 kind = 'bullet';
+            }
+        }
+
+        if (vertical) {
+            const mines = snap.obstacles || [];
+            for (let i = 0; i < mines.length; i++) {
+                const o = mines[i];
+                if (Math.abs((o.x || 0) - p.x) > 52) continue;
+                if (o.y > p.y + 40 || o.y < p.y - 220) continue;
+                const tMine = o.y < p.y ? Math.max(0.04, (p.y - o.y) / 180) : 0.08;
+                if (tMine < minTtc) {
+                    minTtc = tMine;
+                    dodgeDir = (o.x || 0) >= p.x ? -1 : 1;
+                    kind = 'obstacle';
+                }
             }
         }
 
@@ -730,7 +763,8 @@ export function installInPagePilot() {
         safeY: 300,
         strafeSign: 1,
         laneHoldX: 400,
-        laneHoldUntil: 0
+        laneHoldUntil: 0,
+        wellPocket: 0
     };
 
     /**
@@ -758,9 +792,9 @@ export function installInPagePilot() {
             const vx = b.vx || -380;
             if (vx >= -10) continue;
             if (b.x < p.x - 40 || b.x > p.x + 640) continue;
-            const tHit = (b.x - p.x) / -vx;
+            const tHit = timeToHit(b.x - p.x, -vx, snap);
             if (tHit < 0 || tHit > 1.45) continue;
-            impacts.push({ predY: b.y + (b.vy || 0) * tHit, tHit: tHit });
+            impacts.push({ predY: b.y + simVel(b.vy, snap) * tHit, tHit: tHit });
         }
         let aimY = 0;
         for (let i = 0; i < impacts.length; i++) aimY += impacts[i].predY;
@@ -802,9 +836,9 @@ export function installInPagePilot() {
                 const vx = b.vx || -380;
                 if (vx >= -10) continue;
                 if (b.x < p.x - 40 || b.x > p.x + 640) continue;
-                const tHit = (b.x - p.x) / -vx;
+                const tHit = timeToHit(b.x - p.x, -vx, snap);
                 if (tHit < 0 || tHit > 1.45) continue;
-                const predY = b.y + (b.vy || 0) * tHit;
+                const predY = b.y + simVel(b.vy, snap) * tHit;
                 const miss = Math.abs(predY - y);
                 if (miss < 56) {
                     const urgency = 1 / (0.08 + tHit);
@@ -860,7 +894,7 @@ export function installInPagePilot() {
         const p = snap.player;
         if (!b || !p) return 400;
         const bh = blackHoleInfo(snap);
-        const tShot = clamp((p.y - b.y) / 690, 0.1, 0.85);
+        const tShot = clamp(timeToHit(p.y - b.y, 690, snap), 0.1, 0.85);
         const omega = (b.phase >= 3) ? 0.75 : 0.55;
         const lead = -omega * (b.y - bh.y) * tShot;
         return clamp(b.x + lead, 90, 710);
@@ -891,7 +925,8 @@ export function installInPagePilot() {
             const x = clamp(samples[si], bounds.minX, bounds.maxX);
             let score = 0;
             if (snap.boss && !bh.active) score -= Math.abs(x - snap.boss.x) * 0.15;
-            if (leadX != null) score -= Math.abs(x - leadX) * 0.28;
+            if (leadX != null) score -= Math.abs(x - leadX) * 0.08;
+            if (p.y >= 530 && Math.abs(x - 400) < 80) score -= (80 - Math.abs(x - 400)) * 3.4;
             score -= Math.abs(x - p.x) * 0.05;
             score -= Math.abs(x - preferX) * 0.12;
 
@@ -926,9 +961,9 @@ export function installInPagePilot() {
                 const vy = b.vy || 380;
                 if (vy <= 20) continue;
                 if (b.y > p.y + 30 || b.y < p.y - 560) continue;
-                const tHit = (p.y - b.y) / vy;
+                const tHit = timeToHit(p.y - b.y, vy, snap);
                 if (tHit < 0 || tHit > 1.15) continue;
-                const predX = b.x + (b.vx || 0) * tHit;
+                const predX = b.x + simVel(b.vx, snap) * tHit;
                 const miss = Math.abs(predX - x);
                 if (miss < 52) {
                     const urgency = 1 / (0.08 + tHit);
@@ -943,9 +978,9 @@ export function installInPagePilot() {
                 const e = enemies[i];
                 if (e.y > p.y + 16) continue;
                 const evy = e.vy || 0;
-                const tHit = evy > 16 ? (p.y - e.y) / evy : 0.55;
+                const tHit = evy > 16 ? timeToHit(p.y - e.y, evy, snap) : 0.55;
                 if (tHit < 0 || tHit > 1.3) continue;
-                const predX = e.x + (e.vx || 0) * Math.min(tHit, 0.55);
+                const predX = e.x + simVel(e.vx, snap) * Math.min(tHit, 0.55);
                 const miss = Math.abs(predX - x);
                 if (miss < 44) {
                     score -= (44 - miss) * (e.type === 'interceptor' ? 2.4 : 1.5);
@@ -1012,9 +1047,9 @@ export function installInPagePilot() {
                 const fromAbove = vy > 12 && b.y < p.y + 20 && b.y > p.y - 640;
                 const fromBelow = vy < -12 && b.y > p.y - 20 && b.y < p.y + 300;
                 if (!fromAbove && !fromBelow) continue;
-                const tHit = (p.y - b.y) / vy;
+                const tHit = timeToHit(p.y - b.y, vy, snap);
                 if (tHit < 0 || tHit > 1.2) continue;
-                const predX = b.x + (b.vx || 0) * tHit;
+                const predX = b.x + simVel(b.vx, snap) * tHit;
                 const miss = Math.abs(predX - x);
                 if (miss < 44) score -= (44 - miss) * (1 / (0.08 + tHit)) * 1.8;
             }
@@ -1025,9 +1060,9 @@ export function installInPagePilot() {
                 const closingUp = e.y > p.y + 10 && evy < -6;
                 let predX = e.x || 0;
                 if (closingDown && evy > 10) {
-                    const tHit = (p.y - e.y) / evy;
+                    const tHit = timeToHit(p.y - e.y, evy, snap);
                     if (tHit > 0 && tHit < 1.3) {
-                        predX = e.x + (e.vx || 0) * Math.min(tHit, 0.7);
+                        predX = e.x + simVel(e.vx, snap) * Math.min(tHit, 0.7);
                         // Homing interceptors start with vx≈0; pincer darts already
                         // carry convergeVx (±40). Extra lead walked us into the arms.
                         if ((e.type === 'interceptor' || e.type === 'dart') &&
@@ -1100,6 +1135,8 @@ export function installInPagePilot() {
             }
             const edge = Math.min(x - bounds.minX, bounds.maxX - x);
             if (edge < 40) score -= (40 - edge) * 0.9;
+            if (x < 190) score -= (190 - x) * 2.4;
+            if (x > 610) score -= (x - 610) * 2.4;
             if (score > bestScore) {
                 bestScore = score;
                 bestX = x;
@@ -1138,7 +1175,8 @@ export function installInPagePilot() {
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const ttc = Math.min(target.minTtc, here.ttc);
-        const now = snap.time || performance.now();
+        const now = snap.time || 0;
+        const wallNow = performance.now();
         const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil;
         const lowLives = (snap.lives || 0) <= 1 && !snap.hasShield;
         const bounds = playBounds(snap);
@@ -1159,8 +1197,9 @@ export function installInPagePilot() {
                 // Flip parks at (400,460) with ~800ms i-frames. x===400 used to
                 // pick 510 (WAVE_LANE 505 / V-wing 520) and boost into the opening.
                 const spawnCol = Math.abs(p.x - 400) < 90;
+                const gauntletEarly = (snap.levelProgressMs || 0) < 4000;
                 let huntX = p.x < 400 ? 300 : 475;
-                if (spawnCol) huntX = 300;
+                if (spawnCol || gauntletEarly) huntX = 300;
                 // Shield first (gauntlet is a blender), then weapon/repair.
                 // Pickups drop at 70px/s from y=-50; hunting at 560px parks us
                 // on 320/480 for ~7s under dive lanes. Shield is a life — start
@@ -1185,6 +1224,7 @@ export function installInPagePilot() {
                     }
                 }
                 let hunting = false;
+                if (gauntletEarly && huntOrder.length) huntOrder.length = 0;
                 if (huntOrder.length) {
                     huntX = huntOrder[0];
                     const obsB = snap.obstacles || [];
@@ -1219,6 +1259,10 @@ export function installInPagePilot() {
                         break;
                     }
                 }
+                if ((snap.lives || 0) <= 2 && !snap.hasShield) {
+                    hunting = false;
+                    huntX = p.x < 400 ? 300 : 500;
+                }
                 if (risersOut && (Math.abs(huntX - 200) < 54 || Math.abs(huntX - 400) < 54 ||
                         Math.abs(huntX - 600) < 54)) {
                     huntX = huntX < 400 ? 300 : 475;
@@ -1245,9 +1289,9 @@ export function installInPagePilot() {
                         floorThreat = true;
                     }
                     if (e.y < p.y - 12 && evy > 8) {
-                        const tHit = (p.y - e.y) / evy;
+                        const tHit = timeToHit(p.y - e.y, evy, snap);
                         if (tHit > 0 && tHit < 1.25) {
-                            const predX = (e.x || 0) + (e.vx || 0) * Math.min(tHit, 0.5);
+                            const predX = (e.x || 0) + simVel(e.vx, snap) * Math.min(tHit, 0.5);
                             if (dxe < 50 || Math.abs(predX - p.x) < 54) {
                                 diveCol = true;
                                 holdHot = true;
@@ -1264,9 +1308,9 @@ export function installInPagePilot() {
                     }
                     const vy = b.vy || 0;
                     if (vy <= 16 || b.y > p.y - 8) continue;
-                    const tHit = (p.y - b.y) / vy;
+                    const tHit = timeToHit(p.y - b.y, vy, snap);
                     if (tHit < 0 || tHit > 0.85) continue;
-                    const predX = (b.x || 0) + (b.vx || 0) * tHit;
+                    const predX = (b.x || 0) + simVel(b.vx, snap) * tHit;
                     if (Math.abs(predX - p.x) < 52) holdHot = true;
                 }
                 const obs = snap.obstacles || [];
@@ -1294,7 +1338,7 @@ export function installInPagePilot() {
                         if (ex <= glo || ex >= ghi) continue;
                         const evy = e.vy || 0;
                         if (e.y < p.y - 8 && evy > 8) {
-                            const tHit = (p.y - e.y) / evy;
+                            const tHit = timeToHit(p.y - e.y, evy, snap);
                             if (tHit > 0 && tHit < 0.5) gateHot = true;
                         }
                     }
@@ -1315,14 +1359,14 @@ export function installInPagePilot() {
                 const atHunt = hunting && Math.abs(p.x - huntX) < 44;
                 const skipHold = (hunting && !atHunt) || crossHunt;
                 const heldIsDive = diveCol && Math.abs(p.x - state.laneHoldX) < 40;
-                if (!skipHold && now < state.laneHoldUntil &&
+                if (!skipHold && wallNow < state.laneHoldUntil &&
                         Math.abs(state.laneHoldX - p.x) < 150) {
                     if (!heldIsDive && Math.abs(safeX - state.laneHoldX) < 100) {
                         safeX = state.laneHoldX;
                     }
                 } else {
                     state.laneHoldX = safeX;
-                    state.laneHoldUntil = now + (heldIsDive ? 70 : 280);
+                    state.laneHoldUntil = wallNow + (heldIsDive ? 70 : 280);
                 }
                 waveEscape = holdHot || crossHunt;
                 const errX = safeX - p.x;
@@ -1335,6 +1379,14 @@ export function installInPagePilot() {
                     if (p.x < 160) ax = 1;
                     waveEscape = true;
                 }
+                if (here.bullets >= 8 && ax === 0) {
+                    ax = p.x >= 400 ? -1 : 1;
+                    if (p.x > 580) ax = -1;
+                    if (p.x < 220) ax = 1;
+                    waveEscape = true;
+                }
+                if (p.x < 170) ax = 1;
+                if (p.x > 630) ax = -1;
                 // Climb only for risers in our column. Sitting at 418 walked
                 // into dive traffic; home stays the aft pocket (y≈460).
                 if (riserBelow && p.y > 405 && !diveCol) ay = -1;
@@ -1358,12 +1410,19 @@ export function installInPagePilot() {
                 // mines into the floor pocket; 400 is the well column.
                 const preview = snap.blackHole && snap.blackHole.preview;
                 if (preview) {
-                    if (Math.abs(p.x - 400) < 70) {
+                    hunting = false;
+                    if (!state.wellPocket) state.wellPocket = p.x >= 400 ? 530 : 270;
+                    if (p.x < 210) state.wellPocket = 530;
+                    if (p.x > 590) state.wellPocket = 270;
+                    const pocketErr = state.wellPocket - p.x;
+                    if (Math.abs(pocketErr) > 14) ax = pocketErr > 0 ? 1 : -1;
+                    else ax = 0;
+                    if (Math.abs(p.x - 400) < 90) {
                         ax = p.x >= 400 ? 1 : -1;
-                        waveEscape = true;
                     }
-                    if (p.y > VERT_HOME_Y + 8) ay = -1;
-                    if (ay > 0 && p.y >= VERT_HOME_Y - 8) ay = 0;
+                    if (p.y < 530) ay = 1;
+                    else ay = 0;
+                    waveEscape = true;
                 }
                 // Panic-dodge only when impact is imminent. dodgeDir at ttc<0.32
                 // walked into sibling dive columns and canceled the gap finder.
@@ -1373,9 +1432,9 @@ export function installInPagePilot() {
                     if (ax === 0 || (ax > 0) === (here.dodgeDir > 0)) ax = here.dodgeDir;
                 }
             } else if ((here.kind === 'laser' && here.ttc < 0.6) || (here.ttc < 0.32 && here.dodgeDir !== 0)) {
-                if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
+                if (wallNow > state.holdDodgeUntil || state.holdDodgeDir === 0) {
                     state.holdDodgeDir = here.dodgeDir;
-                    state.holdDodgeUntil = now + (here.kind === 'laser' ? 280 : 180);
+                    state.holdDodgeUntil = wallNow + (here.kind === 'laser' ? 280 : 180);
                 }
                 ax = state.holdDodgeDir;
                 if (here.ttc < 0.34 && p.y < 520) ay = 1;
@@ -1385,9 +1444,9 @@ export function installInPagePilot() {
             const bhWave = snap.blackHole || {};
             if ((bhWave.preview || bhWave.active) && p.y < 450) ay = 1;
         } else if (here.ttc < 0.5 && here.dodgeDir !== 0) {
-            if (now > state.holdDodgeUntil || state.holdDodgeDir === 0) {
+            if (wallNow > state.holdDodgeUntil || state.holdDodgeDir === 0) {
                 state.holdDodgeDir = here.dodgeDir;
-                state.holdDodgeUntil = now + (here.kind === 'laser' ? 280 : 260);
+                state.holdDodgeUntil = wallNow + (here.kind === 'laser' ? 280 : 260);
             }
             ay = state.holdDodgeDir;
             if (here.ttc < 0.3 && p.x > 72) ax = -1;
@@ -1409,20 +1468,22 @@ export function installInPagePilot() {
         if (snap.phase === 'boss' && snap.boss && isVertical(snap)) {
             const b = snap.boss;
             const bh = blackHoleInfo(snap);
+            const finalWell = isFinalBoss || bh.active;
             // Final BH: sit on the floor (y≈572 → r≈312 > ring 291) and strafe
             // under the boss. Side-pockets had no DPS and same-side missiles
             // filled the 170px lane. Dropping from spawn (400,480) increases r
             // without crossing the well.
-            const preferY = (isFinalBoss && bh.active) ? 572 : (isFinalBoss ? 552 : VERT_BOSS_Y);
+            const preferY = finalWell ? 572 : (isFinalBoss ? 552 : VERT_BOSS_Y);
             let pocketLo = bounds.minX + 8;
             let pocketHi = bounds.maxX - 8;
             let stationX = clamp(b.x, pocketLo + 30, pocketHi - 30);
             if (bh.active && isFinalBoss) {
-                // Floor is ring-safe at y≈572. Sit under the hull (shots are
-                // +X=0); outer*42 plus a 400-ban parked us opposite the boss.
-                pocketLo = 90;
-                pocketHi = 710;
-                stationX = clamp(b.x, 140, 660);
+                pocketLo = 180;
+                pocketHi = 620;
+                const side = p.x >= b.x ? 1 : -1;
+                let flank = b.x + side * 100;
+                if (Math.abs(flank - 400) < 85) flank = 400 + (flank >= 400 ? 120 : -120);
+                stationX = clamp(flank, 200, 600);
             }
 
             if (p.y < preferY - 4) ay = 1;
@@ -1440,6 +1501,19 @@ export function installInPagePilot() {
                     const d = here.dodgeDir;
                     if (Math.abs((p.x + d * 48) - 400) >= Math.abs(p.x - 400) - 6) ax = d;
                 }
+            } else if (finalWell && p.y >= 530) {
+                if (!state.wellPocket) state.wellPocket = p.x >= 400 ? 530 : 270;
+                if (p.x < 210) state.wellPocket = 530;
+                if (p.x > 590) state.wellPocket = 270;
+                if (here.ttc < 0.18 && here.dodgeDir) {
+                    const nx = p.x + here.dodgeDir * 80;
+                    if (Math.abs(nx - 400) > 110) {
+                        state.wellPocket = nx >= 400 ? 530 : 270;
+                    }
+                }
+                const err = state.wellPocket - p.x;
+                ax = Math.abs(err) > 16 ? (err > 0 ? 1 : -1) : 0;
+                ay = p.y < 562 ? 1 : 0;
             } else {
                 if (p.x >= pocketHi - 22) state.strafeSign = -1;
                 else if (p.x <= pocketLo + 22) state.strafeSign = 1;
@@ -1460,9 +1534,9 @@ export function installInPagePilot() {
                     const vy = bl.vy || 0;
                     if (vy <= 15) continue;
                     if (bl.y > p.y + 20 || bl.y < p.y - 640) continue;
-                    const tHit = (p.y - bl.y) / vy;
+                    const tHit = timeToHit(p.y - bl.y, vy, snap);
                     if (tHit < 0 || tHit > 1.2) continue;
-                    const predX = bl.x + (bl.vx || 0) * tHit;
+                    const predX = bl.x + simVel(bl.vx, snap) * tHit;
                     if (Math.abs(predX - p.x) < 120 && tHit < aimT + 0.16) {
                         aimX = predX;
                         aimN = 1;
@@ -1475,7 +1549,7 @@ export function installInPagePilot() {
                     if (e.y > p.y - 8 || e.y < p.y - 420) continue;
                     if (Math.abs((e.x || 0) - p.x) > 60) continue;
                     const evy = e.vy || 80;
-                    const tHit = evy > 10 ? (p.y - e.y) / evy : 0.5;
+                    const tHit = evy > 10 ? timeToHit(p.y - e.y, evy, snap) : 0.5;
                     if (tHit < 0 || tHit > 0.95) continue;
                     if (tHit < aimT + 0.08) {
                         aimX = e.x;
@@ -1491,9 +1565,9 @@ export function installInPagePilot() {
                         if (bl.isLaser) continue;
                         const vy = bl.vy || 0;
                         if (vy <= 15) continue;
-                        const tHit = (p.y - bl.y) / vy;
+                        const tHit = timeToHit(p.y - bl.y, vy, snap);
                         if (tHit <= 0 || tHit > 1.05) continue;
-                        const predX = (bl.x || 0) + (bl.vx || 0) * tHit;
+                        const predX = (bl.x || 0) + simVel(bl.vx, snap) * tHit;
                         // Any on-screen missile used to keep off=82 and 14% acc.
                         if (Math.abs(predX - p.x) < 80) volleyN += 1;
                     }
@@ -1515,7 +1589,10 @@ export function installInPagePilot() {
                     const bossLow = b.y > 260;
                     const skyHot = volleyN > 0 || diveCol || laserOnUs;
                     const onFloor = p.y >= 530;
-                    let want = clamp(onFloor ? finalLeadX(snap) : b.x, 120, 680);
+                    const side = p.x >= b.x ? 1 : -1;
+                    let flank = b.x + side * 100;
+                    if (Math.abs(flank - 400) < 85) flank = 400 + (flank >= 400 ? 120 : -120);
+                    let want = clamp(onFloor ? flank : b.x, 200, 600);
                     const diveOnUs = laserOnUs || diveCol ||
                         (aimN && aimT < (bossLow ? 0.72 : 0.5) && Math.abs(aimX - p.x) < 90);
                     if (diveOnUs) {
@@ -1523,33 +1600,33 @@ export function installInPagePilot() {
                         if ((dir < 0 && p.x <= 120) || (dir > 0 && p.x >= 680)) dir = -dir;
                         if (!onFloor && Math.abs((p.x + dir * 100) - 400) < 40) dir = -dir;
                         state.laneHoldX = clamp(p.x + dir * 140, 90, 710);
-                        state.laneHoldUntil = now + (laserOnUs ? 420 : 280);
+                        state.laneHoldUntil = wallNow + (laserOnUs ? 420 : 280);
                     } else if (skyHot) {
-                        if (now > state.laneHoldUntil) {
+                        if (wallNow > state.laneHoldUntil) {
                             const dir = aimN ? (aimX >= p.x ? -1 : 1) : (p.x >= b.x ? 1 : -1);
                             state.laneHoldX = clamp(p.x + dir * 90, 90, 710);
                         }
-                        state.laneHoldUntil = Math.max(state.laneHoldUntil, now + 70);
-                    } else if (now > state.laneHoldUntil) {
+                        state.laneHoldUntil = Math.max(state.laneHoldUntil, wallNow + 70);
+                    } else if (wallNow > state.laneHoldUntil) {
                         if (p.x <= 110) state.strafeSign = 1;
                         else if (p.x >= 690) state.strafeSign = -1;
                         else if (Math.abs(p.x - want) > 28) {
                             state.strafeSign = want >= p.x ? 1 : -1;
                         }
                     }
-                    stationX = (now < state.laneHoldUntil) ? state.laneHoldX : want;
+                    stationX = (wallNow < state.laneHoldUntil) ? state.laneHoldX : want;
                 } else if (aimN && aimT < 0.9) {
                     const away = aimX >= p.x ? -1 : 1;
                     let hold = p.x + away * 118;
                     if (hold < pocketLo + 18 || hold > pocketHi - 18) hold = p.x - away * 118;
                     hold = clamp(hold, pocketLo + 18, pocketHi - 18);
-                    if (now > state.laneHoldUntil || Math.abs(state.laneHoldX - aimX) < 48) {
+                    if (wallNow > state.laneHoldUntil || Math.abs(state.laneHoldX - aimX) < 48) {
                         state.laneHoldX = hold;
-                        state.laneHoldUntil = now + Math.max(420, aimT * 1000 + 200);
+                        state.laneHoldUntil = wallNow + Math.max(420, aimT * 1000 + 200);
                     }
                     state.strafeSign = state.laneHoldX >= p.x ? 1 : -1;
                 }
-                const holding = now < state.laneHoldUntil;
+                const holding = wallNow < state.laneHoldUntil;
                 const cruiseX = clamp(
                     holding ? state.laneHoldX : stationX,
                     pocketLo + 12,
@@ -1573,9 +1650,10 @@ export function installInPagePilot() {
                 state.strafeSign = (ax || state.strafeSign);
             }
 
-            if (here.ttc < 0.5 && here.dodgeDir !== 0) {
+            if (here.ttc < 0.5 && here.dodgeDir !== 0 &&
+                    !(finalWell && p.y >= 530 && here.ttc > 0.16)) {
                 let dir = here.dodgeDir;
-                const towardWell = bh.active && isFinalBoss && p.y < 530 &&
+                const towardWell = bh.active && isFinalBoss &&
                     Math.abs((p.x + dir * 56) - 400) < Math.abs(p.x - 400) - 8;
                 // Right-side park: a laser on player.x used to skip the dodge
                 // (dir pointed through 400). Flip to the outer wall instead.
@@ -1600,14 +1678,17 @@ export function installInPagePilot() {
                 };
                 if (bh.dist < bh.minR) {
                     ay = p.y < preferY + 8 ? 1 : 0;
-                    if (p.y >= 530 && here.ttc < 0.45 && here.dodgeDir) ax = here.dodgeDir;
-                    else if (p.y < 530 && Math.abs(p.x - 400) < 110) {
+                    if (p.y < 530 && Math.abs(p.x - 400) < 110) {
                         ax = p.x >= 400 ? 1 : -1;
                     }
                 } else if (distAt(p.x + ax * 40, p.y + ay * 40) < bh.minR) {
                     ay = 1;
                     ax = 0;
                 }
+            }
+            if (finalWell && p.y < 545) {
+                ay = 1;
+                if (Math.abs(p.x - 400) < 140) ax = p.x >= 400 ? 1 : -1;
             }
         } else if (snap.phase === 'boss' && snap.boss) {
             const b = snap.boss;
@@ -1618,7 +1699,7 @@ export function installInPagePilot() {
             // Clear: ~28px off hull (still on the ~150px body). Imminent: step
             // outside the ±42 launcher fan; safestBossY already leaves the aim band.
             const orbitAmp = isIntroBoss
-                ? (SPEEDRUN ? 18 : 28)
+                ? (pressured ? 88 : 56)
                 : (pressured ? 72 : (lowLives ? 40 : 28));
             const preferY = clamp(
                 b.y + state.bossOrbitSign * orbitAmp,
@@ -1626,9 +1707,9 @@ export function installInPagePilot() {
                 bounds.maxY - 12
             );
 
-            if (now > state.bossWeaveUntil && here.ttc > 0.8) {
+            if (wallNow > state.bossWeaveUntil && here.ttc > 0.8) {
                 state.bossOrbitSign *= -1;
-                state.bossWeaveUntil = now + (pressured ? 420 : (isIntroBoss && SPEEDRUN ? 280 : 560));
+                state.bossWeaveUntil = wallNow + (pressured ? 420 : (isIntroBoss ? 280 : 560));
             }
             if (p.y <= bounds.minY + 20) state.bossOrbitSign = 1;
             if (p.y >= bounds.maxY - 20) state.bossOrbitSign = -1;
@@ -1642,10 +1723,9 @@ export function installInPagePilot() {
                 // Use i-frames to re-center for DPS.
                 const err = b.y - p.y;
                 ay = Math.abs(err) > 12 ? (err > 0 ? 1 : -1) : 0;
-            } else if (isIntroBoss && SPEEDRUN && here.ttc > 0.45) {
-                // Speedrun intro: stick closer to boss Y for DPS to force escape.
+            } else if (isIntroBoss && here.ttc > 0.7) {
                 const err = b.y - p.y;
-                if (Math.abs(err) > 10) ay = err > 0 ? 1 : -1;
+                if (Math.abs(err) > 14) ay = err > 0 ? 1 : -1;
                 else ay = 0;
             } else {
                 const err = safeY - p.y;
@@ -1663,7 +1743,7 @@ export function installInPagePilot() {
             // Park left for reaction time; 72 glued us to the wall with no DPS.
             const endgame = hp < 80 || here.bullets >= 5;
             let preferX = (lowLives || endgame || b.x < 520) ? 98 : 130;
-            if (isIntroBoss && SPEEDRUN && !lowLives) preferX = 150;
+            if (isIntroBoss) preferX = 86;
             if (p.x < preferX - 10) ax = 0.5;
             else if (p.x > preferX + 18) ax = -1;
             else ax = 0;
@@ -1740,11 +1820,13 @@ export function installInPagePilot() {
             } else if (snap.phase === 'boss') {
                 // Boss: boost is a dodge snap, not a ram. ttc<0.4 used to
                 // accelerate INTO volleys on L2 / final BH.
-                if (here.ttc < 0.2) boost = true;
+                if (isVertical(snap) && isFinalBoss && p.y < 540) boost = true;
+                else if (isIntroBoss) {
+                    if (here.ttc < 0.12 && p.x > 80) boost = true;
+                } else if (here.ttc < 0.2) boost = true;
                 else if (Math.abs(p.y - state.safeY) > 80 && energy > 30 && here.ttc > 0.4) boost = true;
                 else if (!isVertical(snap) && Math.abs(p.y - state.safeY) > 70 &&
                     energy > 18 && here.ttc > 0.28 && here.ttc < 0.9) boost = true;
-                else if (isIntroBoss && SPEEDRUN && energy > 20 && here.ttc > 0.5) boost = true;
                 if (lowLives && here.ttc > 0.35) boost = false;
                 const bh = blackHoleInfo(snap);
                 if (bh.active && p) {
@@ -1775,7 +1857,8 @@ export function installInPagePilot() {
                 ' ttc=' + ttcLabel +
                 ' cur=' + (here.ttc === Infinity ? 'inf' : here.ttc.toFixed(2)) +
                 ' bl=' + here.bullets +
-                ' y=' + aimY.toFixed(0) +
+                ' xy=' + p.x.toFixed(0) + ',' + p.y.toFixed(0) +
+                ' seg=' + (snap.segment || '-') +
                 ' e=' + energy.toFixed(0) +
                 ' p=' + prog +
                 ' w' + snap.weaponLevel
@@ -1822,6 +1905,7 @@ export function installInPagePilot() {
     state.strafeSign = 1;
     state.laneHoldX = 400;
     state.laneHoldUntil = 0;
+    state.wellPocket = 0;
     window.__novawingPilotOutcome = null;
     window.__novawingPilotError = null;
     window.__novawingPilotLastNote = '';
@@ -1887,6 +1971,16 @@ async function runOnce(browser, trialIndex) {
 
     const installed = await page.evaluate(installInPagePilot);
     if (!installed) throw new Error('Failed to install in-page pilot');
+    if (process.env.SEGMENT) {
+        await page.waitForTimeout(400);
+        const jumped = await page.evaluate((seg) => {
+            return window.__novawingDebug && window.__novawingDebug.setSegment
+                ? window.__novawingDebug.setSegment(seg)
+                : false;
+        }, process.env.SEGMENT);
+        if (!jumped) console.warn(`[trial ${trialIndex}] setSegment(${process.env.SEGMENT}) failed`);
+        await page.waitForTimeout(200);
+    }
     console.log(`[trial ${trialIndex}] in-page pilot installed`);
 
     const started = Date.now();

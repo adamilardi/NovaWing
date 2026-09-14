@@ -1,6 +1,6 @@
 ---
 name: verify-novawing
-description: Drive NovaWing the way a player and the bots do, and prove the game still boots, plays, and is not throwing. Use after gameplay, pause, difficulty, L3, or bot-contract changes; for /verify-novawing, "verify the game", "run the bots", "playtest", or "make sure it still plays".
+description: Drive NovaWing the way a player and the bots do, and prove the game still boots, plays, and is not throwing. Use after gameplay, pause, difficulty, L3, controller, or bot-contract changes; for /verify-novawing, "verify the game", "run the bots", "playtest", or "make sure it still plays".
 ---
 
 # Verify NovaWing
@@ -48,12 +48,13 @@ Default gate (after a gameplay change):
 npm run verify
 ```
 
-Cases: `boot`, `desktop-move`, `pause`, `difficulty`, `continues`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` default 120s, `VERIFY_L2_MS` default 150s, `VERIFY_L3_MS` default 240s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
+Cases: `boot`, `desktop-move`, `controller`, `pause`, `difficulty`, `continues`, then the heuristic bot plays **L1, L2, and L3**. Each level starts at `?bot=1&level=N` and runs until win, death, or the cap (`VERIFY_L1_MS` default 120s, `VERIFY_L2_MS` default 150s, `VERIFY_L3_MS` default 240s). If L3 never reaches the vertical gauntlet, the same case jumps to `topdown` and the bot plays that too (`VERIFY_L3_GAUNTLET_MS` default 45s).
 
 One mapped feature:
 
 ```bash
 node scripts/verify-novawing.mjs --case boot
+node scripts/verify-novawing.mjs --case controller
 node scripts/verify-novawing.mjs --case continues
 node scripts/verify-novawing.mjs --case l1-bot
 node scripts/verify-novawing.mjs --case l2-bot
@@ -82,8 +83,9 @@ EXPERT=policy SCENARIO=l1-start TRIALS=1 npm run rl:playtest
 Stable handles:
 
 - Canvas: `#game-container canvas`
-- Debug: `window.__novawingDebug` (`ready`, `getBotSnapshot`, `getPlayerState`, `setBotInput`, `togglePause`, `getDifficultyMode`, `setSegment`)
+- Debug: `window.__novawingDebug` (`ready`, `getBotSnapshot`, `getPlayerState`, `setBotInput`, `setGamepad`, `togglePause`, `getDifficultyMode`, `setSegment`)
 - Query: `?bot=1` (unranked, extra lives, 8× clock), `?level=1|2|3`, `?diff=easy|normal|hard`, `?timescale=` (bot clock; `TIMESCALE=1` keeps real time)
+- Snapshot: `getBotSnapshot().timeScale`, `.time` / `.elapsedMs` follow the playtest clock on bot sessions
 - Chromium: headless unless `HEADLESS=0`. Headed windows steal desktop focus.
 
 User-path keys for pause/difficulty: `P` / `Esc` pause, `D` / arrows cycle difficulty. Do not use debug setters for those cases.
@@ -114,7 +116,7 @@ Proof files stay under `.verify-runs/`.
 
 | Command | What it proves |
 |---|---|
-| `npm run verify` | Boot/pause/difficulty/continues, then heuristic bot on L1+L2+L3 |
+| `npm run verify` | Boot/move/controller/pause/difficulty/continues, then heuristic bot on L1+L2+L3 |
 | `npm run verify:doctor` | Boot only |
 | `npm run verify:full` | Same, plus RL policy on L1–L3 if weights exist |
 | `node scripts/verify-novawing.mjs --case <ids>` | Subset |

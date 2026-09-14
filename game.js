@@ -15,7 +15,8 @@ const config = {
         // retaining the 800x600 world and its 4:3 aspect ratio.
     },
     input: {
-        activePointers: 3
+        activePointers: 3,
+        gamepad: true
     },
     physics: {
         default: 'arcade',
@@ -182,6 +183,28 @@ const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.P,
     Phaser.Input.Keyboard.KeyCodes.ESC
 ];
+// W3C Standard Gamepad: Xbox / DualShock / DualSense / most USB pads.
+const GAMEPAD_DEADZONE = 0.22;
+const GAMEPAD_STICK_MENU_THRESHOLD = 0.55;
+const GAMEPAD_TRIGGER_THRESHOLD = 0.35;
+const GAMEPAD_BTN = {
+    A: 0,
+    B: 1,
+    X: 2,
+    Y: 3,
+    LB: 4,
+    RB: 5,
+    LT: 6,
+    RT: 7,
+    SELECT: 8,
+    START: 9,
+    UP: 12,
+    DOWN: 13,
+    LEFT: 14,
+    RIGHT: 15
+};
+const GAMEPAD_FIRE_BUTTONS = [GAMEPAD_BTN.A, GAMEPAD_BTN.RB, GAMEPAD_BTN.RT];
+const GAMEPAD_BOOST_BUTTONS = [GAMEPAD_BTN.B, GAMEPAD_BTN.X, GAMEPAD_BTN.LB, GAMEPAD_BTN.LT];
 // Extra world / boss / powerup textures live in src/assets.js; register there, then
 // point levelDef.art.wall / .boss / .bossVertical / .playerVertical at that key.
 
@@ -485,6 +508,14 @@ let touchBoostHeld = false;
 let touchControls = null;
 // Optional external pilot (Playwright bot): { x, y, fire, boost } axes in [-1,1].
 let botInput = null;
+let injectedGamepads = [];
+let gamepadLive = [];
+let gamepadPrevButtons = Object.create(null);
+let gamepadPrevStickX = Object.create(null);
+let gamepadJustPressed = Object.create(null);
+let gamepadStickLeftJust = Object.create(null);
+let gamepadStickRightJust = Object.create(null);
+let resultsGamepadActions = null;
 let bullets;
 let enemyBullets;
 let enemies;
@@ -1273,17 +1304,23 @@ function create() {
     window.addEventListener('keyup', handleKeyboardUp, true);
     window.addEventListener('blur', clearBoostInput);
     document.addEventListener('visibilitychange', clearInputWhenHidden);
+    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    window.addEventListener('gamepaddisconnected', handleGamepadDisconnected);
     this.events.once('shutdown', () => {
         segmentScope.reset();
         window.removeEventListener('keydown', handleKeyboardDown, true);
         window.removeEventListener('keyup', handleKeyboardUp, true);
         window.removeEventListener('blur', clearBoostInput);
         document.removeEventListener('visibilitychange', clearInputWhenHidden);
+        window.removeEventListener('gamepadconnected', handleGamepadConnected);
+        window.removeEventListener('gamepaddisconnected', handleGamepadDisconnected);
         destroyTouchControls();
         hideOpeningOverlay();
         hideFirstRunTutorial();
         pauseOverlay = null;
         gamePaused = false;
+        resultsGamepadActions = null;
+        clearInjectedGamepads();
         clearBoostInput();
         if (musicDirector) musicDirector.stop();
         if (sfx && sfx.setEngine) sfx.setEngine(0);
@@ -1533,6 +1570,8 @@ function create() {
 }
 
 function update(time, delta) {
+    pollGamepads();
+    handleGamepadUi();
     if (openingActive || levelEnded || victoryPending || awaitingNextLevel || gamePaused || continuePending) return;
 
     const frameDelta = (Number.isFinite(delta) ? delta : 16.67) * getPlaytestTimeScale();
@@ -2242,6 +2281,7 @@ function damagePlayer(ship = player) {
         if (ship === player) { hasShield = false; updateStatusText(); updateShieldVisual(now); }
         createExplosion(this, ship.x + 20, ship.y, 22, { palette: 'cyan', ring: true });
         sfx.shieldBreak(ship.x);
+        rumblePilot(ship === playerTwo ? 2 : 1, 140, 0.32, 0.18);
         flashVignette(this, 0x55ffaa, 0.28);
         showFloatingText(this, ship.x, ship.y - 36, 'P' + state.id + ' SHIELD BREAK', '#55ffaa');
         ship.setTint(0x55ffaa);
@@ -2252,6 +2292,7 @@ function damagePlayer(ship = player) {
     }
 
     sfx.damage(ship.x);
+    rumblePilot(ship === playerTwo ? 2 : 1, 220, 0.72, 0.48);
     createExplosion(this, ship.x + 16, ship.y, 16, { palette: 'red' });
     flashVignette(this, 0xff3355, 0.4);
 
@@ -2307,22 +2348,26 @@ function hasAnyCoopPilotAlive() {
 }
 
 function getCoopMovementAxes() {
-    return {
-        x: (heldP2MoveInputs.has('right') ? 1 : 0) - (heldP2MoveInputs.has('left') ? 1 : 0),
-        y: (heldP2MoveInputs.has('down') ? 1 : 0) - (heldP2MoveInputs.has('up') ? 1 : 0)
-    };
+    const gp = getGamepadPilotAxes(2);
+    return combineAxes(
+        (heldP2MoveInputs.has('right') ? 1 : 0) - (heldP2MoveInputs.has('left') ? 1 : 0),
+        (heldP2MoveInputs.has('down') ? 1 : 0) - (heldP2MoveInputs.has('up') ? 1 : 0),
+        gp.x,
+        gp.y
+    );
 }
 
 function isCoopFireHeld() {
     const scene = getActiveScene();
-    return Boolean(scene && scene.input.keyboard && scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER).isDown);
+    const enterHeld = Boolean(scene && scene.input.keyboard && scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER).isDown);
+    return enterHeld || isGamepadFireHeld(2);
 }
 
 function updateCoopPilot(ship, state, time, frameDelta) {
     const axes = getCoopMovementAxes();
     // Browser key events expose left/right shift through code; use the held input
     // set so P1's Left Shift never accelerates P2.
-    const wantsBoost = heldBoostInputs.has('ShiftRight');
+    const wantsBoost = heldBoostInputs.has('ShiftRight') || isGamepadBoostHeld(2);
     if (state.boostLocked && state.boostEnergy >= BOOST_REENGAGE_THRESHOLD) state.boostLocked = false;
     if (!wantsBoost && state.boostEnergy < BOOST_REENGAGE_THRESHOLD) state.boostLocked = true;
     const boosting = wantsBoost && state.boostEnergy > 0 && !state.boostLocked;
@@ -6905,7 +6950,7 @@ function showContinueOverlay(scene) {
     }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
     const hint = scene.add.text(400, 400, touch
         ? 'TAP TO KEEP FLYING  ·  WAIT TO END THE RUN'
-        : 'FIRE / ENTER TO KEEP FLYING  ·  ESC TO END', {
+        : 'FIRE / A TO KEEP FLYING  ·  B / ESC TO END', {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa0c8',
         stroke: '#050816', strokeThickness: 4, align: 'center'
     }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
@@ -7088,6 +7133,16 @@ function hideOpeningOverlay() {
     openingStartCallback = null;
 }
 
+function formatGameplayControlsHint() {
+    if (shouldShowTouchControls()) {
+        return 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL';
+    }
+    if (coopEnabled) {
+        return 'P1 WASD / PAD 1   ·   P2 ARROWS / PAD 2   ·   START PAUSE';
+    }
+    return 'WASD / STICK TO FLY  ·  SHIFT / LT BOOST  ·  SPACE / RT FIRE  ·  START PAUSE';
+}
+
 function showOpeningOverlay(scene, onPlay) {
     hideOpeningOverlay();
     if (!scene || !scene.add) return;
@@ -7163,10 +7218,7 @@ function showOpeningOverlay(scene, onPlay) {
         fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '24px', fill: '#ffffff',
         stroke: '#050816', strokeThickness: 4, letterSpacing: 3
     }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    const controls = scene.add.text(400, 490,
-        shouldShowTouchControls() ? 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL' : (coopEnabled
-            ? 'P1 WASD + SPACE + L-SHIFT   ·   P2 ARROWS + ENTER + R-SHIFT'
-            : 'WASD / ARROWS TO FLY  ·  SHIFT / X TO BOOST  ·  SPACE TO FIRE'), {
+    const controls = scene.add.text(400, 490, formatGameplayControlsHint(), {
             fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', align: 'center'
         }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     nodes.push(playBg, playLabel, controls);
@@ -7262,8 +7314,8 @@ function maybeShowFirstRunTutorial(scene) {
     const tutorialY = touch ? 180 : 500;
     const copy = touch
         ? 'DRAG TO STEER\nHOLD FIRE / BOOST  ·  AUTO-FIRE IS OPTIONAL'
-        : 'WASD / ARROWS  MOVE\nSHIFT / X / Z  BOOST   ·   SPACE  FIRE';
-    const panel = scene.add.rectangle(400, tutorialY, 520, 72, 0x071220, 0.9)
+        : 'WASD / STICK  MOVE\nLT / B BOOST   ·   RT / A FIRE   ·   START PAUSE';
+    const panel = scene.add.rectangle(400, tutorialY, 560, 72, 0x071220, 0.9)
         .setStrokeStyle(1, 0x66f6ff, 0.7).setDepth(45).setScrollFactor(0).setAlpha(0);
     const label = scene.add.text(400, tutorialY, copy, {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#e8f0ff', align: 'center',
@@ -7371,7 +7423,7 @@ function showPauseOverlay(scene) {
 
     const hint = scene.add.text(400, 440, shouldShowTouchControls()
         ? 'HOTSHOT qualifies for the leaderboard'
-        : 'P/Esc resume  ·  D difficulty  ·  R restart', {
+        : 'START / P resume  ·  D difficulty  ·  R restart', {
         fontFamily: 'monospace', resolution: 2,
         fontSize: '14px',
         fill: '#8aa0c8',
@@ -7525,7 +7577,8 @@ function isBoostHeld() {
         boostHeld ||
         (!coopEnabled && boostKey && boostKey.isDown) ||
         (boostAltKey && boostAltKey.isDown) ||
-        (boostZKey && boostZKey.isDown);
+        (boostZKey && boostZKey.isDown) ||
+        isGamepadBoostHeld(1);
 }
 
 function isFireHeld() {
@@ -7533,7 +7586,7 @@ function isFireHeld() {
     if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
     // Touch devices auto-fire so one thumb can stay on the stick (A11 / Fire).
     if (mobileAutoFire && !levelEnded && !victoryPending) return true;
-    return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown);
+    return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown) || isGamepadFireHeld(1);
 }
 
 /**
@@ -7635,6 +7688,419 @@ function maybeShowOrientationHint(scene) {
     }
 }
 
+function combineAxes(ax, ay, bx, by) {
+    const x = Phaser.Math.Clamp((Number(ax) || 0) + (Number(bx) || 0), -1, 1);
+    const y = Phaser.Math.Clamp((Number(ay) || 0) + (Number(by) || 0), -1, 1);
+    const length = Math.sqrt(x * x + y * y);
+    if (length < 0.04) return { x: 0, y: 0 };
+    if (length > 1) return { x: x / length, y: y / length };
+    return { x: x, y: y };
+}
+
+function applyStickDeadzone(x, y, dead) {
+    const mag = Math.sqrt(x * x + y * y);
+    if (mag < dead) return { x: 0, y: 0 };
+    const scaled = Math.min(1, (mag - dead) / (1 - dead));
+    const k = scaled / mag;
+    return { x: x * k, y: y * k };
+}
+
+function padButtonValue(pad, button) {
+    if (!pad || !pad.buttons) return 0;
+    const value = pad.buttons[button];
+    return Number.isFinite(value) ? value : 0;
+}
+
+function padButtonHeld(pad, button) {
+    return padButtonValue(pad, button) >= GAMEPAD_TRIGGER_THRESHOLD;
+}
+
+function snapshotPad(raw, index) {
+    const srcButtons = raw && raw.buttons ? raw.buttons : [];
+    const count = Math.max(srcButtons.length, 17);
+    const buttons = [];
+    for (let i = 0; i < count; i++) {
+        const button = srcButtons[i];
+        if (typeof button === 'number') buttons.push(Phaser.Math.Clamp(button, 0, 1));
+        else if (button && Number.isFinite(button.value)) buttons.push(Phaser.Math.Clamp(button.value, 0, 1));
+        else buttons.push(button && button.pressed ? 1 : 0);
+    }
+    const axes = raw && raw.axes ? raw.axes : [];
+    return {
+        index: Number.isFinite(raw && raw.index) ? raw.index : index,
+        id: (raw && raw.id) || 'Gamepad',
+        axesX: Number.isFinite(axes[0]) ? Phaser.Math.Clamp(axes[0], -1, 1) : 0,
+        axesY: Number.isFinite(axes[1]) ? Phaser.Math.Clamp(axes[1], -1, 1) : 0,
+        buttons: buttons
+    };
+}
+
+function readRawGamepads() {
+    const byIndex = [];
+    try {
+        if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+            const native = navigator.getGamepads() || [];
+            for (let i = 0; i < native.length; i++) {
+                const pad = native[i];
+                if (pad && pad.connected !== false) byIndex[i] = pad;
+            }
+        }
+    } catch (error) {
+        // Some browsers throw if getGamepads is called without a gesture.
+    }
+    for (let i = 0; i < injectedGamepads.length; i++) {
+        if (injectedGamepads[i] && injectedGamepads[i].connected !== false) {
+            byIndex[i] = injectedGamepads[i];
+        }
+    }
+    return byIndex;
+}
+
+function pollGamepads() {
+    const raw = readRawGamepads();
+    const snaps = [];
+    const justPressed = Object.create(null);
+    const stickLeftJust = Object.create(null);
+    const stickRightJust = Object.create(null);
+    const seen = Object.create(null);
+
+    for (let i = 0; i < raw.length; i++) {
+        if (!raw[i]) continue;
+        const pad = snapshotPad(raw[i], i);
+        snaps.push(pad);
+        seen[pad.index] = true;
+        const prevButtons = gamepadPrevButtons[pad.index];
+        const pressed = new Set();
+        if (!prevButtons) {
+            gamepadPrevButtons[pad.index] = pad.buttons.slice();
+            gamepadPrevStickX[pad.index] = pad.axesX;
+        } else {
+            for (let b = 0; b < pad.buttons.length; b++) {
+                if (pad.buttons[b] >= GAMEPAD_TRIGGER_THRESHOLD &&
+                    (prevButtons[b] || 0) < GAMEPAD_TRIGGER_THRESHOLD) {
+                    pressed.add(b);
+                }
+            }
+            gamepadPrevButtons[pad.index] = pad.buttons.slice();
+            const prevStick = Number(gamepadPrevStickX[pad.index]) || 0;
+            stickLeftJust[pad.index] = pad.axesX <= -GAMEPAD_STICK_MENU_THRESHOLD &&
+                prevStick > -GAMEPAD_STICK_MENU_THRESHOLD;
+            stickRightJust[pad.index] = pad.axesX >= GAMEPAD_STICK_MENU_THRESHOLD &&
+                prevStick < GAMEPAD_STICK_MENU_THRESHOLD;
+            gamepadPrevStickX[pad.index] = pad.axesX;
+        }
+        justPressed[pad.index] = pressed;
+    }
+
+    Object.keys(gamepadPrevButtons).forEach(key => {
+        if (!seen[key]) {
+            delete gamepadPrevButtons[key];
+            delete gamepadPrevStickX[key];
+        }
+    });
+
+    gamepadLive = snaps;
+    gamepadJustPressed = justPressed;
+    gamepadStickLeftJust = stickLeftJust;
+    gamepadStickRightJust = stickRightJust;
+    return snaps;
+}
+
+function connectedGamepadSnaps() {
+    return gamepadLive.slice().sort((a, b) => a.index - b.index);
+}
+
+function padForPilot(pilot) {
+    const pads = connectedGamepadSnaps();
+    if (!pads.length) return null;
+    if (coopEnabled) return pads[pilot === 2 ? 1 : 0] || null;
+    return pads[0];
+}
+
+function getPadMoveAxes(pad) {
+    if (!pad) return { x: 0, y: 0 };
+    const stick = applyStickDeadzone(pad.axesX, pad.axesY, GAMEPAD_DEADZONE);
+    const dx = (padButtonHeld(pad, GAMEPAD_BTN.RIGHT) ? 1 : 0) -
+        (padButtonHeld(pad, GAMEPAD_BTN.LEFT) ? 1 : 0);
+    const dy = (padButtonHeld(pad, GAMEPAD_BTN.DOWN) ? 1 : 0) -
+        (padButtonHeld(pad, GAMEPAD_BTN.UP) ? 1 : 0);
+    return combineAxes(stick.x, stick.y, dx, dy);
+}
+
+function getGamepadPilotAxes(pilot) {
+    return getPadMoveAxes(padForPilot(pilot));
+}
+
+function isGamepadFireHeld(pilot) {
+    const pad = padForPilot(pilot);
+    if (!pad) return false;
+    return GAMEPAD_FIRE_BUTTONS.some(button => padButtonHeld(pad, button));
+}
+
+function isGamepadBoostHeld(pilot) {
+    const pad = padForPilot(pilot);
+    if (!pad) return false;
+    return GAMEPAD_BOOST_BUTTONS.some(button => padButtonHeld(pad, button));
+}
+
+function anyGamepadJustPressed(button) {
+    const keys = Object.keys(gamepadJustPressed);
+    for (let i = 0; i < keys.length; i++) {
+        const set = gamepadJustPressed[keys[i]];
+        if (set && set.has(button)) return true;
+    }
+    return false;
+}
+
+function gamepadConfirmJustPressed() {
+    return anyGamepadJustPressed(GAMEPAD_BTN.A) ||
+        anyGamepadJustPressed(GAMEPAD_BTN.START) ||
+        anyGamepadJustPressed(GAMEPAD_BTN.RT);
+}
+
+function gamepadLeftJustPressed() {
+    if (anyGamepadJustPressed(GAMEPAD_BTN.LEFT) || anyGamepadJustPressed(GAMEPAD_BTN.LB)) return true;
+    return Object.keys(gamepadStickLeftJust).some(key => gamepadStickLeftJust[key]);
+}
+
+function gamepadRightJustPressed() {
+    if (anyGamepadJustPressed(GAMEPAD_BTN.RIGHT) || anyGamepadJustPressed(GAMEPAD_BTN.RB)) return true;
+    return Object.keys(gamepadStickRightJust).some(key => gamepadStickRightJust[key]);
+}
+
+function nativeConnectedGamepadCount() {
+    try {
+        const list = (typeof navigator !== 'undefined' && navigator.getGamepads)
+            ? navigator.getGamepads()
+            : [];
+        let count = 0;
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].connected !== false) count += 1;
+        }
+        return count;
+    } catch (error) {
+        return 0;
+    }
+}
+
+function handleGamepadConnected() {
+    if (musicDirector) musicDirector.unlock();
+    if (sfx && sfx.unlock) sfx.unlock();
+    pollGamepads();
+    if (isPlaytestBotSession()) return;
+    const scene = getActiveScene();
+    if (!scene || !scene.add) return;
+    const count = nativeConnectedGamepadCount();
+    showFloatingText(
+        scene,
+        400,
+        90,
+        count >= 2 ? 'P2 CONTROLLER READY' : 'CONTROLLER READY',
+        '#66f6ff',
+        { screenSpace: true }
+    );
+}
+
+function handleGamepadDisconnected() {
+    pollGamepads();
+}
+
+function rumblePilot(pilot, durationMs, strong, weak) {
+    if (isPlaytestBotSession()) return;
+    const snap = padForPilot(pilot);
+    if (!snap) return;
+    let pad = null;
+    try {
+        const list = (typeof navigator !== 'undefined' && navigator.getGamepads)
+            ? navigator.getGamepads()
+            : [];
+        pad = list && list[snap.index];
+    } catch (error) {
+        return;
+    }
+    const actuator = pad && pad.vibrationActuator;
+    if (!actuator || typeof actuator.playEffect !== 'function') return;
+    try {
+        const play = actuator.playEffect('dual-rumble', {
+            duration: Math.max(40, durationMs || 160),
+            startDelay: 0,
+            strongMagnitude: Phaser.Math.Clamp(strong || 0.4, 0, 1),
+            weakMagnitude: Phaser.Math.Clamp(weak || 0.25, 0, 1)
+        });
+        if (play && typeof play.catch === 'function') play.catch(() => {});
+    } catch (error) {
+        // Ignore pads that advertise rumble but reject the effect.
+    }
+}
+
+function emptyGamepadButton(value) {
+    const v = Phaser.Math.Clamp(Number(value) || 0, 0, 1);
+    return { pressed: v >= GAMEPAD_TRIGGER_THRESHOLD, touched: v > 0, value: v };
+}
+
+function setInjectedGamepad(index, state) {
+    const i = Math.max(0, Math.min(3, Math.floor(Number(index) || 0)));
+    if (!state || state.connected === false) {
+        injectedGamepads[i] = null;
+        delete gamepadPrevButtons[i];
+        delete gamepadPrevStickX[i];
+        pollGamepads();
+        return getGamepadDebugState();
+    }
+    const prev = injectedGamepads[i] || {
+        id: 'NovaWing Test Pad',
+        index: i,
+        connected: true,
+        mapping: 'standard',
+        axes: [0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, () => emptyGamepadButton(0))
+    };
+    const axes = prev.axes.slice();
+    if (Array.isArray(state.axes)) {
+        for (let a = 0; a < 4 && a < state.axes.length; a++) {
+            const value = Number(state.axes[a]);
+            if (Number.isFinite(value)) axes[a] = Phaser.Math.Clamp(value, -1, 1);
+        }
+    }
+    const buttons = prev.buttons.map(button => emptyGamepadButton(button && button.value));
+    if (Array.isArray(state.buttons)) {
+        state.buttons.forEach((value, button) => {
+            if (button < buttons.length) {
+                buttons[button] = emptyGamepadButton(value && typeof value === 'object' ? value.value : value);
+            }
+        });
+    } else if (state.buttons && typeof state.buttons === 'object') {
+        Object.keys(state.buttons).forEach(key => {
+            const button = Number(key);
+            if (!Number.isFinite(button) || button < 0 || button >= buttons.length) return;
+            const value = state.buttons[key];
+            buttons[button] = emptyGamepadButton(value && typeof value === 'object' ? value.value : value);
+        });
+    }
+    injectedGamepads[i] = {
+        id: state.id || prev.id,
+        index: i,
+        connected: true,
+        mapping: 'standard',
+        timestamp: (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(),
+        axes: axes,
+        buttons: buttons
+    };
+    pollGamepads();
+    handleGamepadUi();
+    return getGamepadDebugState();
+}
+
+function clearInjectedGamepads() {
+    injectedGamepads = [];
+    gamepadPrevButtons = Object.create(null);
+    gamepadPrevStickX = Object.create(null);
+    pollGamepads();
+}
+
+function getGamepadDebugState() {
+    return {
+        count: gamepadLive.length,
+        coop: Boolean(coopEnabled),
+        pads: gamepadLive.map(pad => ({
+            index: pad.index,
+            id: pad.id,
+            x: Number(pad.axesX.toFixed(3)),
+            y: Number(pad.axesY.toFixed(3)),
+            fire: GAMEPAD_FIRE_BUTTONS.some(button => padButtonHeld(pad, button)),
+            boost: GAMEPAD_BOOST_BUTTONS.some(button => padButtonHeld(pad, button)),
+            start: padButtonHeld(pad, GAMEPAD_BTN.START)
+        }))
+    };
+}
+
+function handleGamepadUi() {
+    if (isPlaytestBotSession()) return;
+
+    if (openingActive) {
+        if (gamepadConfirmJustPressed()) {
+            if (sfx && sfx.unlock) sfx.unlock();
+            if (typeof openingStartCallback === 'function') openingStartCallback();
+            return;
+        }
+        if (gamepadLeftJustPressed()) {
+            cycleDifficultyMode(-1);
+            refreshOpeningDifficulty();
+            return;
+        }
+        if (gamepadRightJustPressed()) {
+            cycleDifficultyMode(1);
+            refreshOpeningDifficulty();
+            return;
+        }
+        if (anyGamepadJustPressed(GAMEPAD_BTN.Y) || anyGamepadJustPressed(GAMEPAD_BTN.SELECT)) {
+            const scene = getActiveScene();
+            if (!scene || !scene.scene) return;
+            requestedCoopEnabled = !coopEnabled;
+            openingShownThisSession = false;
+            scene.scene.restart();
+        }
+        return;
+    }
+
+    if (continuePending) {
+        if (anyGamepadJustPressed(GAMEPAD_BTN.B) || anyGamepadJustPressed(GAMEPAD_BTN.SELECT)) {
+            declineArcadeContinue();
+            return;
+        }
+        if (continueInputArmed && (gamepadConfirmJustPressed() || anyGamepadJustPressed(GAMEPAD_BTN.X))) {
+            acceptArcadeContinue();
+        }
+        return;
+    }
+
+    if (resultsGamepadActions) {
+        if (resultsGamepadActions.isNameFocused && resultsGamepadActions.isNameFocused()) return;
+        if (anyGamepadJustPressed(GAMEPAD_BTN.X) || anyGamepadJustPressed(GAMEPAD_BTN.B)) {
+            if (typeof resultsGamepadActions.restart === 'function') resultsGamepadActions.restart();
+            return;
+        }
+        if (gamepadConfirmJustPressed()) {
+            if (typeof resultsGamepadActions.goNext === 'function') resultsGamepadActions.goNext();
+            else if (typeof resultsGamepadActions.restart === 'function') resultsGamepadActions.restart();
+        }
+        return;
+    }
+
+    if (gamePaused) {
+        if (anyGamepadJustPressed(GAMEPAD_BTN.START) || anyGamepadJustPressed(GAMEPAD_BTN.A) ||
+            anyGamepadJustPressed(GAMEPAD_BTN.B)) {
+            togglePause();
+            return;
+        }
+        if (anyGamepadJustPressed(GAMEPAD_BTN.SELECT) || anyGamepadJustPressed(GAMEPAD_BTN.Y)) {
+            toggleMute();
+            refreshPauseOverlay();
+            return;
+        }
+        if (gamepadLeftJustPressed()) {
+            cycleDifficultyMode(-1);
+            return;
+        }
+        if (gamepadRightJustPressed()) {
+            cycleDifficultyMode(1);
+            return;
+        }
+        if (anyGamepadJustPressed(GAMEPAD_BTN.X)) {
+            confirmPauseRestart();
+        }
+        return;
+    }
+
+    if (anyGamepadJustPressed(GAMEPAD_BTN.START)) {
+        togglePause();
+        return;
+    }
+    if (anyGamepadJustPressed(GAMEPAD_BTN.SELECT)) {
+        toggleMute();
+    }
+}
+
 function getMovementAxes() {
     if (botInput && Number.isFinite(botInput.x) && Number.isFinite(botInput.y)) {
         const bx = Phaser.Math.Clamp(botInput.x, -1, 1);
@@ -7655,10 +8121,8 @@ function getMovementAxes() {
     const inputY = coopEnabled
         ? ((heldP1MoveInputs.has('down') ? 1 : 0) - (heldP1MoveInputs.has('up') ? 1 : 0))
         : ((isMoveHeld('down') ? 1 : 0) - (isMoveHeld('up') ? 1 : 0));
-    if (inputX === 0 && inputY === 0) return { x: 0, y: 0 };
-
-    const length = Math.sqrt(inputX * inputX + inputY * inputY) || 1;
-    return { x: inputX / length, y: inputY / length };
+    const gp = getGamepadPilotAxes(1);
+    return combineAxes(inputX, inputY, gp.x, gp.y);
 }
 
 function setBotInput(input) {
@@ -9538,6 +10002,7 @@ function endLevel(title, color, options = {}) {
     const onRestart = () => restartScene();
 
     cleanupResults = () => {
+        resultsGamepadActions = null;
         if (pilotInput) pilotInput.destroy();
         if (keyboard) {
             keyboard.off('keydown-ENTER', onEnter);
@@ -9547,6 +10012,13 @@ function endLevel(title, color, options = {}) {
         }
     };
     this.events.once('shutdown', cleanupResults);
+    resultsGamepadActions = {
+        goNext: continueToNext ? goNext : null,
+        restart: restartScene,
+        isNameFocused: () => Boolean(
+            pilotInput && typeof document !== 'undefined' && document.activeElement === pilotInput.input
+        )
+    };
 
     if (continueToNext) {
         actionText.on('pointerdown', goNext);
@@ -10457,6 +10929,14 @@ window.__novawingDebug = {
     getMovementAxes,
     isFireHeld,
     isBoostHeld,
+    getGamepadState: getGamepadDebugState,
+    setGamepad(index, state) {
+        return setInjectedGamepad(index, state);
+    },
+    clearGamepads() {
+        clearInjectedGamepads();
+        return getGamepadDebugState();
+    },
     getScale() {
         if (!game || !game.scale) return null;
         return {
