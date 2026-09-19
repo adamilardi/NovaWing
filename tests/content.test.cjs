@@ -26,6 +26,10 @@ test('multi-boss levels award each defeated encounter and follow authored succes
     assert.deepEqual(Flow.afterSegment(level, 'final'), { next: null, complete: true });
     assert.deepEqual(Flow.totals(level), { score: 10300, kills: 3 });
     assert.equal(Rules.rulesForScope('campaign', catalog).bossScore, 15800);
+    assert.equal(Rules.sanitizeLeaderboardScope('campaign-easy'), 'campaign-easy');
+    assert.equal(Rules.sanitizeLeaderboardScope('campaign-normal'), 'campaign');
+    assert.equal(Rules.makeLeaderboardScope('level-1', 'hard'), 'level-1-hard');
+    assert.equal(Rules.rulesForScope('campaign-easy', catalog).bossScore, Rules.rulesForScope('campaign', catalog).bossScore);
     assert.equal(Rules.isPlausibleCompletedRun({ scope: 'level-4', score: 10300, kills: 3, timeMs: 60000 }, catalog), true);
     assert.equal(Rules.isPlausibleCompletedRun({ scope: 'level-4', score: 10300, kills: 1, timeMs: 60000 }, catalog), false);
     assert.equal(Rules.rulesForScope('level-99', catalog), null);

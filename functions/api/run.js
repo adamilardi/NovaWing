@@ -1,5 +1,5 @@
 import RunRules from '../../shared/run-rules.cjs';
-const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs } = RunRules;
+const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs, sanitizeLeaderboardScope } = RunRules;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 // A full campaign opens one campaign token plus one token per level.
 const RUN_REQUEST_LIMIT = 120;
@@ -286,13 +286,6 @@ function sanitizeGameVersion(value) {
         .slice(0, 24);
 
     return cleaned || '1.0.0';
-}
-
-function sanitizeLeaderboardScope(value) {
-    const scope = String(value || 'campaign').toLowerCase();
-    if (scope === 'campaign') return 'campaign';
-    if (/^level-[1-9]\d*$/.test(scope)) return scope;
-    return 'campaign';
 }
 
 function jsonResponse(request, payload, status = 200) {

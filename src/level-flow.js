@@ -55,6 +55,15 @@
             if (segmentIds.size !== segments.length) errors.push(label + ': duplicate segment id');
             for (const item of [level, ...segments]) {
                 checkKeys(item.wavePatternKeys, catalogs.waves, label);
+                const schedules = [item.wavePatternSchedule].concat(
+                    Object.values(item.wavePatternScheduleByMode || {})
+                );
+                for (const schedule of schedules) {
+                    if (!Array.isArray(schedule)) continue;
+                    for (const step of schedule) {
+                        if (step && Array.isArray(step.keys)) checkKeys(step.keys, catalogs.waves, label);
+                    }
+                }
                 checkKeys(Object.values(item.art || {}), catalogs.assets, label);
                 checkKeys(Object.values(item.music || {}).filter(Boolean), catalogs.tracks, label);
                 const plan = item.powerups || [];

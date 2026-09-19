@@ -1,4 +1,4 @@
-const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs } = require('./shared/run-rules.cjs');
+const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs, sanitizeLeaderboardScope } = require('./shared/run-rules.cjs');
 const { build, OUTPUT: PUBLIC_ROOT } = require('./scripts/build.cjs');
 // Simple HTTP server for NovaWing
 const http = require('http');
@@ -136,13 +136,6 @@ function sanitizeGameVersion(value) {
         .slice(0, 24);
 
     return cleaned || '1.0.0';
-}
-
-function sanitizeLeaderboardScope(value) {
-    const scope = String(value || 'campaign').toLowerCase();
-    if (scope === 'campaign') return 'campaign';
-    if (/^level-[1-9]\d*$/.test(scope)) return scope;
-    return 'campaign';
 }
 
 function sanitizeName(value) {

@@ -47,10 +47,13 @@
  *   3. levelDef.difficulty     — one level, every segment
  *   4. segment.difficulty      — that segment only (waves vs boss)
  *   5. Player difficulty       — Easy / Normal / Hard from pause / results.
- *        Easy/Hard reuse DIFFICULTY_PRESETS. Only Normal is ranked.
+ *        Easy/Hard reuse DIFFICULTY_PRESETS. Each mode has its own board.
  *        Easy and Normal grant arcade continues on death; Hard does not.
- *        Using a continue on Hotshot unranks the run.
+ *        Using a continue unranks the run.
  *        ?diff=easy|normal|hard (mid = normal) sets the mode for this session.
+ *   5b. level/segment difficultyModes.easy|normal|hard — that fight, that mode.
+ *        Applied after the campaign preset so L3 can ease Space Cadet without
+ *        flattening Supernova.
  *   6. URL overlay             — playtest knobs on top of the selected mode.
  *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4  (also unranked)
  *
@@ -77,9 +80,10 @@
  * Examples:
  *   Meaner L4:           { enemyHealthScale: 1.15, waveIntervalMinMs: 1400 }
  *   Gentler opener:      TIER_DIFFICULTY[1].interceptorChance = 0.08
- *   Easier L3 gauntlet:  topdown { enemyCadenceScale: 1.25, typedFireChance: 0.6 }
- *   Slower final boss:   LEVEL_3.difficulty.bossTempoScale = 1.2
+ *   Easier L3 gauntlet:  topdown.difficultyModes.easy { enemyCadenceScale: 1.6 }
+ *   Slower final boss:   LEVEL_3.difficultyModes.normal.bossTempoScale = 1.1
  *                         (or finalBoss.difficulty — not topdown)
+ *   Teach-then-pressure: topdown.wavePatternSchedule / wavePatternScheduleByMode
  */
 (function (root) {
     'use strict';
@@ -124,7 +128,9 @@
         boostRefillOnKill: 16,
         boostProgressMultiplier: 1.55,
         boostWorldSpeedMultiplier: 1.7,
-        bossTempoScale: 1
+        bossTempoScale: 1,
+        // 0 = use the level's blackHole.previewAtMs.
+        blackHolePreviewAtMs: 0
     };
 
     const TIER_DIFFICULTY = {
@@ -193,6 +199,7 @@
             interceptorChance: 0.4,
             enemyFireChance: 0.62,
             interceptorFireChance: 0.95,
+            typedFireChance: 1,
             waveIntervalMinMs: 1250,
             waveIntervalMaxMs: 1700,
             // Supernova raises pressure through speed and density, not HP.
@@ -398,6 +405,9 @@
             // 1 = opener, 2 = mid, 3 = late. Feeds TIER_DIFFICULTY when a knob is omitted.
             tier: tier,
             difficulty: difficulty,
+            difficultyModes: def.difficultyModes && typeof def.difficultyModes === 'object'
+                ? def.difficultyModes
+                : null,
             interceptorChance: difficulty.interceptorChance,
             enemyFireChance: difficulty.enemyFireChance,
             art: def.art && typeof def.art === 'object' ? Object.assign({}, def.art) : null,
@@ -597,7 +607,18 @@
         tier: 3,
         // Fight-wide knobs (boss tempo, i-frames, boost) belong here so they
         // apply in intro + gauntlet + final. Gauntlet-only: topdown.difficulty.
-        // difficulty: { bossTempoScale: 1.15 },
+        // Per-mode finale feel: difficultyModes.easy|normal|hard.
+        difficultyModes: {
+            easy: {
+                bossTempoScale: 1.42,
+                bossHealthScale: 0.72,
+                bossShotSpeedScale: 0.72,
+                playerIFramesMs: 1600
+            },
+            normal: {
+                bossTempoScale: 1.12
+            }
+        },
         bossScore: 2500,
         bossKills: 1,
         durationMs: 90000,
@@ -670,7 +691,6 @@
             {
                 id: 'topdown',
                 kind: 'waves',
-                // Gauntlet-only: difficulty: { enemyCadenceScale: 1.2, typedFireChance: 0.6 }
                 progressDriven: true,
                 durationMs: 90000,
                 scrollMode: 'vertical',
@@ -686,15 +706,65 @@
                     'orbiterRing',
                     'mixedGauntlet'
                 ],
+                // Teach fire-up before mines. Space Cadet never sees curtains.
+                wavePatternSchedule: [
+                    { untilMs: 20000, keys: ['verticalRegular', 'verticalV'] },
+                    { untilMs: 42000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
+                    { untilMs: 68000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing', 'pincerDive'] },
+                    { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
+                ],
+                wavePatternScheduleByMode: {
+                    easy: [
+                        { untilMs: 28000, keys: ['verticalRegular', 'verticalV'] },
+                        { untilMs: 54000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
+                        { untilMs: 78000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
+                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing'] }
+                    ],
+                    hard: [
+                        { untilMs: 10000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
+                        { untilMs: 24000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'pincerDive'] },
+                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
+                    ]
+                },
+                difficultyModes: {
+                    easy: {
+                        firstWaveDelayMs: 1800,
+                        enemyCadenceScale: 1.62,
+                        typedFireChance: 0.32,
+                        waveIntervalMinMs: 2500,
+                        waveIntervalMaxMs: 3300,
+                        enemySpeedScale: 0.8,
+                        enemyShotSpeedScale: 0.68,
+                        blackHolePreviewAtMs: 82000,
+                        playerIFramesMs: 1600
+                    },
+                    normal: {
+                        firstWaveDelayMs: 1200,
+                        enemyCadenceScale: 1.14,
+                        typedFireChance: 0.7,
+                        waveIntervalMinMs: 1850,
+                        waveIntervalMaxMs: 2500,
+                        blackHolePreviewAtMs: 68000
+                    },
+                    hard: {
+                        firstWaveDelayMs: 420,
+                        enemyCadenceScale: 0.7,
+                        typedFireChance: 1,
+                        waveIntervalMinMs: 1050,
+                        waveIntervalMaxMs: 1450,
+                        blackHolePreviewAtMs: 48000
+                    }
+                },
                 powerups: [
-                    { progressMs: 3000, type: 'weapon', x: 320 },
-                    { progressMs: 10000, type: 'shield', x: 480 },
-                    { progressMs: 18000, type: 'boost', x: 400 },
-                    { progressMs: 28000, type: 'repair', x: 280 },
+                    { progressMs: 2500, type: 'weapon', x: 320 },
+                    { progressMs: 8000, type: 'repair', x: 260 },
+                    { progressMs: 12000, type: 'shield', x: 480 },
+                    { progressMs: 20000, type: 'boost', x: 400 },
+                    { progressMs: 32000, type: 'repair', x: 280 },
                     { progressMs: 38000, type: 'weapon', x: 520 },
-                    { progressMs: 38000, type: 'bomb', x: 360 },
-                    { progressMs: 52000, type: 'shield', x: 440 },
-                    { progressMs: 65000, type: 'repair', x: 400 },
+                    { progressMs: 42000, type: 'bomb', x: 360 },
+                    { progressMs: 54000, type: 'shield', x: 440 },
+                    { progressMs: 68000, type: 'repair', x: 400 },
                     { progressMs: 78000, type: 'boost', x: 300 },
                     { progressMs: 85000, type: 'bomb', x: 500 }
                 ],

@@ -1,5 +1,5 @@
 import RunRules from '../../shared/run-rules.cjs';
-const { isPlausibleCompletedRun, isPlausibleTime } = RunRules;
+const { isPlausibleCompletedRun, isPlausibleTime, sanitizeLeaderboardScope } = RunRules;
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 
@@ -319,13 +319,6 @@ function getRequestVersion(request) {
 function getRequestScope(request) {
     const url = new URL(request.url);
     return sanitizeLeaderboardScope(url.searchParams.get('scope'));
-}
-
-function sanitizeLeaderboardScope(value) {
-    const scope = String(value || 'campaign').toLowerCase();
-    if (scope === 'campaign') return 'campaign';
-    if (/^level-[1-9]\d*$/.test(scope)) return scope;
-    return 'campaign';
 }
 
 function sanitizeName(value) {

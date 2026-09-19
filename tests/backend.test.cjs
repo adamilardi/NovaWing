@@ -120,6 +120,45 @@ test('five-level campaign duration survives Node completion, leaderboard submiss
     assert.equal(leaderboard.json().entries[0].timeMs, 16 * 60 * 1000);
 });
 
+test('easy and hard scores stay on their own boards', async t => {
+    const Rules = require('../shared/run-rules.cjs');
+    const { request, advance } = await serverFixture(t);
+    const rules = Rules.rulesForScope('campaign');
+    async function postRun(scope, name) {
+        const started = (await request('/api/run', {
+            method: 'POST',
+            body: { scope, version: 'boards' }
+        })).json();
+        advance(60000);
+        const body = {
+            runId: started.runId,
+            scope,
+            version: 'boards',
+            score: rules.bossScore,
+            kills: rules.bossKills,
+            accuracy: 90
+        };
+        assert.equal((await request('/api/run', { method: 'PATCH', body })).status, 200);
+        const submission = await request('/api/leaderboard', { method: 'POST', body: { ...body, name } });
+        assert.equal(submission.status, 201, submission.bytes.toString());
+        return submission.json();
+    }
+
+    await postRun('campaign', 'Hotshot');
+    await postRun('campaign-easy', 'Cadet');
+    await postRun('campaign-hard', 'Nova');
+
+    const hotshot = await request('/api/leaderboard?scope=campaign&version=boards');
+    const easy = await request('/api/leaderboard?scope=campaign-easy&version=boards');
+    const hard = await request('/api/leaderboard?scope=campaign-hard&version=boards');
+    assert.equal(hotshot.json().entries.length, 1);
+    assert.equal(hotshot.json().entries[0].name, 'Hotshot');
+    assert.equal(easy.json().entries[0].name, 'Cadet');
+    assert.equal(hard.json().entries[0].name, 'Nova');
+    assert.equal(easy.json().scope, 'campaign-easy');
+    assert.equal(hard.json().scope, 'campaign-hard');
+});
+
 test('Pages leaderboard accepts shared extended-campaign duration and run endpoint issues matching TTL', async t => {
     const Levels = require('../levels.js');
     const Rules = require('../shared/run-rules.cjs');

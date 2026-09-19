@@ -24,7 +24,7 @@ Preconditions:
 
 ## Gotchas
 
-- `?diff=` itself unranks. This case proves the overlay, not a ranked Hotshot continue.
+- `?diff=` itself unranks. This case proves the overlay, not a ranked continue.
 - Bot sessions (`?bot=1`) skip the continue overlay.
 - Local co-op does not open this prompt while a partner is still alive (`PARTNER CONTINUES`). If both ships are out of lives, the overlay can still appear.
 - The default `--case continues` proves Space Cadet stock and Supernova none. Hotshot's single continue is authored, not that case.

@@ -1,13 +1,13 @@
 # Pause and difficulty
 
-Pause freezes the ship. Space Cadet / Hotshot / Supernova change combat knobs from the pause menu. Storage IDs stay `easy` / `normal` / `hard`. Ranked play is Hotshot.
+Pause freezes the ship. Space Cadet / Hotshot / Supernova change combat knobs from the pause menu. Storage IDs stay `easy` / `normal` / `hard`. Each mode has its own public leaderboard.
 
 ## Sub-features
 
 - `pause-freeze` stops movement while paused.
 - `pause-resume` restores play with Esc, P, or Resume.
 - `difficulty-cycle` walks Hotshot → Supernova → Space Cadet from pause.
-- `difficulty-unranked` keeps Space Cadet and Supernova off the public board.
+- `difficulty-boards` posts Space Cadet, Hotshot, and Supernova scores on separate boards.
 
 ## How to get to it (user POV)
 
@@ -30,5 +30,5 @@ Preconditions:
 - Stored `localStorage` `novawing-difficulty` can change the first cycle step. The harness forces Hotshot before `D`.
 - Existing enemies keep spawn-time HP. Knob proof is `getDifficulty()`, not a live ship's health.
 - Supernova does not raise enemy HP. Pressure is speed, cadence, and density.
-- `?diff=` taints leaderboard even on Hotshot. Do not use it for ranked-path proof.
+- `?diff=` and mid-run mode changes unrank the current run. Pick the mode on the title screen for a ranked post.
 - `A` is left-move, not a pause menu key.

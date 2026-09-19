@@ -2,15 +2,43 @@
 const Levels = require('../levels.js');
 const Flow = require('../src/level-flow.js');
 
+function leaderboardScopeBase(scope) {
+    return String(scope || 'campaign').toLowerCase().replace(/-(easy|normal|hard)$/, '');
+}
+
+function parseLeaderboardDifficulty(scope) {
+    const cleaned = String(scope || '').toLowerCase();
+    if (cleaned.endsWith('-easy')) return 'easy';
+    if (cleaned.endsWith('-hard')) return 'hard';
+    return 'normal';
+}
+
+function sanitizeLeaderboardScope(value) {
+    const match = /^(campaign|level-[1-9]\d*)(?:-(easy|normal|hard))?$/.exec(String(value || 'campaign').toLowerCase());
+    if (!match) return 'campaign';
+    const diff = match[2];
+    if (!diff || diff === 'normal') return match[1];
+    return match[1] + '-' + diff;
+}
+
+function makeLeaderboardScope(base, difficulty) {
+    const rawBase = leaderboardScopeBase(base);
+    const validBase = /^(campaign|level-[1-9]\d*)$/.test(rawBase) ? rawBase : 'campaign';
+    const diff = String(difficulty || 'normal').toLowerCase();
+    if (diff === 'easy' || diff === 'hard') return validBase + '-' + diff;
+    return validBase;
+}
+
 function rulesForScope(scope, catalog = Levels.getEffectiveLevelDefs()) {
-    const match = /^level-([1-9]\d*)$/.exec(scope || '');
-    const selected = scope === 'campaign' ? catalog : catalog.filter(level => match && level.id === Number(match[1]));
+    const base = leaderboardScopeBase(scope);
+    const match = /^level-([1-9]\d*)$/.exec(base);
+    const selected = base === 'campaign' ? catalog : catalog.filter(level => match && level.id === Number(match[1]));
     if (!selected.length) return null;
     const payout = selected.reduce((sum, level) => {
         const reward = Flow.totals(level);
         return { score: sum.score + reward.score, kills: sum.kills + reward.kills };
     }, { score: 0, kills: 0 });
-    const campaignScale = scope === 'campaign' ? Math.max(1, selected.length / 3) : 1;
+    const campaignScale = base === 'campaign' ? Math.max(1, selected.length / 3) : 1;
     const drops = selected.reduce((sum, level) => sum + (level.segments && level.segments.length
         ? level.segments.reduce((count, segment) => count + (segment.powerups || level.powerups || []).length, 0)
         : (level.powerups || []).length), 0);
@@ -43,4 +71,13 @@ function isPlausibleCompletedRun(entry, catalog) {
     return entry.score <= rules.bossScore + regularKills * rules.maxKillScore + rules.maxPowerupScore;
 }
 
-module.exports = { rulesForScope, isPlausibleTime, isPlausibleCompletedRun, runTokenTtlMs };
+module.exports = {
+    rulesForScope,
+    isPlausibleTime,
+    isPlausibleCompletedRun,
+    runTokenTtlMs,
+    sanitizeLeaderboardScope,
+    leaderboardScopeBase,
+    parseLeaderboardDifficulty,
+    makeLeaderboardScope
+};

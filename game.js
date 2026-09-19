@@ -1228,9 +1228,9 @@ function create() {
     leaderboardLoadPromises = new Map();
     runtimeSessionGen += 1;
     leaderboardDebugTainted = false;
-    leaderboardEntries = getLocalLeaderboard('campaign');
+    leaderboardEntries = getLocalLeaderboard(makeLeaderboardScope('campaign', getDifficultyMode()));
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
-    loadLeaderboardFromServer();
+    loadLeaderboardFromServer(makeLeaderboardScope('campaign', getDifficultyMode()));
     campaignRunState = null;
     levelRunState = null;
 
@@ -1491,7 +1491,7 @@ function create() {
         if (this.physics && this.physics.world && this.physics.world.isPaused) this.physics.resume();
         setHudVisible(true);
         if (isLeaderboardEligibleSession()) {
-            campaignRunState = startScopedRunOnServer('campaign');
+            campaignRunState = startScopedRunOnServer(makeLeaderboardScope('campaign', getDifficultyMode()));
             levelRunState = startScopedRunOnServer(getLevelLeaderboardScope(currentLevel));
         }
         syncLevelMusic('waves');
@@ -1636,7 +1636,10 @@ function update(time, delta) {
         const ld = getLevelDef(currentLevel);
         if (ld && ld.blackHole) {
             const bhCfg = Object.assign({}, BLACK_HOLE_DEFAULTS, ld.blackHole);
-            const previewAt = Number.isFinite(bhCfg.previewAtMs) ? bhCfg.previewAtMs : 60000;
+            const authoredPreviewAt = difficultyNumber('blackHolePreviewAtMs', 0);
+            const previewAt = authoredPreviewAt > 0
+                ? authoredPreviewAt
+                : (Number.isFinite(bhCfg.previewAtMs) ? bhCfg.previewAtMs : 60000);
             if (levelProgressMs >= previewAt && !blackHolePreview) {
                 blackHolePreview = true;
                 blackHoleConfig = bhCfg;
@@ -2517,12 +2520,34 @@ function getActivePowerupPlan() {
  * - [keys...] → filter only (never fall back to all)
  */
 function getActiveWavePatternKeys() {
+    const scheduled = getScheduledWavePatternKeys();
+    if (scheduled) return scheduled;
     const seg = getLevelSegmentDef();
     if (seg && Object.prototype.hasOwnProperty.call(seg, 'wavePatternKeys')) {
         return seg.wavePatternKeys;
     }
     const levelDef = getLevelDef(currentLevel);
     return levelDef ? levelDef.wavePatternKeys : null;
+}
+
+function getScheduledWavePatternKeys() {
+    const seg = getLevelSegmentDef();
+    if (!seg) return null;
+    const mode = getDifficultyMode();
+    const byMode = seg.wavePatternScheduleByMode;
+    const schedule = (byMode && Array.isArray(byMode[mode]) && byMode[mode].length)
+        ? byMode[mode]
+        : seg.wavePatternSchedule;
+    if (!Array.isArray(schedule) || !schedule.length) return null;
+    const progress = Number.isFinite(levelProgressMs) ? levelProgressMs : 0;
+    for (let i = 0; i < schedule.length; i++) {
+        const step = schedule[i];
+        if (!step || !Array.isArray(step.keys)) continue;
+        const until = Number(step.untilMs);
+        if (!Number.isFinite(until) || progress < until) return step.keys;
+    }
+    const last = schedule[schedule.length - 1];
+    return last && Array.isArray(last.keys) ? last.keys : null;
 }
 
 function getLevelWavePatterns() {
@@ -2574,6 +2599,13 @@ function logDifficultyQueryOverlay() {
     }
 }
 
+function overlayAuthoredModeDifficulty(bag, source, mode, overlayFn) {
+    if (!source || !source.difficultyModes || typeof source.difficultyModes !== 'object') return bag;
+    const partial = source.difficultyModes[mode];
+    if (!partial || typeof partial !== 'object') return bag;
+    return overlayFn(bag, partial);
+}
+
 function getActiveDifficulty() {
     const def = typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null;
     let bag = def && def.difficulty ? def.difficulty : null;
@@ -2597,6 +2629,8 @@ function getActiveDifficulty() {
             bag = overlayFn(bag, modeBag);
         }
     }
+    bag = overlayAuthoredModeDifficulty(bag, def, mode, overlayFn);
+    bag = overlayAuthoredModeDifficulty(bag, seg, mode, overlayFn);
     const queryBag = getDifficultyQueryOverlay();
     if (queryBag && Object.keys(queryBag).length) {
         bag = overlayFn(bag, queryBag);
@@ -4903,7 +4937,7 @@ function completeLevel() {
                 completed: true,
                 completionTimeMs,
                 skipLeaderboard: !scoreEligible,
-                scope: 'campaign',
+                scope: makeLeaderboardScope('campaign', getDifficultyMode()),
                 score,
                 kills: enemiesKilled,
                 accuracy: getRunAccuracy(),
@@ -5655,7 +5689,7 @@ function getDebugBossSkip() {
     }
 }
 
-/** Debug, bot, and direct-level sessions never write public leaderboard scores. */
+/** Debug, bot, co-op, continue, and query-tainted sessions never write public scores. */
 function isLeaderboardEligibleSession() {
     if (coopEnabled) return false;
     if (leaderboardDebugTainted) return false;
@@ -5666,7 +5700,6 @@ function isLeaderboardEligibleSession() {
             return false;
         }
         if (continueUsedThisRun) return false;
-        if (getDifficultyMode() !== 'normal') return false;
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
             'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
@@ -6769,10 +6802,6 @@ function getDifficultyMode() {
     return mode || 'normal';
 }
 
-function isRankedDifficultyMode(mode) {
-    return (mode || getDifficultyMode()) === 'normal';
-}
-
 function getDifficultyModeMetadata(mode) {
     const id = parseDifficultyModeName(mode || getDifficultyMode()) || 'normal';
     const metadata = window.DIFFICULTY_MODE_METADATA;
@@ -6801,7 +6830,7 @@ function difficultyModeFill(mode) {
 function formatDifficultyToggleLabel() {
     if (coopEnabled) return '<  ' + formatDifficultyModeName() + '  >   ·  local co-op unranked';
     const mode = getDifficultyMode();
-    const ranked = isRankedDifficultyMode(mode);
+    const ranked = isLeaderboardEligibleSession();
     return '<  ' + formatDifficultyModeName(mode) + '  >   ·  '
         + (ranked ? 'ranked' : 'unranked');
 }
@@ -6809,19 +6838,19 @@ function formatDifficultyToggleLabel() {
 function formatUnrankedReasonLine() {
     if (coopEnabled) return 'Local co-op run — leaderboard and personal best disabled';
     if (continueUsedThisRun) return 'Continued run — public leaderboard disabled';
-    if (getDifficultyMode() !== 'normal') {
-        return formatDifficultyModeName() + ' run — public leaderboard disabled';
-    }
     return 'Debug run — leaderboard disabled';
 }
 
 function setDifficultyMode(next) {
     if (isPlaytestBotSession()) return getDifficultyMode();
+    const previous = getDifficultyMode();
     const mode = parseDifficultyModeName(next) || 'normal';
     difficultyMode = mode;
     saveDifficultyMode(mode);
-    // The opening is pre-run, so players can browse modes before choosing.
-    if (mode !== 'normal' && !openingActive) markSessionLeaderboardIneligible();
+    // Title browsing is pre-run. Results pick the next run. Mid-combat swaps unrank.
+    const runInProgress = !openingActive && levelStartTime > 0 &&
+        !levelEnded && !awaitingNextLevel && !victoryPending && !continuePending;
+    if (runInProgress && previous !== mode) markSessionLeaderboardIneligible();
     if (openingActive || (typeof levelStartTime === 'number' && levelStartTime === 0)) {
         resetContinueStock();
     } else {
@@ -6836,8 +6865,7 @@ function setDifficultyMode(next) {
                 scene,
                 400,
                 90,
-                'DIFFICULTY  ' + formatDifficultyModeName(mode)
-                    + (mode === 'normal' ? '' : '  ·  UNRANKED'),
+                'DIFFICULTY  ' + formatDifficultyModeName(mode),
                 difficultyModeFill(mode),
                 { screenSpace: true }
             );
@@ -6954,9 +6982,9 @@ function showContinueOverlay(scene) {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa0c8',
         stroke: '#050816', strokeThickness: 4, align: 'center'
     }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
-    const ranked = isRankedDifficultyMode() && !continueUsedThisRun;
+    const ranked = isLeaderboardEligibleSession();
     const note = scene.add.text(400, 442, ranked
-        ? 'Using a continue makes this Hotshot run unranked'
+        ? 'Using a continue makes this run unranked'
         : 'Continued runs do not post to the public leaderboard', {
         fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8',
         stroke: '#050816', strokeThickness: 4
@@ -7422,7 +7450,7 @@ function showPauseOverlay(scene) {
     nodes.push(restartBtn.bg, restartBtn.label);
 
     const hint = scene.add.text(400, 440, shouldShowTouchControls()
-        ? 'HOTSHOT qualifies for the leaderboard'
+        ? 'Each flight mode has its own leaderboard'
         : 'START / P resume  ·  D difficulty  ·  R restart', {
         fontFamily: 'monospace', resolution: 2,
         fontSize: '14px',
@@ -9147,22 +9175,47 @@ function getLeaderboardScopes() {
     return scopes;
 }
 
-function sanitizeLeaderboardScope(value) {
-    const scope = String(value || 'campaign').toLowerCase();
-    if (scope === 'campaign') return 'campaign';
-    if (/^level-[1-9]\d*$/.test(scope)) return scope;
-    return 'campaign';
+function leaderboardScopeBase(scope) {
+    return String(scope || 'campaign').toLowerCase().replace(/-(easy|normal|hard)$/, '');
 }
 
-function getLevelLeaderboardScope(levelId) {
+function parseLeaderboardDifficulty(scope) {
+    const cleaned = String(scope || '').toLowerCase();
+    if (cleaned.endsWith('-easy')) return 'easy';
+    if (cleaned.endsWith('-hard')) return 'hard';
+    return 'normal';
+}
+
+function sanitizeLeaderboardScope(value) {
+    const match = /^(campaign|level-[1-9]\d*)(?:-(easy|normal|hard))?$/.exec(String(value || 'campaign').toLowerCase());
+    if (!match) return 'campaign';
+    const diff = match[2];
+    if (!diff || diff === 'normal') return match[1];
+    return match[1] + '-' + diff;
+}
+
+function makeLeaderboardScope(base, difficulty) {
+    const rawBase = leaderboardScopeBase(base);
+    const validBase = /^(campaign|level-[1-9]\d*)$/.test(rawBase) ? rawBase : 'campaign';
+    const diff = parseDifficultyModeName(difficulty) || 'normal';
+    if (diff === 'easy' || diff === 'hard') return validBase + '-' + diff;
+    return validBase;
+}
+
+function getLevelLeaderboardScope(levelId, difficulty) {
     const max = Math.max(1, totalLevels());
     const level = Phaser.Math.Clamp(Math.floor(Number(levelId) || 1), 1, max);
-    return 'level-' + level;
+    return makeLeaderboardScope('level-' + level, difficulty || getDifficultyMode());
 }
 
 function getLeaderboardScopeLabel(scope) {
-    const normalized = sanitizeLeaderboardScope(scope);
-    return normalized === 'campaign' ? 'CAMPAIGN' : 'LEVEL ' + normalized.slice(-1);
+    const base = leaderboardScopeBase(scope);
+    return base === 'campaign' ? 'CAMPAIGN' : 'LEVEL ' + base.slice('level-'.length);
+}
+
+function formatLeaderboardTitle(scope, difficulty) {
+    const mode = formatDifficultyModeName(difficulty || parseLeaderboardDifficulty(scope));
+    return mode + ' · ' + getLeaderboardScopeLabel(scope);
 }
 
 function getLocalLeaderboard(scope = 'campaign') {
@@ -9740,13 +9793,15 @@ function endLevel(title, color, options = {}) {
         ? sanitizePlayerName(getSavedPlayerName() || 'Pilot')
         : null;
     const resultDifficulty = getDifficultyMode();
-    const currentLeaderboard = getLocalLeaderboard(displayScope);
+    const displayScopeBase = leaderboardScopeBase(displayScope);
+    let viewedDifficulty = parseLeaderboardDifficulty(displayScope) || resultDifficulty;
+    const currentLeaderboard = getLocalLeaderboard(makeLeaderboardScope(displayScopeBase, viewedDifficulty));
     const unrankedLine = formatUnrankedReasonLine();
     const resultLine = continueToNext
         ? (skipLeaderboard ? unrankedLine : 'Enter a pilot name to post this run')
         : (completed && !skipLeaderboard
             ? 'Enter a pilot name to post this run'
-            : (completed || skipLeaderboard || getDifficultyMode() !== 'normal'
+            : (completed || skipLeaderboard
                 ? unrankedLine
                 : 'Complete the boss fight to set a time'));
     let submittedEntry = null;
@@ -9794,10 +9849,10 @@ function endLevel(title, color, options = {}) {
         fontSize: '25px', fill: '#ffe66d', fontFamily: 'monospace', resolution: 2, fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
     const savedName = playerName || sanitizePlayerName(getSavedPlayerName() || 'Pilot');
-    const previousBest = getPersonalBestScore(displayScope, resultDifficulty, savedName);
+    const previousBest = getPersonalBestScore(displayScopeBase, resultDifficulty, savedName);
     const eligibleResultScore = completed && !leaderboardDebugTainted ? displayScore : 0;
     if (completed && skipLeaderboard && !leaderboardDebugTainted && !coopEnabled) {
-        recordPersonalBestScore(displayScope, resultDifficulty, savedName, displayScore);
+        recordPersonalBestScore(displayScopeBase, resultDifficulty, savedName, displayScore);
     }
     const personalBestText = this.add.text(218, 178, 'PERSONAL BEST  ' + Math.max(previousBest, eligibleResultScore), {
         fontSize: '14px', fill: '#66f6ff', fontFamily: 'monospace', resolution: 2
@@ -9824,29 +9879,28 @@ function endLevel(title, color, options = {}) {
                 resultLineText.setText('Local co-op run — leaderboard and personal best disabled');
                 return;
             }
-            const rankedNext = getDifficultyMode() === 'normal';
-            resultLineText.setText(rankedNext
-                ? (completed
-                    ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : resultLine)
-                    : 'Complete the boss fight to set a time')
-                : formatDifficultyModeName() + ' next run — public leaderboard disabled');
+            resultLineText.setText(completed
+                ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : resultLine)
+                : 'Complete the boss fight to set a time');
         }
     };
     difficultyHint.on('pointerdown', () => {
         cycleDifficultyMode(1);
+        viewedDifficulty = getDifficultyMode();
         refreshResultModeLines();
+        selectLeaderboardScope(selectedLeaderboardScope);
     });
     refreshResultModeLines();
 
     const leaderboardPanel = this.add.rectangle(555, 287, 335, 310, 0x091329, 0.88)
         .setStrokeStyle(1, 0x314d7a, 0.9).setDepth(11).setScrollFactor(0);
-    const leaderboardTitle = this.add.text(555, 151, getLeaderboardScopeLabel(displayScope) + ' LEADERBOARD', {
+    const leaderboardTitle = this.add.text(555, 151, formatLeaderboardTitle(displayScope, viewedDifficulty) + ' LEADERBOARD', {
         fontSize: '17px',
         fill: '#ffffff',
         fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
-    let selectedLeaderboardScope = displayScope;
+    let selectedLeaderboardScope = displayScopeBase;
     const formatCompactLeaderboard = (entries, emptyMessage) => {
         if (!entries.length) return [emptyMessage || leaderboardStatus || 'No completed runs yet'];
         return entries.map((entry, index) =>
@@ -9875,7 +9929,7 @@ function endLevel(title, color, options = {}) {
     const tabTexts = tabDefs.map(tab => {
         const text = this.add.text(tab.x, 180, tab.label, {
             fontSize: '13px',
-            fill: tab.scope === displayScope ? '#ffe66d' : '#8aa0c8',
+            fill: tab.scope === displayScopeBase ? '#ffe66d' : '#8aa0c8',
             fontFamily: 'monospace', resolution: 2
         }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
         text.setInteractive({ useHandCursor: true });
@@ -9883,14 +9937,15 @@ function endLevel(title, color, options = {}) {
     });
 
     const selectLeaderboardScope = scope => {
-        selectedLeaderboardScope = sanitizeLeaderboardScope(scope);
-        leaderboardTitle.setText(getLeaderboardScopeLabel(selectedLeaderboardScope) + ' FASTEST');
+        selectedLeaderboardScope = leaderboardScopeBase(scope);
+        const board = makeLeaderboardScope(selectedLeaderboardScope, viewedDifficulty);
+        leaderboardTitle.setText(formatLeaderboardTitle(board, viewedDifficulty) + ' FASTEST');
         tabTexts.forEach(tab => {
             tab.text.setFill(tab.scope === selectedLeaderboardScope ? '#ffe66d' : '#8aa0c8');
         });
         leaderboardText.setText('Loading...');
-        loadLeaderboardFromServer(selectedLeaderboardScope).then(result => {
-            if (!leaderboardText.scene || selectedLeaderboardScope !== result.scope) return;
+        loadLeaderboardFromServer(board).then(result => {
+            if (!leaderboardText.scene || board !== result.scope) return;
             leaderboardText.setText(formatCompactLeaderboard(
                 result.entries || [],
                 result.online ? 'No online scores yet' : 'No local scores yet'
@@ -9910,7 +9965,7 @@ function endLevel(title, color, options = {}) {
     if (pilotInput) {
         pilotInput.input.addEventListener('input', () => {
             const typedName = sanitizePlayerName(pilotInput.input.value);
-            const typedBest = getPersonalBestScore(displayScope, resultDifficulty, typedName);
+            const typedBest = getPersonalBestScore(displayScopeBase, resultDifficulty, typedName);
             personalBestText.setText('PERSONAL BEST  ' + Math.max(typedBest, eligibleResultScore));
         });
     }
@@ -10062,7 +10117,7 @@ function endLevel(title, color, options = {}) {
         if (submittedEntry && Number.isFinite(submittedEntry.timeMs) && submittedEntry.timeMs > 0) {
             statsText.setText(formatResultStats(submittedEntry.timeMs));
             personalBestText.setText('PERSONAL BEST  ' + getPersonalBestScore(
-                displayScope,
+                displayScopeBase,
                 resultDifficulty,
                 submittedEntry.name
             ));
@@ -10070,7 +10125,7 @@ function endLevel(title, color, options = {}) {
         resultLineText.setText(rankedInTop
             ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
             : 'Finished outside top ' + LEADERBOARD_LIMIT);
-        if (selectedLeaderboardScope === displayScope) {
+        if (makeLeaderboardScope(selectedLeaderboardScope, viewedDifficulty) === displayScope) {
             leaderboardText.setText(formatCompactLeaderboard(result.entries || []));
         }
         shareText.setVisible(true);
@@ -10111,10 +10166,10 @@ function endLevel(title, color, options = {}) {
             : Promise.resolve(null);
         Promise.all([primarySubmission, secondarySubmission]).then(results => {
             const result = results[0];
-            recordPersonalBestScore(displayScope, resultDifficulty, playerName, displayScore);
+            recordPersonalBestScore(displayScopeBase, resultDifficulty, playerName, displayScore);
             if (secondaryEntry) {
                 recordPersonalBestScore(
-                    secondaryEntry.scope,
+                    leaderboardScopeBase(secondaryEntry.scope),
                     resultDifficulty,
                     playerName,
                     secondaryEntry.score
@@ -10142,7 +10197,9 @@ function endLevel(title, color, options = {}) {
 function shareScoreResult(entry, rank, statusText) {
     const rankText = Number.isFinite(rank) && rank > 0 ? ' Rank #' + rank + '.' : '';
     const shareUrl = window.location.origin + window.location.pathname;
-    const shareText = entry.name + ' beat NovaWing in ' +
+    const shareMode = parseLeaderboardDifficulty(entry.scope);
+    const shareModeBit = shareMode === 'normal' ? '' : ' (' + formatDifficultyModeName(shareMode) + ')';
+    const shareText = entry.name + ' beat NovaWing' + shareModeBit + ' in ' +
         formatRunTime(entry.timeMs) + ' with ' +
         entry.score + ' points and ' +
         entry.kills + ' kills.' + rankText + ' ' + shareUrl;
@@ -10866,6 +10923,7 @@ window.__novawingDebug = {
     getDifficulty: getActiveDifficulty,
     getDifficultyMode: getDifficultyMode,
     setDifficultyMode: setDifficultyMode,
+    isLeaderboardEligibleSession,
     cycleDifficultyMode: cycleDifficultyMode,
     togglePause() {
         togglePause();

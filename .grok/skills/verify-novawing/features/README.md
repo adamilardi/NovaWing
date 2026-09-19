@@ -31,7 +31,7 @@ This directory is the maintained source for verifying player-facing NovaWing beh
 ## Features
 
 - [Boot and controls](./boot-and-controls.md) covers load, canvas, desktop move, and Standard Gamepad.
-- [Pause and difficulty](./pause-and-difficulty.md) covers pause freeze and Space Cadet / Hotshot / Supernova.
+- [Pause and difficulty](./pause-and-difficulty.md) covers pause freeze, Space Cadet / Hotshot / Supernova, and per-mode leaderboards.
 - [Continues](./continues.md) covers last-life arcade continues on Space Cadet and Hotshot, and none on Supernova.
 - [Level 1 open space](./level-1-open-space.md) covers the heuristic bot playing OPEN SPACE.
 - [Level 2 canyon](./level-2-canyon.md) covers the heuristic bot playing THE CANYON with walls.

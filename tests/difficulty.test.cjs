@@ -78,6 +78,36 @@ test('easy and normal grant arcade continues and supernova does not', () => {
     assert.ok(Levels.DIFFICULTY_MODE_METADATA.hard.description.includes('No continues'));
 });
 
+test('L3 gauntlet teaches vertical fire before mines and eases Space Cadet', () => {
+    const l3 = Levels.getLevel3Def();
+    const topdown = l3.segments.find((segment) => segment.id === 'topdown');
+    assert.ok(topdown);
+    const first = topdown.wavePatternSchedule[0];
+    assert.ok(first.untilMs >= 18000);
+    assert.equal(first.keys.includes('mineCurtain'), false);
+    assert.equal(first.keys.includes('mixedGauntlet'), false);
+
+    const easyLast = topdown.wavePatternScheduleByMode.easy.at(-1);
+    assert.equal(easyLast.keys.includes('mineCurtain'), false);
+    assert.equal(easyLast.keys.includes('pincerDive'), false);
+    assert.ok(topdown.wavePatternScheduleByMode.easy[0].untilMs > first.untilMs);
+
+    const hardFirst = topdown.wavePatternScheduleByMode.hard[0];
+    assert.ok(hardFirst.untilMs < first.untilMs);
+    assert.ok(hardFirst.keys.includes('riserColumns'));
+
+    const easy = topdown.difficultyModes.easy;
+    const normal = topdown.difficultyModes.normal;
+    const hard = topdown.difficultyModes.hard;
+    assert.ok(easy.typedFireChance < normal.typedFireChance);
+    assert.ok(normal.typedFireChance < hard.typedFireChance);
+    assert.ok(easy.waveIntervalMinMs > normal.waveIntervalMinMs);
+    assert.ok(normal.waveIntervalMinMs > hard.waveIntervalMinMs);
+    assert.ok(easy.blackHolePreviewAtMs > normal.blackHolePreviewAtMs);
+    assert.ok(normal.blackHolePreviewAtMs > hard.blackHolePreviewAtMs);
+    assert.ok(l3.difficultyModes.easy.bossTempoScale > l3.difficultyModes.normal.bossTempoScale);
+});
+
 test('difficulty query preset is overlaid by explicit numeric knobs only', () => {
     const overlay = Levels.readDifficultyQueryOverlay(
         '?diff=easy&enemyHealthScale=0.8&enemyCadenceScale=1.7&unknown=999'
