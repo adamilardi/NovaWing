@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-# v2 size is unchanged; vertical L3 is remapped into the horizontal frame
-# (canonicalAxes) so +x is ahead and +y is strafe. Old vertical steps without
-# header.canonicalAxes are skipped in demos_io.
-OBS_VERSION = 2
-OBS_SIZE = 176
+# v3 appends the pilot dodge block from snap.pilot (16 floats).
+# Vertical L3 stays in the horizontal frame (canonicalAxes).
+# Demos from v2 are a different size and are not mixed into v3 training.
+OBS_VERSION = 3
+OBS_SIZE = 192
 ACTION_SIZE = 4

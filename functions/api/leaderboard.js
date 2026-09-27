@@ -341,11 +341,35 @@ function jsonResponse(request, payload, status = 200) {
     });
 }
 
+function isArcadeLeaderboardOrigin(origin) {
+    let url;
+    try {
+        url = new URL(origin);
+    } catch (err) {
+        return false;
+    }
+    if (url.protocol !== 'https:' || url.port || url.username || url.password ||
+        url.pathname !== '/' || url.search || url.hash) return false;
+    if (url.origin === 'https://ailardi.com' || url.origin === 'https://www.ailardi.com') return true;
+    return url.hostname === 'ailardi-landing.pages.dev' ||
+        url.hostname.endsWith('.ailardi-landing.pages.dev');
+}
+
 function corsHeaders(request) {
-    // Same-origin browser clients do not need CORS. Only echo a same-origin
-    // Origin so third-party sites cannot call the API from a page context.
+    // The game itself is same-origin. The arcade landing may read the board.
+    // Submissions stay same-origin so another site cannot post a run.
     const origin = request && request.headers ? request.headers.get('Origin') : null;
     if (!origin) return {};
+
+    const method = request.method || 'GET';
+    if ((method === 'GET' || method === 'HEAD' || method === 'OPTIONS') && isArcadeLeaderboardOrigin(origin)) {
+        return {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Vary': 'Origin'
+        };
+    }
 
     try {
         const requestUrl = new URL(request.url);

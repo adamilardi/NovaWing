@@ -1,7 +1,7 @@
 /**
  * Archive demo JSONL that doesn't match the current OBS contract (or all demos).
  *
- *   npm run rl:archive-demos           # move non-v2 demos aside
+ *   npm run rl:archive-demos           # move demos from older observation versions aside
  *   npm run rl:archive-demos -- --all  # move everything under demos/
  *
  * Destination: rl/demos/_archive_<stamp>/

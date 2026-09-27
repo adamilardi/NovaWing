@@ -120,6 +120,13 @@ describe('level authoring surface', () => {
         assert.equal(hard.enemyHealthScale, defaults.enemyHealthScale);
         assert.ok(hard.enemyShotSpeedScale > defaults.enemyShotSpeedScale);
         assert.equal(hard.softInterceptorAim, undefined);
+        assert.equal(defaults.randomWaves, false);
+        assert.equal(defaults.weaponPowerMs, 0);
+        assert.equal(hard.randomWaves, true);
+        assert.ok(hard.weaponPowerMs >= 10000);
+        assert.equal(easy.randomWaves, undefined);
+        assert.equal(easy.weaponPowerMs, undefined);
+        assert.match(Levels.DIFFICULTY_MODE_METADATA.hard.description, /fade/i);
         assert.deepEqual(Levels.getDifficultyPreset('nope'), {});
         assert.deepEqual(Levels.getDifficultyPreset('assist'), {});
     });
@@ -137,6 +144,26 @@ describe('level authoring surface', () => {
         assert.equal(Levels.getCampaignBossScore(), 1500 + 1500 + 2500);
         assert.equal(Levels.getCampaignBossKills(), 3);
         assert.equal(Levels.getLevelBossScore(3), 2500);
+    });
+
+    it('gives Hotshot a longer Level 3 teach before mines', () => {
+        const topdown = Levels.getLevelDef(3).segments.find(segment => segment.id === 'topdown');
+        const hotshot = topdown.wavePatternScheduleByMode.normal;
+        const teach = hotshot[0];
+        const finale = hotshot[hotshot.length - 1];
+        assert.ok(teach.untilMs >= 28000);
+        assert.equal(teach.keys.includes('mineCurtain'), false);
+        assert.equal(teach.keys.includes('mixedGauntlet'), false);
+        assert.ok(finale.keys.includes('mineCurtain'));
+        assert.ok(finale.keys.includes('mixedGauntlet'));
+        const minesAt = hotshot.find(step => step.keys.includes('mineCurtain'));
+        assert.equal(minesAt, finale);
+        const tune = topdown.difficultyModes.normal;
+        assert.ok(tune.waveIntervalMinMs >= 2200);
+        assert.ok(tune.enemyCadenceScale > 1.2);
+        assert.ok(tune.typedFireChance < 0.6);
+        assert.ok(tune.blackHolePreviewAtMs >= 78000);
+        assert.ok(Levels.getLevelDef(3).difficultyModes.normal.bossTempoScale > 1.2);
     });
 
     it('segment kinds are authored so a new id does not need a JS switch', () => {

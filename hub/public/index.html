@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05050a" />
+    <meta name="description" content="Ailardi Arcade — two handcrafted browser games, ready to launch." />
+    <title>Ailardi Arcade</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='12' y='12' width='40' height='40' rx='4' transform='rotate(45 32 32)' fill='%2305050a' stroke='%23c7ff3d' stroke-width='3'/%3E%3Cpath d='M32 19 20 45h8l2-6h8l2 6h8L36 19Zm0 10 3 7h-6Z' fill='%23c7ff3d'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/style.css?v=3" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="stars stars-a" aria-hidden="true"></div>
+    <div class="stars stars-b" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <h1 class="brand">
+        <a href="/">
+          <span class="brand-mark" aria-hidden="true">A</span>
+          <span>AILARDI<span class="brand-slash">//</span>ARCADE</span>
+        </a>
+      </h1>
+      <div class="online"><span></span> 2 GAMES ONLINE</div>
+    </header>
+
+    <main>
+      <section class="games" aria-label="Games">
+        <a class="game-card novawing" href="https://novawing.ailardi.com/">
+          <div class="card-art" aria-hidden="true">
+            <div class="planet"></div>
+            <div class="wing-trail"></div>
+            <div class="ship"></div>
+            <div class="reticle"></div>
+            <span class="art-label">SECTOR 03 // HOSTILE</span>
+          </div>
+          <div class="card-copy">
+            <div class="card-meta"><span>01</span><span>ARCADE SHOOTER</span></div>
+            <h2>NOVA<span>WING</span></h2>
+            <p>Burn through biomechanical fleets, master four combat modes, and outrun a collapsing star.</p>
+            <p class="board-record" id="novawing-record">RECORD …</p>
+            <div class="launch">LAUNCH GAME <b>↗</b></div>
+          </div>
+        </a>
+
+        <a class="game-card chicken" href="https://space-chicken.ailardi.com/">
+          <div class="card-art" aria-hidden="true">
+            <div class="sun"></div>
+            <div class="platform p1"></div><div class="platform p2"></div><div class="platform p3"></div>
+            <div class="chicken-sprite"><i class="comb"></i><i class="eye"></i><i class="beak"></i><i class="leg l1"></i><i class="leg l2"></i></div>
+            <div class="feather f1">◆</div><div class="feather f2">◆</div>
+            <span class="art-label">GRAVITY // OPTIONAL</span>
+          </div>
+          <div class="card-copy">
+            <div class="card-meta"><span>02</span><span>PRECISION PLATFORMER</span></div>
+            <h2>SPACE<span>CHICKEN</span></h2>
+            <p>Leap, boost, and flap through a neon cosmos where poultry boldly goes airborne.</p>
+            <div class="launch">START CLUCKING <b>↗</b></div>
+          </div>
+        </a>
+      </section>
+    </main>
+
+    <footer>
+      <span>© 2026 AILARDI</span>
+      <span>BUILT FOR THE HIGH SCORE</span>
+    </footer>
+    <script>
+      (function () {
+        var record = document.getElementById('novawing-record');
+        if (!record) return;
+        var version = '1.2.1';
+        var api = 'https://novawing.ailardi.com/api/leaderboard';
+        function load(scope) {
+          return fetch(api + '?version=' + encodeURIComponent(version) + '&scope=' + encodeURIComponent(scope), {
+            headers: { Accept: 'application/json' }
+          }).then(function (response) {
+            if (!response.ok) throw new Error('board');
+            return response.json();
+          });
+        }
+        function posterTime(ms) {
+          var minutes = Math.floor(ms / 60000);
+          var seconds = Math.floor((ms % 60000) / 1000);
+          var centiseconds = Math.floor((ms % 1000) / 10);
+          function pad(value) { return (value < 10 ? '0' : '') + value; }
+          return (pad(minutes) + ':' + pad(seconds) + '.' + pad(centiseconds)).replace(/^0(?=\d:)/, '');
+        }
+        function show(kind, entry) {
+          var name = String(entry.name || '').toUpperCase();
+          record.textContent = (kind === 'campaign' ? 'CAMPAIGN  ' : 'RECORD  ') + posterTime(entry.timeMs) + '  ' + name;
+        }
+        load('campaign').then(function (campaign) {
+          var rows = campaign.entries || [];
+          if (rows.length) { show('campaign', rows[0]); return; }
+          return load('level-1').then(function (level) {
+            var levelRows = level.entries || [];
+            if (levelRows.length) show('level', levelRows[0]);
+            else record.textContent = 'HOTSHOT  UNCLAIMED';
+          });
+        }).catch(function () { record.hidden = true; });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap');
+
+:root { color-scheme: dark; --ink:#f5f2e8; --muted:#9d9aa8; --acid:#c7ff3d; --violet:#7857ff; --orange:#ff6b35; }
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; overflow-x:hidden; background:#05050a; color:var(--ink); font-family:'Space Mono',monospace; }
+a { color:inherit; }
+.noise { position:fixed; inset:0; z-index:10; opacity:.055; pointer-events:none; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.stars { position:fixed; inset:0; pointer-events:none; opacity:.55; background-image:radial-gradient(#fff 1px,transparent 1px); background-size:71px 71px; }
+.stars-b { opacity:.22; background-size:113px 113px; background-position:37px 19px; transform:rotate(4deg) scale(1.1); }
+.topbar { position:relative; z-index:2; flex:none; display:flex; align-items:center; justify-content:space-between; padding:12px clamp(18px,4vw,48px); border-bottom:1px solid #ffffff20; }
+.brand { margin:0; font:700 12px/1 'Space Mono',monospace; letter-spacing:.14em; text-transform:uppercase; }
+.brand a { display:flex; align-items:center; gap:12px; text-decoration:none; }
+.brand-mark { display:grid; place-items:center; width:30px; height:30px; border:1px solid var(--acid); color:var(--acid); transform:rotate(45deg); font-size:15px; }
+.brand-mark::first-letter { transform:rotate(-45deg); }
+.brand-slash { margin:0 7px; color:var(--violet); }
+.online { display:flex; align-items:center; gap:9px; color:#b8b5c1; font-size:10px; letter-spacing:.16em; }
+.online span { width:7px; height:7px; border-radius:50%; background:var(--acid); box-shadow:0 0 14px var(--acid); }
+main { position:relative; z-index:1; flex:1; display:grid; align-content:safe center; width:100%; }
+.games { display:grid; grid-template-columns:1fr 1fr; width:100%; max-width:1180px; margin:0 auto; padding:16px clamp(16px,3vw,40px); gap:clamp(14px,2vw,28px); }
+.game-card { position:relative; display:block; overflow:hidden; min-width:0; border:1px solid #ffffff25; background:#0c0b12; text-decoration:none; transition:transform .35s ease,border-color .35s ease,box-shadow .35s ease; }
+.game-card:hover,.game-card:focus-visible { transform:translateY(-9px); border-color:#ffffff70; box-shadow:0 28px 90px #000,0 0 50px #7857ff20; outline:none; }
+.card-art { position:relative; height:clamp(168px,30vh,280px); overflow:hidden; isolation:isolate; }
+.art-label { position:absolute; left:20px; top:20px; z-index:4; padding:7px 9px; border:1px solid #ffffff44; background:#05050aaa; font-size:8px; letter-spacing:.16em; }
+.novawing .card-art { background:radial-gradient(circle at 70% 32%,#4961aa 0 1%,transparent 2%),radial-gradient(ellipse at 55% 70%,#47257d 0,transparent 52%),linear-gradient(145deg,#060716 10%,#14163a 60%,#070711); }
+.novawing .card-art::before { content:''; position:absolute; inset:-40%; background:repeating-conic-gradient(from 10deg at 70% 52%,#ffffff09 0 1deg,transparent 1deg 11deg); animation:spin 35s linear infinite; }
+.planet { position:absolute; right:-12%; top:-10%; width:62%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 32% 30%,#bbbfff,#333785 28%,#130e38 60%,#020207 74%); box-shadow:-18px 25px 60px #7c55ff50,inset 18px -24px 40px #000c; }
+.planet::after { content:''; position:absolute; left:-38%; top:48%; width:175%; height:10%; border:8px solid #a69cff77; border-radius:50%; transform:rotate(-16deg); box-shadow:0 0 25px #8b7cff88; }
+.ship { position:absolute; z-index:3; width:38%; aspect-ratio:5/3; left:24%; top:43%; background:url('/novawing/assets/player-flight-cycle.png') center top/100% 700% no-repeat; image-rendering:pixelated; filter:drop-shadow(0 10px 2px #0008) drop-shadow(-20px 5px 20px #64eaff88); transform:rotate(-8deg) scale(1.2); transition:transform .4s ease; }
+.game-card:hover .ship { transform:translate(20px,-12px) rotate(-8deg) scale(1.28); }
+.wing-trail { position:absolute; left:-12%; top:60%; z-index:2; width:48%; height:4px; background:linear-gradient(90deg,transparent,#7cf7ff); box-shadow:0 0 16px #7cf7ff; transform:rotate(-8deg); }
+.reticle { position:absolute; z-index:3; right:13%; bottom:16%; width:58px; height:58px; border:1px solid #c7ff3d88; border-radius:50%; box-shadow:inset 0 0 0 10px #c7ff3d0b; }
+.reticle::before,.reticle::after { content:''; position:absolute; background:var(--acid); }
+.reticle::before { width:1px; height:86px; left:28px; top:-14px; }.reticle::after { width:86px; height:1px; top:28px; left:-14px; }
+.chicken .card-art { background:linear-gradient(165deg,#ff9a42 0,#fe5e32 44%,#522063 45%,#15103d 100%); }
+.chicken .card-art::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg,transparent 0 30px,#ffffff0a 31px 32px),repeating-linear-gradient(90deg,transparent 0 30px,#ffffff0a 31px 32px); perspective:250px; transform:scale(1.5) rotateX(65deg) translateY(28%); }
+.sun { position:absolute; right:9%; top:8%; width:42%; aspect-ratio:1; border-radius:50%; background:repeating-linear-gradient(0deg,#ffe96b 0 9px,#ff9e46 10px 14px); box-shadow:0 0 50px #ffb13c; }
+.platform { position:absolute; height:18px; background:#301852; border-top:5px solid #76f7da; box-shadow:0 8px 0 #1a0d31,0 0 18px #76f7da55; }
+.p1 { width:48%; left:-3%; bottom:20%; }.p2 { width:25%; right:4%; bottom:37%; }.p3 { width:20%; left:16%; bottom:55%; }
+.chicken-sprite { position:absolute; z-index:3; left:42%; bottom:23%; width:92px; height:80px; border-radius:48% 52% 42% 44%; background:#fff9dd; border:5px solid #25133f; box-shadow:0 10px 0 #0003; transition:transform .4s cubic-bezier(.2,.9,.3,1.4); }
+.game-card:hover .chicken-sprite { transform:translateY(-42px) rotate(-7deg); }
+.chicken-sprite::before { content:''; position:absolute; right:-20px; top:17px; width:40px; height:40px; border-radius:50%; background:#fff9dd; border:5px solid #25133f; }
+.comb { position:absolute; right:-11px; top:-1px; width:11px; height:18px; background:#ff365f; border-radius:8px 8px 0 0; box-shadow:10px 2px #ff365f; }
+.eye { position:absolute; z-index:2; right:-7px; top:27px; width:6px; height:6px; border-radius:50%; background:#1b102d; }
+.beak { position:absolute; z-index:2; right:-31px; top:36px; width:0; height:0; border-top:7px solid transparent; border-bottom:7px solid transparent; border-left:14px solid #ffd33d; }
+.leg { position:absolute; bottom:-18px; width:5px; height:19px; background:#ffb332; }.l1 { left:24px; }.l2 { left:58px; }
+.feather { position:absolute; color:#fff9dd; font-size:17px; animation:float 2.4s ease-in-out infinite; }.f1 { left:35%; bottom:39%; }.f2 { left:62%; bottom:52%; animation-delay:-1.1s; }
+.card-copy { position:relative; padding:clamp(16px,2vw,26px); border-top:1px solid #ffffff1f; background:linear-gradient(135deg,#100f17,#08080d); }
+.card-meta { display:flex; justify-content:space-between; color:#888493; font-size:9px; letter-spacing:.15em; }
+.card-meta span:first-child { color:var(--acid); }
+h2 { margin:12px 0 10px; font-family:'Archivo Black',sans-serif; font-size:clamp(34px,4vw,60px); line-height:.85; letter-spacing:-.06em; }
+h2 span { display:block; color:transparent; -webkit-text-stroke:1px currentColor; }
+.novawing h2 span { color:#8e78ff; }.chicken h2 span { color:#ff8b44; }
+.card-copy p { max-width:520px; margin:0; color:#aaa6b4; font-size:clamp(11px,1.1vw,14px); line-height:1.65; }
+.card-copy p.board-record { margin:14px 0 0; color:var(--acid); font-weight:700; font-size:12px; letter-spacing:.08em; }
+.launch { display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid #ffffff22; color:var(--ink); font-weight:700; font-size:11px; letter-spacing:.14em; }
+.launch b { display:grid; place-items:center; width:37px; height:37px; border-radius:50%; background:var(--acid); color:#111; font-size:19px; transition:transform .25s; }
+.game-card:hover .launch b { transform:rotate(45deg) scale(1.08); }
+footer { position:relative; z-index:1; flex:none; display:flex; justify-content:space-between; padding:12px clamp(18px,4vw,48px); border-top:1px solid #ffffff18; color:#716e79; font-size:9px; letter-spacing:.14em; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes float { 50% { transform:translateY(-13px) rotate(22deg); } }
+@media (max-width:760px) { .topbar { padding:12px 16px; }.online { display:none; } main { align-content:start; } .games { grid-template-columns:1fr; padding:12px 14px 20px; } .card-art { height:clamp(150px,26vh,210px); } .ship { width:38%; left:23%; } footer { padding:12px 16px; } }
+@media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }

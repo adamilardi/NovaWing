@@ -612,6 +612,49 @@ async function caseDifficulty(browser, base, evidenceDir) {
         const bossHard = await bossProbe('hard');
         const bossVerticalEasy = await bossProbe('easy', '&level=3');
         const bossVerticalHard = await bossProbe('hard', '&level=3');
+
+        // Supernova skips the L3 teach schedule and expires weapon ranks.
+        // Hotshot still teaches vertical fire before mine curtains.
+        async function waveAndWeaponProbe(search) {
+            const probe = await openGame(browser, base, search);
+            try {
+                return await probe.page.evaluate(() => {
+                    window.__novawingDebug.setSegment('topdown');
+                    const keys = window.__novawingDebug.debugWaveKeys();
+                    const granted = window.__novawingDebug.debugGrantWeapon();
+                    const held = window.__novawingDebug.debugAgeWeapons(400);
+                    const expired = window.__novawingDebug.debugAgeWeapons(5000);
+                    return { keys, granted, held, expired };
+                });
+            } finally {
+                session.pageErrors.push(...probe.pageErrors);
+                await probe.context.close();
+            }
+        }
+        const supernovaCombat = await waveAndWeaponProbe('?level=3&diff=hard&weaponPowerMs=1000');
+        const hotshotCombat = await waveAndWeaponProbe('?level=3&diff=normal');
+        const supernovaWavesOk = Array.isArray(supernovaCombat.keys)
+            && supernovaCombat.keys.includes('mineCurtain')
+            && supernovaCombat.keys.includes('verticalRegular')
+            && !supernovaCombat.keys.includes('diagonal');
+        const hotshotWavesOk = Array.isArray(hotshotCombat.keys)
+            && hotshotCombat.keys.includes('verticalRegular')
+            && !hotshotCombat.keys.includes('mineCurtain');
+        const supernovaGunOk = supernovaCombat.granted
+            && supernovaCombat.granted.weaponLevel === 2
+            && supernovaCombat.granted.randomWaves === true
+            && supernovaCombat.granted.weaponPowerMs === 1000
+            && String(supernovaCombat.granted.text).includes('TWIN')
+            && String(supernovaCombat.granted.text).includes('1s')
+            && supernovaCombat.held.weaponLevel === 2
+            && supernovaCombat.expired.weaponLevel === 1
+            && supernovaCombat.expired.weaponMs === 0;
+        const hotshotGunOk = hotshotCombat.granted
+            && hotshotCombat.granted.weaponLevel === 2
+            && hotshotCombat.granted.randomWaves === false
+            && hotshotCombat.granted.weaponPowerMs === 0
+            && hotshotCombat.expired.weaponLevel === 2;
+
         const ok = normal.mode === 'normal' && normalText.some((text) => text.includes('HOTSHOT')) &&
             hard.mode === 'hard' && hardText.some((text) => text.includes('SUPERNOVA')) &&
             hard.health === normal.health && hard.speed > normal.speed && hard.cadence < normal.cadence &&
@@ -629,14 +672,19 @@ async function caseDifficulty(browser, base, evidenceDir) {
             bossVerticalEasy.orientation === 'up' && bossVerticalHard.orientation === 'up' &&
             bossVerticalEasy.maxHealth < bossVerticalHard.maxHealth &&
             bossVerticalEasy.maxShotSpeed < bossVerticalHard.maxShotSpeed &&
+            supernovaWavesOk && hotshotWavesOk && supernovaGunOk && hotshotGunOk &&
             session.pageErrors.length === 0;
         return result('difficulty', ok, ok
             ? `names=${normalText.find((text) => text.includes('HOTSHOT')) ? 'ok' : 'missing'} ` +
                 `bossHP=${bossEasy.maxHealth}/${bossNormal.maxHealth}/${bossHard.maxHealth} ` +
-                `bossShot=${bossEasy.maxShotSpeed.toFixed(1)}/${bossNormal.maxShotSpeed.toFixed(1)}/${bossHard.maxShotSpeed.toFixed(1)}`
+                `bossShot=${bossEasy.maxShotSpeed.toFixed(1)}/${bossNormal.maxShotSpeed.toFixed(1)}/${bossHard.maxShotSpeed.toFixed(1)} ` +
+                `waves=${supernovaCombat.keys.length}/${hotshotCombat.keys.length} ` +
+                `gun=${supernovaCombat.granted.weaponLevel}->${supernovaCombat.expired.weaponLevel}`
             : JSON.stringify({
                 normal, hard, easy, persisted, query, aliasMode,
                 bossEasy, bossNormal, bossHard, bossVerticalEasy, bossVerticalHard,
+                supernovaCombat, hotshotCombat,
+                supernovaWavesOk, hotshotWavesOk, supernovaGunOk, hotshotGunOk,
                 normalText, hardText, easyText, persistedText,
                 pageErrors: session.pageErrors
             }), { screenshot: shot });

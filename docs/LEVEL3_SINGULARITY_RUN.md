@@ -33,7 +33,8 @@ not carry into the final fight.
 
 ## v1 polish still open
 
-- First 20s of `topdown` should teach vertical fire; no mines in that window.
+- Hotshot `topdown` teaches vertical fire for 28s. Mines and the mixed rush wait until 78s. The black-hole preview starts at 80s.
+- Space Cadet never sees mine curtains. Supernova ignores the teach schedule.
 - Preview pull must read as foreshadowing, not a soft death.
 - REALITY SHEAR needs a stinger and a distinct music color (tracks are still
   procedural `waves` / `boss`).

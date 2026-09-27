@@ -71,6 +71,8 @@
  *   interceptorFireChance blues that roll a gun
  *   typedFireChance       1 = dart/riser/strafer/orbiter always armed; <1 = roll
  *   waveIntervalMinMs / waveIntervalMaxMs
+ *   randomWaves           true = skip the teach schedule and overlap waves
+ *   weaponPowerMs         >0 = each weapon rank expires (0 = permanent)
  *   playerIFramesMs
  *   boostRefillOnKill / boostDrainPerSecond
  *   bossTempoScale        >1 = slower volleys/drones/lasers (easier)
@@ -130,7 +132,10 @@
         boostWorldSpeedMultiplier: 1.7,
         bossTempoScale: 1,
         // 0 = use the level's blackHole.previewAtMs.
-        blackHolePreviewAtMs: 0
+        blackHolePreviewAtMs: 0,
+        // Supernova sets these. Other modes keep a scripted catalog and a permanent gun.
+        randomWaves: false,
+        weaponPowerMs: 0
     };
 
     const TIER_DIFFICULTY = {
@@ -211,7 +216,11 @@
             boostRefillOnKill: 10,
             bossTempoScale: 0.82,
             bossHealthScale: 1,
-            bossShotSpeedScale: 1.12
+            bossShotSpeedScale: 1.12,
+            // Full catalog from the first second, with overlapping waves.
+            randomWaves: true,
+            // Each weapon rank lasts 14s, then drops. Pods keep appearing in waves.
+            weaponPowerMs: 14000
         }
     };
 
@@ -229,7 +238,7 @@
         },
         hard: {
             label: 'Supernova',
-            description: 'Fast shots. Crowded skies. No continues.',
+            description: 'Random waves. Weapons fade. No continues.',
             continues: 0
         }
     };
@@ -616,7 +625,11 @@
                 playerIFramesMs: 1600
             },
             normal: {
-                bossTempoScale: 1.12
+                // Intro and final are the same boss. A touch slower than the
+                // authored volleys, still quicker than Space Cadet.
+                bossTempoScale: 1.28,
+                bossShotSpeedScale: 0.9,
+                playerIFramesMs: 1050
             }
         },
         bossScore: 2500,
@@ -706,7 +719,7 @@
                     'orbiterRing',
                     'mixedGauntlet'
                 ],
-                // Teach fire-up before mines. Space Cadet never sees curtains.
+                // Fallback teach-then-pressure. Hotshot uses the normal schedule below.
                 wavePatternSchedule: [
                     { untilMs: 20000, keys: ['verticalRegular', 'verticalV'] },
                     { untilMs: 42000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
@@ -720,6 +733,14 @@
                         { untilMs: 78000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
                         { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing'] }
                     ],
+                    // Longer teach, mines and the mixed rush only in the last stretch.
+                    normal: [
+                        { untilMs: 28000, keys: ['verticalRegular', 'verticalV'] },
+                        { untilMs: 52000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
+                        { untilMs: 78000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing', 'pincerDive'] },
+                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
+                    ],
+                    // Kept for ?randomWaves=false. Supernova skips schedules and uses wavePatternKeys.
                     hard: [
                         { untilMs: 10000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
                         { untilMs: 24000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'pincerDive'] },
@@ -739,12 +760,15 @@
                         playerIFramesMs: 1600
                     },
                     normal: {
-                        firstWaveDelayMs: 1200,
-                        enemyCadenceScale: 1.14,
-                        typedFireChance: 0.7,
-                        waveIntervalMinMs: 1850,
-                        waveIntervalMaxMs: 2500,
-                        blackHolePreviewAtMs: 68000
+                        firstWaveDelayMs: 1500,
+                        enemyCadenceScale: 1.32,
+                        typedFireChance: 0.48,
+                        waveIntervalMinMs: 2300,
+                        waveIntervalMaxMs: 3000,
+                        enemySpeedScale: 0.92,
+                        enemyShotSpeedScale: 0.88,
+                        blackHolePreviewAtMs: 80000,
+                        playerIFramesMs: 1100
                     },
                     hard: {
                         firstWaveDelayMs: 420,

@@ -159,6 +159,53 @@ test('easy and hard scores stay on their own boards', async t => {
     assert.equal(hard.json().scope, 'campaign-hard');
 });
 
+test('leaderboard GET is readable from the arcade and submissions stay same-origin', async () => {
+    const { onRequest } = await import('../functions/api/leaderboard.js');
+    const DB = {
+        prepare() {
+            return { bind() { return this; }, async all() { return { results: [] }; }, async first() { return null; } };
+        }
+    };
+    const read = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/leaderboard?version=1.2.1&scope=level-1', {
+            headers: { Origin: 'https://ailardi.com' }
+        }),
+        env: { DB }
+    });
+    assert.equal(read.status, 200);
+    assert.equal(read.headers.get('access-control-allow-origin'), 'https://ailardi.com');
+    const preview = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/leaderboard?version=1.2.1&scope=level-1', {
+            headers: { Origin: 'https://6e241c78.ailardi-landing.pages.dev' }
+        }),
+        env: { DB }
+    });
+    assert.equal(preview.headers.get('access-control-allow-origin'), 'https://6e241c78.ailardi-landing.pages.dev');
+    const nonstandardPort = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/leaderboard?version=1.2.1&scope=level-1', {
+            headers: { Origin: 'https://ailardi-landing.pages.dev:8443' }
+        }),
+        env: { DB }
+    });
+    assert.equal(nonstandardPort.headers.get('access-control-allow-origin'), null);
+    const evil = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/leaderboard?version=1.2.1&scope=level-1', {
+            headers: { Origin: 'https://evil.example' }
+        }),
+        env: { DB }
+    });
+    assert.equal(evil.headers.get('access-control-allow-origin'), null);
+    const post = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/leaderboard', {
+            method: 'POST',
+            headers: { Origin: 'https://ailardi.com', 'content-type': 'application/json' },
+            body: '{}'
+        }),
+        env: { DB }
+    });
+    assert.equal(post.headers.get('access-control-allow-origin'), null);
+});
+
 test('Pages leaderboard accepts shared extended-campaign duration and run endpoint issues matching TTL', async t => {
     const Levels = require('../levels.js');
     const Rules = require('../shared/run-rules.cjs');

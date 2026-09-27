@@ -40,10 +40,114 @@ export async function casePolish(browser, base, evidenceDir) {
         assert.equal(title.enemies, 0);
         assert.deepEqual({ x: title.x, y: title.y, shots: title.shots }, before);
         assert.equal(runRequests.length, 0, 'title started a server run');
+        await page.evaluate(() => {
+            localStorage.setItem('novawing-fastest-runs:' + GAME_VERSION + ':campaign-easy', JSON.stringify([{
+                id: 'cadet-campaign',
+                version: GAME_VERSION,
+                scope: 'campaign-easy',
+                name: 'AdamAce',
+                timeMs: 246166,
+                score: 30625,
+                kills: 153,
+                accuracy: 11,
+                createdAt: '2026-09-01T00:00:00.000Z'
+            }]));
+        });
         await clickText('SPACE CADET');
         assert.equal(await page.evaluate(() => __novawingDebug.getDifficultyMode()), 'easy');
+        assert.equal(await page.evaluate(() => {
+            const node = getActiveScene().children.list.find(n => n.name === 'opening-record');
+            return node.text.includes('...');
+        }), false, 'record line flashed a placeholder');
+        await page.waitForFunction(() => {
+            const node = getActiveScene().children.list.find(n => n.name === 'opening-record');
+            return node && node.text.includes('CAMPAIGN') && node.text.includes('ADAMACE');
+        });
         await clickText('HOTSHOT');
+        await page.waitForFunction(() => {
+            const node = getActiveScene().children.list.find(n => n.name === 'opening-record');
+            return node && node.text.includes('UNCLAIMED');
+        });
         await page.screenshot({ path: path.join(evidenceDir, 'polish-opening.png') });
+        const titleGap = await page.evaluate(() => {
+            const nodes = getActiveScene().children.list.filter(node => node.active && typeof node.text === 'string');
+            const controls = nodes.find(node => node.text.includes('WASD'));
+            const link = nodes.find(node => node.name === 'opening-record');
+            const controlsBottom = controls.y + controls.height * (1 - controls.originY);
+            const linkTop = link.y - link.height * link.originY;
+            return linkTop - controlsBottom;
+        });
+        assert.ok(titleGap > 8, 'record line overlaps the controls hint: ' + titleGap);
+        await page.evaluate(() => {
+            const entries = Array.from({ length: 10 }, (_, index) => ({
+                id: 'layout-' + index,
+                version: GAME_VERSION,
+                scope: 'level-1',
+                name: 'Pilot ' + (index + 1),
+                timeMs: 60000 + index * 1000,
+                score: 1500 - index * 10,
+                kills: 12,
+                accuracy: 80,
+                createdAt: new Date(Date.UTC(2020, 0, index + 1)).toISOString()
+            }));
+            localStorage.setItem('novawing-fastest-runs:' + GAME_VERSION + ':level-1', JSON.stringify(entries));
+        });
+        const recordLabel = await page.evaluate(() => {
+            const node = getActiveScene().children.list.find(n => n.name === 'opening-record');
+            return node.text;
+        });
+        await clickText(recordLabel);
+        assert.equal(await page.evaluate(() => __novawingDebug.getOpeningState().leaderboardOpen), true);
+        assert.equal(await page.evaluate(() => __novawingDebug.getOpeningState().runStarted), false);
+        await page.waitForFunction(() => {
+            const nodes = getActiveScene().children.list.filter(node => node.active && typeof node.text === 'string');
+            return nodes.some(node => node.text.includes('LEVEL 1')) &&
+                nodes.some(node => node.text.includes('PILOT 1')) &&
+                nodes.some(node => node.text.includes('kills'));
+        });
+        await page.keyboard.press('Enter');
+        assert.equal(await page.evaluate(() => openingActive), true, 'leaderboard Enter launched the game');
+        await clickText('L1');
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            node.active && node.text === 'Loading...')), false, 'leaderboard flashed Loading');
+        await page.waitForFunction(() => {
+            const nodes = getActiveScene().children.list;
+            return nodes.some(node => node.active && typeof node.text === 'string' && node.text !== 'Loading...' &&
+                (node.text.includes('pts') || node.text.includes('unclaimed')));
+        });
+        await page.screenshot({ path: path.join(evidenceDir, 'polish-leaderboard.png') });
+        const boardGap = await page.evaluate(() => {
+            const nodes = getActiveScene().children.list.filter(node => node.active && typeof node.text === 'string');
+            const list = nodes.find(node => node.text.includes('pts'));
+            const note = nodes.find(node => node.text.includes('ranked clear'));
+            const back = nodes.find(node => node.text === 'BACK');
+            const bottom = node => node.y + node.height * (1 - node.originY);
+            const top = node => node.y - node.height * node.originY;
+            return { listToNote: top(note) - bottom(list), noteToBack: top(back) - bottom(note) };
+        });
+        assert.ok(boardGap.listToNote > 6 && boardGap.noteToBack > 6, 'leaderboard rows overlap the footer: ' + JSON.stringify(boardGap));
+        await clickText('CAMPAIGN');
+        await page.waitForFunction(() => getActiveScene().children.list.some(node =>
+            node.active && typeof node.text === 'string' && node.text.includes('unclaimed')
+        ));
+        await page.keyboard.press('Escape');
+        assert.equal(await page.evaluate(() => __novawingDebug.getOpeningState().leaderboardOpen), false);
+        assert.equal(await page.evaluate(() => openingActive), true);
+        const input = page.getByRole('textbox', { name: 'Pilot name' });
+        assert.equal(await input.count(), 1);
+        await input.fill('');
+        await input.pressSequentially('R Space Pilot');
+        assert.equal(await input.inputValue(), 'R Space Pilot', 'game shortcuts consumed pilot-name characters');
+        assert.equal(await page.evaluate(() => openingActive), true, 'typing the pilot name launched the game');
+        assert.equal(await page.evaluate(() => localStorage.getItem('novawing-player-name')), 'R Space Pilot');
+        await page.setViewportSize({ width: 740, height: 360 });
+        await page.waitForTimeout(200);
+        const bounds = await input.boundingBox();
+        assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 740 && bounds.y + bounds.height <= 360);
+        await page.screenshot({ path: path.join(evidenceDir, 'polish-opening-small.png') });
+        await page.setViewportSize({ width: 960, height: 720 });
+        await input.fill('PolishPilot');
+        assert.equal(await page.evaluate(() => localStorage.getItem('novawing-player-name')), 'PolishPilot');
         await clickText('LAUNCH');
         await page.waitForFunction(() => !__novawingDebug.getOpeningState().active);
         assert.equal(await page.evaluate(() => __novawingDebug.getOpeningState().runStarted), true);
@@ -59,21 +163,25 @@ export async function casePolish(browser, base, evidenceDir) {
             continueToNext: true, completed: true, completionTimeMs: 60000,
             scope: 'level-1', score: 1234, kills: 12, accuracy: 75, skipLeaderboard: false
         }));
-        const input = page.getByRole('textbox', { name: 'Pilot name' });
-        await input.fill('');
-        await input.pressSequentially('R Space Pilot');
-        assert.equal(await input.inputValue(), 'R Space Pilot', 'game shortcuts consumed pilot-name characters');
-        assert.equal(await input.count(), 1, 'typing continued or restarted the scene');
+        assert.equal(await input.count(), 0, 'results screen still asks for a pilot name');
         assert.equal(await page.evaluate(() => awaitingNextLevel), true);
-        await input.fill('PolishPilot');
-        await clickText('SUBMIT SCORE');
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            node.active && node.text === 'SUBMIT SCORE')), false, 'results screen still has Submit Score');
+        await page.waitForFunction(() => getActiveScene().children.list.some(node =>
+            node.active && typeof node.text === 'string' && node.text.includes('Tied with Pilot 1')
+        ));
+        const challengeCopy = await page.evaluate(() => ({
+            took: formatShareChallenge({
+                name: 'PolishPilot', scope: 'level-1', timeMs: 50000, score: 1234, kills: 12
+            }, { name: 'DrewCrazy', timeMs: 70572 }, 'https://novawing.ailardi.com/'),
+            behind: formatRecordGap(80000, { name: 'DrewCrazy', timeMs: 70572 }),
+            open: formatUnclaimedMessage('level-3')
+        }));
+        assert.equal(challengeCopy.took, 'I took Hotshot Open Space from DrewCrazy. 0:50.00. https://novawing.ailardi.com/');
+        assert.equal(challengeCopy.behind, '9.4s behind DrewCrazy.');
+        assert.equal(challengeCopy.open, 'Singularity Run is unclaimed. The first clear holds it.');
         await page.waitForFunction(() => getLocalLeaderboard('level-1').some(entry => entry.name === 'PolishPilot'));
         await page.screenshot({ path: path.join(evidenceDir, 'polish-results.png') });
-        await page.setViewportSize({ width: 740, height: 360 });
-        await page.waitForTimeout(200);
-        const bounds = await input.boundingBox();
-        assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 740 && bounds.y + bounds.height <= 360);
-        await page.screenshot({ path: path.join(evidenceDir, 'polish-results-small.png') });
         await clickText('NEXT LEVEL');
         await page.waitForFunction(() => currentLevel === 2 && !awaitingNextLevel);
         assert.equal(await input.count(), 0, 'name field leaked into next level');
@@ -95,11 +203,9 @@ export async function casePolish(browser, base, evidenceDir) {
             levelStartKills = 10;
             levelAttemptStartTime = scene.time.now - 60000;
             levelStartTime = scene.time.now - 180000;
+            savePlayerName('FinalPilot');
             completeLevel.call(scene);
         });
-        await input.waitFor();
-        await input.fill('FinalPilot');
-        await input.press('Enter');
         await page.waitForFunction(() => getLocalLeaderboard('campaign').some(entry => entry.name === 'FinalPilot'));
         await page.waitForFunction(() => getLocalLeaderboard('level-3').some(entry => entry.name === 'FinalPilot'));
         assert.deepEqual(await page.evaluate(() => ({
@@ -122,6 +228,39 @@ export async function casePolish(browser, base, evidenceDir) {
             await mobile.goto(new URL('/', base).href);
             await mobile.waitForFunction(() => __novawingDebug.getBotSnapshot().ready);
             const canvas = await mobile.locator('canvas').boundingBox();
+            await mobile.screenshot({ path: path.join(evidenceDir, 'polish-opening-mobile.png') });
+            const linkPoint = await mobile.evaluate(() => {
+                const node = getActiveScene().children.list.find(n => n.active && n.name === 'opening-record');
+                const launch = document.getElementById('touch-launch').getBoundingClientRect();
+                const rect = game.canvas.getBoundingClientRect();
+                const scaleX = rect.width / 800;
+                const scaleY = rect.height / 600;
+                const link = {
+                    left: rect.left + (node.x - node.width / 2) * scaleX,
+                    top: rect.top + (node.y - node.height / 2) * scaleY,
+                    right: rect.left + (node.x + node.width / 2) * scaleX,
+                    bottom: rect.top + (node.y + node.height / 2) * scaleY
+                };
+                const overlaps = launch.width > 0 && !(link.right < launch.left || link.left > launch.right ||
+                    link.bottom < launch.top || link.top > launch.bottom);
+                if (overlaps) throw new Error('leaderboard link sits under the touch launch button');
+                return { x: rect.left + node.x * scaleX, y: rect.top + node.y * scaleY };
+            });
+            await mobile.touchscreen.tap(linkPoint.x, linkPoint.y);
+            await mobile.waitForFunction(() => __novawingDebug.getOpeningState().leaderboardOpen);
+            assert.equal(await mobile.evaluate(() => document.getElementById('touch-launch').classList.contains('is-active')), false);
+            await mobile.screenshot({ path: path.join(evidenceDir, 'polish-leaderboard-mobile.png') });
+            const backPoint = await mobile.evaluate(() => {
+                const node = getActiveScene().children.list.find(n => n.active && n.text === 'BACK' && n.input);
+                const rect = game.canvas.getBoundingClientRect();
+                return {
+                    x: rect.left + node.x * rect.width / 800,
+                    y: rect.top + node.y * rect.height / 600
+                };
+            });
+            await mobile.touchscreen.tap(backPoint.x, backPoint.y);
+            await mobile.waitForFunction(() => openingActive && !__novawingDebug.getOpeningState().leaderboardOpen);
+            assert.equal(await mobile.evaluate(() => document.getElementById('touch-launch').classList.contains('is-active')), true);
             await mobile.touchscreen.tap(canvas.x + canvas.width / 2, canvas.y + canvas.height * 2 / 3);
             await mobile.waitForFunction(() => !openingActive);
             assert.equal(await mobile.evaluate(() => Boolean(touchControls?.container.visible)), true);

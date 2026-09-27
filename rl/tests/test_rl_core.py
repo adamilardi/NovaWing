@@ -35,8 +35,8 @@ from model import (  # noqa: E402
 
 class TestContract(unittest.TestCase):
     def test_sizes(self):
-        self.assertEqual(OBS_VERSION, 2)
-        self.assertEqual(OBS_SIZE, 176)
+        self.assertEqual(OBS_VERSION, 3)
+        self.assertEqual(OBS_SIZE, 192)
         self.assertEqual(ACTION_SIZE, 4)
 
 

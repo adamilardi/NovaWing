@@ -18,9 +18,9 @@ Do not re-spend effort here.
   title.
 - First-run movement / fire / boost hint, remembered locally.
 - HUD, pause (mute, difficulty, restart confirm), continues.
-- Results: summary + leaderboard, DOM pilot-name field, explicit submit,
-  personal best, SHARE SCORE, Retry / Next Level. Final clear saves distinct
-  level and campaign results.
+- Results: summary + leaderboard, automatic score post, personal best,
+  SHARE SCORE, Retry / Next Level. The pilot name is set on the title screen.
+  Final clear saves distinct level and campaign results.
 - Combat juice: directional hits, debris, tint flashes, restrained shake,
   distinct shot silhouettes, 2× HUD text.
 - Mobile touch dock, FX quality auto-downgrade, audio mute persistence.

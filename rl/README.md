@@ -16,7 +16,7 @@ record demos (heuristic expert / human later)
 
 ---
 
-## Observation / action contract (OBS v2)
+## Observation / action contract (OBS v3)
 
 **Single source of truth:** `scripts/rl/runtime-pure.js` (loaded by Node via `load-runtime.mjs` and by Playwright via `addInitScript`). Mirrored by:
 
@@ -24,17 +24,17 @@ record demos (heuristic expert / human later)
 |-------|----------|
 | Encode + forward + in-page pilot | `scripts/rl/runtime-pure.js` |
 | Node re-exports | `obs-encode.mjs`, `policy-infer.mjs` |
-| Python constants | `rl/contract.py` (`OBS_VERSION=2`, `OBS_SIZE=176`) |
+| Python constants | `rl/contract.py` (`OBS_VERSION=3`, `OBS_SIZE=192`) |
 | Trainers | `rl/train_bc.py`, `rl/train_rl.py` (PPO) |
 
-- **Obs v2** (`OBS_SIZE=176`): v1 self features + `scrollMode` / `combatOrientation` + L3 segment one-hots + black-hole block; boss encounter id.
+- **Obs v3** (`OBS_SIZE=192`): v2 features plus pilot dodge facts (hold collision, time to impact, edge distances, nine safe move flags, next boss shot). Edge and move flags use canonical axes in vertical play. Enemy bullets are ordered by hold collision time.
 - **Action**: `[ax, ay, fire, boost]` with `ax,ay ∈ [-1,1]`, buttons in `{0,1}`.
 
-**Do not mix v1 demos with v2 training.** Old demos are skipped with a counter; re-record after the bump:
+**Do not mix earlier demos with v3 training.** Old demos are skipped with a counter; re-record after the bump:
 
 ```bash
-# optional: archive old demos
-mkdir -p rl/demos/_archive_v1 && mv rl/demos/demo-*.jsonl rl/demos/_archive_v1/ 2>/dev/null || true
+# optional: archive demos from older observation versions
+npm run rl:archive-demos
 ```
 
 ---

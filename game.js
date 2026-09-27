@@ -535,6 +535,9 @@ let lastFired = 0;
 let score = 0;
 let lives = 3;
 let weaponLevel = 1;
+// Remaining milliseconds for each Supernova weapon rank above Single. Empty on other modes.
+let weaponCharges = [];
+let supernovaBriefShown = false;
 let hasShield = false;
 let shieldVisual = null;
 let statusText = null;
@@ -627,6 +630,7 @@ let continueOverlay = null;
 let gamePaused = false;
 let pauseOverlay = null;
 let openingOverlay = null;
+let openingLeaderboardOverlay = null;
 let openingActive = false;
 let openingShownThisSession = false;
 let openingStartCallback = null;
@@ -1153,6 +1157,8 @@ function create() {
     // pilot can clear the campaign without changing normal player balance.
     lives = isPlaytestBotSession() ? 5 : 3;
     weaponLevel = 1;
+    weaponCharges.length = 0;
+    supernovaBriefShown = false;
     hasShield = false;
     shieldVisual = null;
     statusText = null;
@@ -1519,7 +1525,7 @@ function create() {
                 }
             });
         } else {
-            scheduleNextEnemyWave(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
+            beginWaveCombat(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
         }
         maybeShowFirstRunTutorial(this);
     };
@@ -1649,6 +1655,9 @@ function update(time, delta) {
     }
 
     if (gamePhase === 'waves' && !levelTransitioning) {
+        // Timed weapon ranks expire during every wave segment, including
+        // progress-free encounters. Boss fights pause the timer.
+        tickSupernovaWeapons(this, frameDelta);
         const segmented = isSegmentedLevel();
         // Classic L1/L2 always progress; segmented levels only while isProgressDrivenSegment().
         const progressDriven = !segmented || isProgressDrivenSegment();
@@ -2095,7 +2104,7 @@ function collectPowerup(playerSprite, powerup) {
 }
 
 function applyCoopPowerup(scene, ship, state, type, x, y) {
-    if (type.key === 'weapon') state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + 1);
+    if (type.key === 'weapon') grantWeaponRank(state);
     else if (type.key === 'shield') state.hasShield = true;
     else if (type.key === 'repair') state.lives = Math.min(MAX_LIVES, state.lives + 1);
     else if (type.key === 'boost') { state.boostEnergy = BOOST_MAX; state.boostLocked = false; }
@@ -2104,16 +2113,145 @@ function applyCoopPowerup(scene, ship, state, type, x, y) {
     updateCoopText();
 }
 
+function weaponPowerDurationMs() {
+    return Math.max(0, difficultyNumber('weaponPowerMs', 0));
+}
+
+function weaponLevelFromCharges(charges) {
+    const extra = charges && charges.length ? charges.length : 0;
+    return Phaser.Math.Clamp(1 + extra, 1, MAX_WEAPON_LEVEL);
+}
+
+function soonestWeaponChargeMs(charges) {
+    if (!charges || !charges.length || weaponPowerDurationMs() <= 0) return 0;
+    let soonest = charges[0];
+    for (let i = 1; i < charges.length; i++) {
+        if (charges[i] < soonest) soonest = charges[i];
+    }
+    return soonest;
+}
+
+function grantWeaponCharge(charges) {
+    const duration = weaponPowerDurationMs();
+    if (!(duration > 0) || !Array.isArray(charges)) return 'permanent';
+    if (charges.length < MAX_WEAPON_LEVEL - 1) {
+        charges.push(duration);
+        return 'up';
+    }
+    let soonest = 0;
+    for (let i = 1; i < charges.length; i++) {
+        if (charges[i] < charges[soonest]) soonest = i;
+    }
+    charges[soonest] = duration;
+    return 'held';
+}
+
+function decayWeaponCharges(charges, frameDelta) {
+    if (!charges || !charges.length) return false;
+    const step = Number.isFinite(frameDelta) ? frameDelta : 0;
+    let dropped = false;
+    let write = 0;
+    for (let i = 0; i < charges.length; i++) {
+        const left = charges[i] - step;
+        if (left > 0) charges[write++] = left;
+        else dropped = true;
+    }
+    charges.length = write;
+    return dropped;
+}
+
+function syncWeaponChargesToLevel(charges, level) {
+    const duration = weaponPowerDurationMs();
+    if (!Array.isArray(charges) || !(duration > 0)) return;
+    const expected = Math.max(0, Math.min(MAX_WEAPON_LEVEL, level) - 1);
+    while (charges.length > expected) charges.pop();
+    while (charges.length < expected) charges.push(duration);
+}
+
+function reconcileWeaponPower() {
+    const duration = weaponPowerDurationMs();
+    if (!(duration > 0)) {
+        weaponCharges.length = 0;
+        if (coopState && coopState.p2 && coopState.p2.weaponCharges) {
+            coopState.p2.weaponCharges.length = 0;
+        }
+    } else {
+        syncWeaponChargesToLevel(weaponCharges, weaponLevel);
+        weaponLevel = weaponLevelFromCharges(weaponCharges);
+        if (coopState) {
+            coopState.weaponLevel = weaponLevel;
+            if (coopState.p2) {
+                if (!coopState.p2.weaponCharges) coopState.p2.weaponCharges = [];
+                syncWeaponChargesToLevel(coopState.p2.weaponCharges, coopState.p2.weaponLevel);
+                coopState.p2.weaponLevel = weaponLevelFromCharges(coopState.p2.weaponCharges);
+            }
+        }
+    }
+    if (typeof updateWeaponText === 'function') updateWeaponText();
+    if (coopEnabled && typeof updateCoopText === 'function') updateCoopText();
+}
+
+function grantWeaponRank(state) {
+    const personal = Boolean(state && state !== coopState);
+    const charges = personal
+        ? (state.weaponCharges || (state.weaponCharges = []))
+        : weaponCharges;
+    const grant = grantWeaponCharge(charges);
+    if (grant === 'permanent') {
+        if (personal) {
+            const before = state.weaponLevel;
+            state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, before + 1);
+            return state.weaponLevel > before ? 'up' : 'max';
+        }
+        const before = weaponLevel;
+        if (weaponLevel < MAX_WEAPON_LEVEL) weaponLevel++;
+        return weaponLevel > before ? 'up' : 'max';
+    }
+    if (personal) state.weaponLevel = weaponLevelFromCharges(charges);
+    else weaponLevel = weaponLevelFromCharges(weaponCharges);
+    return grant;
+}
+
 function applyWeaponPowerup(scene, x, y) {
-    if (weaponLevel < MAX_WEAPON_LEVEL) {
-        weaponLevel++;
-        if (coopState) coopState.weaponLevel = weaponLevel;
-        updateWeaponText();
-        showFloatingText(scene, x, y - 24, 'WEAPON UP', POWERUP_TYPES.weapon.color);
+    const before = weaponLevel;
+    const grant = grantWeaponRank(null);
+    if (coopState) coopState.weaponLevel = weaponLevel;
+    updateWeaponText();
+    if (grant === 'max') {
+        awardPowerupScore(scene, x, y, POWERUP_SCORE_BONUS);
         return;
     }
+    const label = weaponLevel > before ? 'WEAPON UP' : 'WEAPON HELD';
+    showFloatingText(scene, x, y - 24, label, POWERUP_TYPES.weapon.color);
+}
 
-    awardPowerupScore(scene, x, y, POWERUP_SCORE_BONUS);
+function tickSupernovaWeapons(scene, frameDelta) {
+    if (weaponPowerDurationMs() <= 0) return;
+    if (decayWeaponCharges(weaponCharges, frameDelta)) {
+        const next = weaponLevelFromCharges(weaponCharges);
+        if (next < weaponLevel) {
+            weaponLevel = next;
+            if (coopState) coopState.weaponLevel = weaponLevel;
+            if (player && player.active) {
+                showFloatingText(scene, player.x, player.y - 36, 'WEAPON FADED', '#ff8877');
+            }
+        }
+    }
+    if (coopEnabled && coopState && coopState.p2) {
+        const partner = coopState.p2;
+        if (!partner.weaponCharges) partner.weaponCharges = [];
+        if (decayWeaponCharges(partner.weaponCharges, frameDelta)) {
+            const next = weaponLevelFromCharges(partner.weaponCharges);
+            if (next < partner.weaponLevel) {
+                partner.weaponLevel = next;
+                if (playerTwo && playerTwo.active) {
+                    showFloatingText(scene, playerTwo.x, playerTwo.y - 36, 'WEAPON FADED', '#ff8877');
+                }
+            }
+        }
+    }
+    updateWeaponText();
+    if (coopEnabled) updateCoopText();
 }
 
 function applyShieldPowerup(scene, x, y) {
@@ -2320,7 +2458,8 @@ function damagePlayer(ship = player) {
         musicDirector.stop();
         sfx.gameOver();
         endLevel.call(this, 'GAME OVER', '#ff5555', {
-            skipLeaderboard: !isLeaderboardEligibleSession()
+            skipLeaderboard: !isLeaderboardEligibleSession(),
+            scope: getLevelLeaderboardScope(currentLevel)
         });
     } else {
         holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.hit, PLAYER_HIT_POSE_MS);
@@ -2333,7 +2472,7 @@ function resolveCoopEnabledAtBoot() {
 }
 
 function createCoopPilotState(ship, id, pilotLives) {
-    return { id, ship, lives: pilotLives, weaponLevel: 1, hasShield: false,
+    return { id, ship, lives: pilotLives, weaponLevel: 1, weaponCharges: [], hasShield: false,
         boostEnergy: BOOST_MAX, boostLocked: false, boostIntensity: 0,
         invulnerableUntil: 0, lastFired: 0, shots: 0 };
 }
@@ -2449,6 +2588,11 @@ function launchBullet(x, y, velocityX, velocityY, textureKey, owner = player) {
     return bullet;
 }
 
+function beginWaveCombat(scene, delayMs) {
+    scheduleNextEnemyWave(scene, delayMs);
+    beginWeaponHunt(scene);
+}
+
 function scheduleNextEnemyWave(scene, delayMs) {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
     if (!getLevelWavePatterns().length) return; // [] / unknown keys → no waves
@@ -2458,22 +2602,85 @@ function scheduleNextEnemyWave(scene, delayMs) {
 
         spawnEnemyWave.call(scene);
         if (getLevelWavePatterns().length) {
-            scheduleNextEnemyWave(scene, Phaser.Math.Between(
-                difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS),
-                difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS)
-            ));
+            scheduleNextEnemyWave(scene, nextWaveDelayMs());
         }
     });
+}
+
+function nextWaveDelayMs() {
+    const min = difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS);
+    const max = Math.max(min, difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS));
+    if (!difficultyFlag('randomWaves', false)) return Phaser.Math.Between(min, max);
+    // Clump, then a gap, so Supernova waves do not arrive on a metronome.
+    const lo = Math.max(480, Math.round(min * 0.55));
+    const hi = Math.max(lo + 200, Math.round(max * 1.35));
+    return Phaser.Math.Between(lo, hi);
 }
 
 function spawnEnemyWave() {
     const levelPatterns = getLevelWavePatterns();
     if (!levelPatterns.length) return;
-    const availablePatterns = levelPatterns.filter(pattern => pattern.key !== lastWavePatternKey);
+    const randomWaves = difficultyFlag('randomWaves', false);
+    const availablePatterns = randomWaves
+        ? levelPatterns
+        : levelPatterns.filter(pattern => pattern.key !== lastWavePatternKey);
     const pattern = Phaser.Utils.Array.GetRandom(availablePatterns.length ? availablePatterns : levelPatterns);
     if (!pattern || typeof pattern.spawn !== 'function') return;
     lastWavePatternKey = pattern.key;
     pattern.spawn(this);
+    if (!randomWaves || levelPatterns.length < 2 || Math.random() >= 0.28) return;
+    const extras = levelPatterns.filter(candidate => candidate.key !== pattern.key);
+    const extra = Phaser.Utils.Array.GetRandom(extras);
+    if (extra && typeof extra.spawn === 'function') extra.spawn(this);
+}
+
+function clearWeaponRefreshEvent(scene) {
+    if (!scene || !scene.weaponRefreshEvent) return;
+    scene.weaponRefreshEvent.remove(false);
+    scene.weaponRefreshEvent = null;
+}
+
+function wavesAcceptPowerups() {
+    return !openingActive && levelStartTime > 0 && gamePhase === 'waves'
+        && !levelTransitioning && !levelEnded && !victoryPending;
+}
+
+function maybeShowSupernovaBrief(scene) {
+    if (supernovaBriefShown || weaponPowerDurationMs() <= 0) return;
+    supernovaBriefShown = true;
+    showFloatingText(scene, 400, 210, 'WEAPONS FADE — GRAB THE NEXT', '#ff8877', { screenSpace: true });
+}
+
+function scheduleSupernovaWeaponDrop(scene, delayMs) {
+    if (!scene) return;
+    clearWeaponRefreshEvent(scene);
+    if (!(weaponPowerDurationMs() > 0) || !wavesAcceptPowerups()) return;
+    scene.weaponRefreshEvent = segmentScope.delay(scene, delayMs, () => {
+        scene.weaponRefreshEvent = null;
+        if (!wavesAcceptPowerups() || !(weaponPowerDurationMs() > 0)) return;
+        let live = 0;
+        if (powerups && powerups.getChildren) {
+            powerups.getChildren().forEach(pod => {
+                if (pod && pod.active && pod.powerupType === 'weapon') live += 1;
+            });
+        }
+        if (live < 1) spawnPowerup.call(scene, { type: 'weapon' });
+        const duration = weaponPowerDurationMs();
+        scheduleSupernovaWeaponDrop(scene, Phaser.Math.Between(
+            Math.round(duration * 0.75),
+            Math.round(duration * 1.2)
+        ));
+    });
+}
+
+function beginWeaponHunt(scene) {
+    reconcileWeaponPower();
+    if (!scene || !(weaponPowerDurationMs() > 0) || !wavesAcceptPowerups()) {
+        clearWeaponRefreshEvent(scene);
+        return;
+    }
+    maybeShowSupernovaBrief(scene);
+    scheduleSupernovaWeaponDrop(scene, Math.round(weaponPowerDurationMs() * 0.85));
 }
 
 function getLevelSegmentDef() {
@@ -2531,6 +2738,8 @@ function getActiveWavePatternKeys() {
 }
 
 function getScheduledWavePatternKeys() {
+    // Supernova draws from the full level catalog immediately.
+    if (difficultyFlag('randomWaves', false)) return null;
     const seg = getLevelSegmentDef();
     if (!seg) return null;
     const mode = getDifficultyMode();
@@ -4254,6 +4463,7 @@ function startBossFight(encounterKey) {
     if (this.obstacleSpawnEvent) this.obstacleSpawnEvent.remove(false);
     if (this.powerupSpawnEvent) this.powerupSpawnEvent.remove(false);
     if (this.firstPowerupEvent) this.firstPowerupEvent.remove(false);
+    clearWeaponRefreshEvent(this);
 
     deactivateGroup(enemies);
     deactivateGroup(obstacles);
@@ -4325,7 +4535,7 @@ function startBossFight(encounterKey) {
             : 'WARNING: BOSS APPROACHING');
     showFloatingText(this, 400, 130, warningLabel, '#ff6677', { screenSpace: true });
     flashVignette(this, 0xff3355, 0.45);
-    sfx.warning();
+    if (sfx && sfx.warning) sfx.warning();
     syncLevelMusic('boss');
     bossHealth = bossMaxHealth;
     bossPhase = 1;
@@ -4998,6 +5208,7 @@ function startLevel(levelId, options = {}) {
     if (this.obstacleSpawnEvent) this.obstacleSpawnEvent.remove(false);
     if (this.powerupSpawnEvent) this.powerupSpawnEvent.remove(false);
     if (this.firstPowerupEvent) this.firstPowerupEvent.remove(false);
+    clearWeaponRefreshEvent(this);
 
     if (boss) {
         if (boss.active) boss.destroy();
@@ -5103,7 +5314,7 @@ function startLevel(levelId, options = {}) {
         gamePhase = 'waves';
         levelSegment = null;
         levelTransitioning = false;
-        scheduleNextEnemyWave(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
+        beginWaveCombat(this, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
     });
 }
 
@@ -5176,6 +5387,7 @@ function advanceLevelSegment(scene, nextId, reason) {
         scene.enemySpawnEvent.remove(false);
         scene.enemySpawnEvent = null;
     }
+    clearWeaponRefreshEvent(scene);
 
     const kind = getSegmentKind(segDef);
     if (kind === 'boss') {
@@ -5271,7 +5483,7 @@ function enterProgressWaves(scene, segDef) {
     applyLevelWorldBounds(scene, currentLevel);
     if (getLevelDef(currentLevel).hasPathWalls) seedLevelPathWalls(scene);
     syncLevelMusic('waves');
-    scheduleNextEnemyWave(scene, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
+    beginWaveCombat(scene, difficultyNumber('firstWaveDelayMs', FIRST_WAVE_DELAY_MS));
 }
 
 /**
@@ -5297,6 +5509,7 @@ function enterTransition(scene, segDef) {
         scene.enemySpawnEvent.remove(false);
         scene.enemySpawnEvent = null;
     }
+    clearWeaponRefreshEvent(scene);
     // Intro boss must not linger into the flip / top-down gauntlet.
     if (boss) {
         if (boss.active) boss.destroy();
@@ -5724,6 +5937,7 @@ function applyBossPracticeLoadout() {
     // Typical L1 clear arrives near max gun; clamp to game max.
     const maxW = typeof MAX_WEAPON_LEVEL === 'number' ? MAX_WEAPON_LEVEL : 5;
     weaponLevel = Math.max(weaponLevel || 1, Math.min(4, maxW));
+    syncWeaponChargesToLevel(weaponCharges, weaponLevel);
     boostEnergy = typeof BOOST_MAX === 'number' ? BOOST_MAX : boostEnergy;
     boostLocked = false;
     if (isPlaytestBotSession() && lives < 5) lives = 5;
@@ -5770,6 +5984,7 @@ function debugSkipToBoss(scene, encounterKey) {
     if (scene.obstacleSpawnEvent) scene.obstacleSpawnEvent.remove(false);
     if (scene.powerupSpawnEvent) scene.powerupSpawnEvent.remove(false);
     if (scene.firstPowerupEvent) scene.firstPowerupEvent.remove(false);
+    clearWeaponRefreshEvent(scene);
     gamePhase = 'waves';
     levelSegment = null;
     syncLevelMusic('boss');
@@ -5980,7 +6195,11 @@ function updateCoopText() {
         hud.life.setText(alive ? 'LIVES ' + state.lives : 'DOWN');
         hud.life.setColor(alive ? '#e8f0ff' : '#ff8d9e');
         const weaponName = ['SINGLE', 'TRIPLE', 'SPREAD'][Math.min(2, Math.max(0, state.weaponLevel - 1))];
-        hud.weapon.setText(alive ? weaponName + (state.hasShield ? '  • SHIELD' : '') : 'PARTNER CONTINUES');
+        const charges = index === 0 ? weaponCharges : state.weaponCharges;
+        const left = soonestWeaponChargeMs(charges);
+        const timer = left > 0 ? '  ' + Math.max(1, Math.ceil(left / 1000)) + 's' : '';
+        hud.weapon.setText(alive ? weaponName + timer + (state.hasShield ? '  • SHIELD' : '') : 'PARTNER CONTINUES');
+        hud.weapon.setColor(alive && left > 0 && left < 3000 ? '#ff8877' : '#e8f0ff');
         hud.icon.setAlpha(alive ? 1 : 0.3);
         hud.meter.setDisplaySize(108 * (alive ? energy / 100 : 0), 5);
         hud.percent.setText(alive ? Math.round(energy) + '%' : '—');
@@ -6011,7 +6230,11 @@ function updateProjectileTrails() {
 
 function updateWeaponText() {
     if (!weaponText) return;
-    weaponText.setText('WEAPON  ' + getWeaponName().toUpperCase());
+    let label = 'WEAPON  ' + getWeaponName().toUpperCase();
+    const left = soonestWeaponChargeMs(weaponCharges);
+    if (left > 0) label += '  ' + Math.max(1, Math.ceil(left / 1000)) + 's';
+    weaponText.setText(label);
+    weaponText.setFill(left > 0 && left < 3000 ? '#ff8877' : '#66f6ff');
 }
 
 function updateStatusText() {
@@ -6551,9 +6774,24 @@ function handleKeyboardDown(event) {
 
     // Own opening controls here because this capture listener runs before Phaser.
     if (openingActive) {
+        if (openingLeaderboardOverlay) {
+            if (!event.repeat && (event.code === 'Escape' || event.key === 'Escape')) {
+                hideOpeningLeaderboard();
+            } else if (!event.repeat && event.code === 'ArrowLeft') {
+                cycleDifficultyMode(-1);
+                refreshOpeningDifficulty();
+                refreshOpeningLeaderboard();
+            } else if (!event.repeat && event.code === 'ArrowRight') {
+                cycleDifficultyMode(1);
+                refreshOpeningDifficulty();
+                refreshOpeningLeaderboard();
+            }
+            event.preventDefault();
+            return;
+        }
         if (!event.repeat && (event.code === 'Enter' || event.code === 'Space') &&
             typeof openingStartCallback === 'function') {
-            openingStartCallback();
+            launchOpeningGame();
         } else if (!event.repeat && event.code === 'ArrowLeft') {
             cycleDifficultyMode(-1);
             refreshOpeningDifficulty();
@@ -6856,6 +7094,8 @@ function setDifficultyMode(next) {
     } else {
         syncContinueStockToMode();
     }
+    reconcileWeaponPower();
+    beginWeaponHunt(getActiveScene());
     updatePauseHud();
     refreshPauseOverlay();
     if (!gamePaused && !openingActive) {
@@ -7113,7 +7353,8 @@ function declineArcadeContinue(scene) {
     if (musicDirector) musicDirector.stop();
     if (sfx && sfx.gameOver) sfx.gameOver();
     endLevel.call(active, 'GAME OVER', '#ff5555', {
-        skipLeaderboard: !isLeaderboardEligibleSession()
+        skipLeaderboard: !isLeaderboardEligibleSession(),
+        scope: getLevelLeaderboardScope(currentLevel)
     });
     return true;
 }
@@ -7148,6 +7389,7 @@ function setOpeningPlayerVisible(visible) {
 }
 
 function hideOpeningOverlay() {
+    hideOpeningLeaderboard();
     hideMobileLaunchButton();
     setOpeningPlayerVisible(true);
     if (!openingOverlay) return;
@@ -7157,6 +7399,7 @@ function hideOpeningOverlay() {
     if (openingOverlay.keyHandler && openingOverlay.scene && openingOverlay.scene.input.keyboard) {
         openingOverlay.scene.input.keyboard.off('keydown', openingOverlay.keyHandler);
     }
+    if (openingOverlay.pilotName) openingOverlay.pilotName.destroy();
     openingOverlay = null;
     openingStartCallback = null;
 }
@@ -7175,7 +7418,7 @@ function showOpeningOverlay(scene, onPlay) {
     hideOpeningOverlay();
     if (!scene || !scene.add) return;
     openingStartCallback = onPlay;
-    showMobileLaunchButton(onPlay);
+    showMobileLaunchButton(launchOpeningGame);
     const nodes = [];
     setOpeningPlayerVisible(false);
     const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.38)
@@ -7184,19 +7427,37 @@ function showOpeningOverlay(scene, onPlay) {
     const titleShip = addOpeningTitleShip(scene);
     if (titleShip) nodes.push(titleShip);
 
-    const eyebrow = scene.add.text(400, 100, 'THE LAST STARFIGHTER SQUADRON', {
+    const eyebrow = scene.add.text(400, 68, 'THE LAST STARFIGHTER SQUADRON', {
         fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', letterSpacing: 3
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
-    const title = scene.add.text(400, 176, 'NOVAWING', {
+    const title = scene.add.text(400, 136, 'NOVAWING', {
         fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '64px', fill: '#eafcff',
         stroke: '#176c9a', strokeThickness: 10, letterSpacing: 6
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
-    const rule = scene.add.rectangle(400, 220, 360, 2, 0x66f6ff, 0.85)
+    const rule = scene.add.rectangle(400, 180, 360, 2, 0x66f6ff, 0.85)
         .setDepth(81).setScrollFactor(0);
-    const mission = scene.add.text(400, 250, 'CHOOSE FLIGHT MODE', {
+    const mission = scene.add.text(400, 252, 'CHOOSE FLIGHT MODE', {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
-    nodes.push(eyebrow, title, rule, mission);
+    const pilotLabel = scene.add.text(248, 206, 'PILOT', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa4ff',
+        stroke: '#050816', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const pilotName = createPilotNameInput(scene, 430, 206, 230);
+    pilotLabel.on('pointerdown', () => {
+        if (pilotName.input) pilotName.input.focus();
+    });
+    pilotName.input.addEventListener('input', () => {
+        const cleaned = String(pilotName.input.value).replace(/[^\w .-]/g, '').trim().slice(0, 14);
+        if (cleaned) savePlayerName(cleaned);
+    });
+    pilotName.input.addEventListener('blur', () => commitOpeningPilotName());
+    pilotName.input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        pilotName.input.blur();
+    });
+    nodes.push(eyebrow, title, rule, mission, pilotLabel);
 
     const difficultyButtons = [];
     const labels = { easy: 'SPACE CADET', normal: 'HOTSHOT', hard: 'SUPERNOVA' };
@@ -7249,16 +7510,27 @@ function showOpeningOverlay(scene, onPlay) {
     const controls = scene.add.text(400, 490, formatGameplayControlsHint(), {
             fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', align: 'center'
         }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
-    nodes.push(playBg, playLabel, controls);
-
-    const launch = () => {
-        if (!openingActive || typeof onPlay !== 'function') return;
-        if (sfx && sfx.unlock) sfx.unlock();
-        onPlay();
+    const recordText = scene.add.text(400, 542, '', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#ffe66d',
+        stroke: '#050816', strokeThickness: 4, letterSpacing: 1
+    }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    recordText.setName('opening-record');
+    const recordRule = scene.add.rectangle(400, 556, recordText.width, 2, 0xffe66d, 0.9)
+        .setDepth(82).setScrollFactor(0);
+    const openLeaderboard = () => {
+        if (!openingActive) return;
+        const poster = openingOverlay && openingOverlay.poster;
+        showOpeningLeaderboard(scene, poster && poster.scope);
     };
-    playBg.on('pointerdown', launch);
-    playLabel.on('pointerdown', launch);
-    openingOverlay = { scene, nodes, difficultyButtons, coopButton, coopLabel, keyHandler: null };
+    recordText.on('pointerdown', openLeaderboard);
+    nodes.push(playBg, playLabel, controls, recordText, recordRule);
+
+    playBg.on('pointerdown', launchOpeningGame);
+    playLabel.on('pointerdown', launchOpeningGame);
+    openingOverlay = {
+        scene, nodes, difficultyButtons, coopButton, coopLabel, keyHandler: null,
+        recordText, recordRule, recordRequest: 0, poster: null, pilotName
+    };
     refreshOpeningDifficulty();
     refreshOpeningCoop();
 
@@ -7320,6 +7592,35 @@ function refreshOpeningDifficulty() {
         button.label.setFill(active ? '#ffffff' : '#8aa0c8');
         if (button.caption) button.caption.setFill(active ? '#ffe66d' : '#6d7d99');
     });
+    refreshOpeningRecord();
+}
+
+function syncOpeningRecordRule() {
+    if (!openingOverlay || !openingOverlay.recordRule || !openingOverlay.recordText) return;
+    openingOverlay.recordRule.setSize(Math.max(28, openingOverlay.recordText.width), 2);
+}
+
+function refreshOpeningRecord() {
+    if (!openingOverlay || !openingOverlay.recordText || !openingOverlay.recordText.active) return;
+    const difficulty = getDifficultyMode();
+    const request = ++openingOverlay.recordRequest;
+    const cached = openingOverlay.posterByMode && openingOverlay.posterByMode[difficulty];
+    if (cached) {
+        openingOverlay.poster = cached;
+        openingOverlay.recordText.setText(formatOpeningRecordLine(cached));
+        syncOpeningRecordRule();
+        return;
+    }
+    loadPosterRecord(difficulty).then(poster => {
+        if (!openingOverlay || openingOverlay.recordRequest !== request) return;
+        if (!openingOverlay.recordText || !openingOverlay.recordText.active) return;
+        if (getDifficultyMode() !== difficulty) return;
+        if (!openingOverlay.posterByMode) openingOverlay.posterByMode = Object.create(null);
+        openingOverlay.posterByMode[difficulty] = poster;
+        openingOverlay.poster = poster;
+        openingOverlay.recordText.setText(formatOpeningRecordLine(poster));
+        syncOpeningRecordRule();
+    });
 }
 
 function refreshOpeningCoop() {
@@ -7328,6 +7629,194 @@ function refreshOpeningCoop() {
     openingOverlay.coopLabel.setText(enabled ? 'LOCAL TWO PLAYER: ON' : 'LOCAL TWO PLAYER: OFF');
     openingOverlay.coopButton.setFillStyle(enabled ? 0x4a1f47 : 0x0b1930, 0.98);
     openingOverlay.coopButton.setStrokeStyle(enabled ? 2 : 1, enabled ? 0xffa6e7 : 0x405878, enabled ? 1 : 0.65);
+}
+
+function hideOpeningLeaderboard() {
+    if (!openingLeaderboardOverlay) return;
+    (openingLeaderboardOverlay.nodes || []).forEach(node => {
+        if (node && node.destroy) node.destroy();
+    });
+    openingLeaderboardOverlay = null;
+    if (openingOverlay && openingOverlay.pilotName) openingOverlay.pilotName.setVisible(true);
+    if (openingActive) showMobileLaunchButton(launchOpeningGame);
+}
+
+function commitOpeningPilotName() {
+    const field = openingOverlay && openingOverlay.pilotName;
+    const name = sanitizePlayerName(field && field.input ? field.input.value : getSavedPlayerName());
+    if (field && field.input) field.input.value = name;
+    savePlayerName(name);
+    return name;
+}
+
+function launchOpeningGame() {
+    if (!openingActive || typeof openingStartCallback !== 'function') return;
+    commitOpeningPilotName();
+    if (sfx && sfx.unlock) sfx.unlock();
+    openingStartCallback();
+}
+
+function formatOpeningLeaderboardNote() {
+    if (coopEnabled) {
+        return 'Two-player runs stay off the board. A ranked clear uses the title-screen name.';
+    }
+    return 'Set your name on the title screen. A ranked clear posts automatically.';
+}
+
+function showOpeningLeaderboard(scene, initialScope) {
+    if (!scene || !scene.add || !openingActive) return;
+    hideOpeningLeaderboard();
+    hideMobileLaunchButton();
+    if (openingOverlay && openingOverlay.pilotName) openingOverlay.pilotName.setVisible(false);
+    const nodes = [];
+    const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.94)
+        .setDepth(90).setScrollFactor(0).setInteractive();
+    const panel = scene.add.rectangle(400, 318, 700, 520, 0x050814, 0.98)
+        .setStrokeStyle(2, 0x8aa4ff, 0.75).setDepth(91).setScrollFactor(0);
+    const heading = scene.add.text(400, 78, 'FASTEST', {
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '28px', fill: '#eafcff',
+        stroke: '#050816', strokeThickness: 6, letterSpacing: 3
+    }).setOrigin(0.5).setDepth(92).setScrollFactor(0);
+    const subtitle = scene.add.text(400, 114, '', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa4ff'
+    }).setOrigin(0.5).setDepth(92).setScrollFactor(0);
+    const sourceText = scene.add.text(718, 82, '', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '12px', fill: '#66f6ff'
+    }).setOrigin(1, 0.5).setDepth(92).setScrollFactor(0);
+    nodes.push(dim, panel, heading, subtitle, sourceText);
+
+    const modeLabels = { easy: 'SPACE CADET', normal: 'HOTSHOT', hard: 'SUPERNOVA' };
+    const modeButtons = [];
+    DIFFICULTY_MODES.forEach((mode, index) => {
+        const x = 230 + index * 170;
+        const bg = scene.add.rectangle(x, 156, 156, 34, 0x0b1930, 0.98)
+            .setDepth(92).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        const label = scene.add.text(x, 156, modeLabels[mode], {
+            fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8',
+            stroke: '#050816', strokeThickness: 3
+        }).setOrigin(0.5).setDepth(93).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        const choose = () => {
+            if (!openingLeaderboardOverlay) return;
+            setDifficultyMode(mode);
+            refreshOpeningDifficulty();
+            refreshOpeningLeaderboard();
+        };
+        bg.on('pointerdown', choose);
+        label.on('pointerdown', choose);
+        modeButtons.push({ mode, bg, label });
+        nodes.push(bg, label);
+    });
+
+    const tabScopes = getLeaderboardScopes();
+    const tabLeft = 200;
+    const tabRight = 600;
+    const tabs = tabScopes.map((scope, index) => {
+        const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
+        const text = scene.add.text(tabLeft + t * (tabRight - tabLeft), 196, scope === 'campaign' ? 'CAMPAIGN' : 'L' + scope.slice('level-'.length), {
+            fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa0c8'
+        }).setOrigin(0.5).setDepth(92).setScrollFactor(0).setInteractive({ useHandCursor: true });
+        text.on('pointerdown', () => {
+            if (!openingLeaderboardOverlay) return;
+            openingLeaderboardOverlay.scope = scope;
+            refreshOpeningLeaderboard();
+        });
+        nodes.push(text);
+        return { scope, text };
+    });
+
+    const championText = scene.add.text(400, 224, '', {
+        fontFamily: 'monospace', resolution: 2, fontStyle: 'bold', fontSize: '28px', fill: '#ffe66d',
+        align: 'center', wordWrap: { width: 620 }
+    }).setOrigin(0.5, 0).setDepth(92).setScrollFactor(0).setLineSpacing(2);
+    const killsText = scene.add.text(400, 292, '', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '14px', fill: '#8aa4ff', align: 'center'
+    }).setOrigin(0.5, 0).setDepth(92).setScrollFactor(0);
+    const listText = scene.add.text(168, 320, '', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#c7ddff', align: 'left'
+    }).setOrigin(0, 0).setDepth(92).setScrollFactor(0).setLineSpacing(1);
+    const noteText = scene.add.text(400, 498, formatOpeningLeaderboardNote(), {
+        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', align: 'center',
+        wordWrap: { width: 640 }
+    }).setOrigin(0.5).setDepth(92).setScrollFactor(0);
+    const backBg = scene.add.rectangle(400, 546, 220, 40, 0x123c4b, 1)
+        .setStrokeStyle(2, 0x66f6ff, 0.9).setDepth(92).setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+    const backText = scene.add.text(400, 546, 'BACK', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '16px', fill: '#66f6ff',
+        stroke: '#050816', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(93).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const close = () => hideOpeningLeaderboard();
+    backBg.on('pointerdown', close);
+    backText.on('pointerdown', close);
+    nodes.push(championText, killsText, listText, noteText, backBg, backText);
+
+    const requestedScope = initialScope ? leaderboardScopeBase(initialScope) : '';
+    const knownScopes = getLeaderboardScopes();
+    openingLeaderboardOverlay = {
+        scene,
+        nodes,
+        scope: knownScopes.indexOf(requestedScope) >= 0 ? requestedScope : (knownScopes[0] || 'level-1'),
+        subtitle,
+        sourceText,
+        modeButtons,
+        tabs,
+        championText,
+        killsText,
+        listText,
+        noteText,
+        request: 0
+    };
+    refreshOpeningLeaderboard();
+}
+
+function refreshOpeningLeaderboard() {
+    const view = openingLeaderboardOverlay;
+    if (!view || !view.listText || !view.listText.active) return;
+    const difficulty = getDifficultyMode();
+    const selected = view.modeButtons.find(button => button.mode === difficulty);
+    view.modeButtons.forEach(button => {
+        const active = button === selected;
+        button.bg.setFillStyle(active ? 0x173f5c : 0x0b1930, 0.98);
+        button.bg.setStrokeStyle(active ? 2 : 1, active ? 0x66f6ff : 0x405878, active ? 1 : 0.65);
+        button.label.setFill(active ? '#ffffff' : '#8aa0c8');
+    });
+    const board = makeLeaderboardScope(view.scope, difficulty);
+    view.subtitle.setText(formatLeaderboardTitle(board, difficulty));
+    view.tabs.forEach(tab => {
+        tab.text.setFill(tab.scope === view.scope ? '#ffe66d' : '#8aa0c8');
+    });
+    view.noteText.setText(formatOpeningLeaderboardNote());
+    const request = ++view.request;
+    loadLeaderboardFromServer(board).then(result => {
+        if (openingLeaderboardOverlay !== view || view.request !== request) return;
+        if (!view.championText || !view.championText.active) return;
+        placeOpeningLeaderboard(view, result.entries || [], board);
+        view.sourceText.setText(result.online ? 'ONLINE' : 'OFFLINE');
+    });
+}
+
+function placeOpeningLeaderboard(view, entries, scope) {
+    if (!view.championText || !view.championText.active) return;
+    if (!entries.length) {
+        view.championText.setStyle({
+            fontFamily: 'monospace', fontSize: '16px', fontStyle: 'normal', fill: '#c7ddff', align: 'center'
+        });
+        if (view.championText.setWordWrapWidth) view.championText.setWordWrapWidth(620);
+        view.championText.setText(formatUnclaimedMessage(scope));
+        view.killsText.setText('');
+        view.listText.setText('');
+        return;
+    }
+    const top = entries[0];
+    view.championText.setStyle({
+        fontFamily: 'monospace', fontSize: '28px', fontStyle: 'bold', fill: '#ffe66d', align: 'center'
+    });
+    if (view.championText.setWordWrapWidth) view.championText.setWordWrapWidth(620);
+    view.championText.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase());
+    view.killsText.setText(top.kills + ' kills');
+    view.killsText.setY(view.championText.y + view.championText.height + 2);
+    view.listText.setText(formatRivalLines(entries.slice(1)).join('\n'));
+    view.listText.setY(view.killsText.y + view.killsText.height + 10);
 }
 
 function hasSeenTutorial() {
@@ -8046,9 +8535,27 @@ function handleGamepadUi() {
     if (isPlaytestBotSession()) return;
 
     if (openingActive) {
+        if (openingLeaderboardOverlay) {
+            if (anyGamepadJustPressed(GAMEPAD_BTN.B) || anyGamepadJustPressed(GAMEPAD_BTN.SELECT)) {
+                hideOpeningLeaderboard();
+                return;
+            }
+            if (gamepadLeftJustPressed()) {
+                cycleDifficultyMode(-1);
+                refreshOpeningDifficulty();
+                refreshOpeningLeaderboard();
+                return;
+            }
+            if (gamepadRightJustPressed()) {
+                cycleDifficultyMode(1);
+                refreshOpeningDifficulty();
+                refreshOpeningLeaderboard();
+                return;
+            }
+            return;
+        }
         if (gamepadConfirmJustPressed()) {
-            if (sfx && sfx.unlock) sfx.unlock();
-            if (typeof openingStartCallback === 'function') openingStartCallback();
+            launchOpeningGame();
             return;
         }
         if (gamepadLeftJustPressed()) {
@@ -9359,9 +9866,15 @@ function createPilotNameInput(scene, gameX, gameY, gameWidth) {
         input.removeEventListener('keyup', stopGameKey);
         if (input.parentNode) input.parentNode.removeChild(input);
     };
+    const setVisible = visible => {
+        input.style.display = visible ? '' : 'none';
+        input.style.pointerEvents = visible ? 'auto' : 'none';
+        if (!visible) input.blur();
+        else position();
+    };
     window.addEventListener('resize', position);
     position();
-    return { input, destroy };
+    return { input, destroy, setVisible, position };
 }
 
 function sanitizePlayerName(value) {
@@ -9711,16 +10224,108 @@ function createLeaderboardPayload(entry, runId, scope = entry && entry.scope) {
     };
 }
 
-function formatLeaderboardLines(entries, emptyMessage) {
-    if (!entries.length) return [emptyMessage || leaderboardStatus || 'No completed runs yet'];
+function formatPosterTime(ms) {
+    return formatRunTime(ms).replace(/^0(?=\d:)/, '');
+}
 
+function formatGapLabel(deltaMs) {
+    const tenths = Math.round(Math.abs(Number(deltaMs) || 0) / 100) / 10;
+    return tenths.toFixed(1).replace(/\.0$/, '') + 's';
+}
+
+function titleCaseWords(value) {
+    return String(value || '').toLowerCase().replace(/(^|[^a-z0-9])([a-z])/g, function (match, sep, letter) {
+        return sep + letter.toUpperCase();
+    });
+}
+
+function leaderboardStageName(scope) {
+    const base = leaderboardScopeBase(scope);
+    if (base === 'campaign') return 'The campaign';
+    const level = Number(base.slice('level-'.length));
+    const def = typeof getLevelDef === 'function' ? getLevelDef(level) : null;
+    if (def && def.name) return titleCaseWords(def.name);
+    return 'Level ' + level;
+}
+
+function formatUnclaimedMessage(scope) {
+    return leaderboardStageName(scope) + ' is unclaimed. The first clear holds it.';
+}
+
+function formatChallengeTarget(scope) {
+    const meta = getDifficultyModeMetadata(parseLeaderboardDifficulty(scope));
+    const mode = meta && meta.label ? meta.label : 'Hotshot';
+    if (leaderboardScopeBase(scope) === 'campaign') return 'the ' + mode + ' campaign';
+    return mode + ' ' + leaderboardStageName(scope);
+}
+
+function formatRecordGap(timeMs, holder) {
+    if (!holder || !Number.isFinite(Number(holder.timeMs))) {
+        return 'You would be the first to hold this.';
+    }
+    const delta = Number(timeMs) - Number(holder.timeMs);
+    if (delta <= -100) {
+        return 'You took the record. ' + formatGapLabel(delta) + ' faster than ' + holder.name + '.';
+    }
+    if (delta >= 100) {
+        return formatGapLabel(delta) + ' behind ' + holder.name + '.';
+    }
+    return 'Tied with ' + holder.name + ' on time.';
+}
+
+function formatShareChallenge(entry, holder, shareUrl) {
+    const url = shareUrl || (typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '');
+    const target = formatChallengeTarget(entry.scope);
+    const time = formatPosterTime(entry.timeMs);
+    const holderTime = holder && Number(holder.timeMs);
+    let sentence;
+    if (holder && Number.isFinite(holderTime) && Number(entry.timeMs) < holderTime) {
+        sentence = 'I took ' + target + ' from ' + holder.name + '. ' + time + '.';
+    } else if (!holder || !Number.isFinite(holderTime) || Number(entry.timeMs) <= holderTime) {
+        sentence = 'I hold ' + target + ' in ' + time + '. Beat it.';
+    } else {
+        sentence = 'I finished ' + target + ' in ' + time + '. ' + holder.name +
+            ' holds it in ' + formatPosterTime(holderTime) + '.';
+    }
+    return url ? sentence + ' ' + url : sentence;
+}
+
+function formatRivalLines(entries) {
     return entries.map((entry, index) => {
-        return padLeft(index + 1, 2, ' ') + '. ' +
+        return padLeft(index + 2, 2, ' ') + '. ' +
             padRight(entry.name, 14, ' ') + '  ' +
             formatRunTime(entry.timeMs) + '  ' +
-            padLeft(entry.score, 5, ' ') + ' pts  ' +
-            padLeft(entry.kills, 2, ' ') + ' kills';
+            padLeft(entry.score, 5, ' ') + ' pts';
     });
+}
+
+function formatOpeningRecordLine(poster) {
+    if (!poster || poster.kind === 'unclaimed' || !poster.entry) {
+        return formatDifficultyModeName(poster && poster.difficulty) + '  UNCLAIMED';
+    }
+    const name = String(poster.entry.name || '').toUpperCase();
+    const time = formatPosterTime(poster.entry.timeMs);
+    if (poster.kind === 'campaign') return 'CAMPAIGN  ' + time + '  ' + name;
+    return 'RECORD  ' + time + '  ' + name;
+}
+
+function loadPosterRecord(difficulty) {
+    const mode = parseDifficultyModeName(difficulty) || 'normal';
+    const campaignScope = makeLeaderboardScope('campaign', mode);
+    const levelScope = makeLeaderboardScope('level-1', mode);
+    return loadLeaderboardFromServer(campaignScope).then(campaign => {
+        const campaignTop = campaign.entries && campaign.entries[0];
+        if (campaignTop) {
+            return { kind: 'campaign', scope: campaignScope, entry: campaignTop, difficulty: mode };
+        }
+        return loadLeaderboardFromServer(levelScope).then(level => {
+            const levelTop = level.entries && level.entries[0];
+            if (levelTop) {
+                return { kind: 'level', scope: levelScope, entry: levelTop, difficulty: mode };
+            }
+            return { kind: 'unclaimed', scope: levelScope, entry: null, difficulty: mode };
+        });
+    }).catch(() => ({ kind: 'unclaimed', scope: levelScope, entry: null, difficulty: mode }));
 }
 
 function showFloatingText(scene, x, y, message, color, options = {}) {
@@ -9768,6 +10373,7 @@ function endLevel(title, color, options = {}) {
     if (this.obstacleSpawnEvent) this.obstacleSpawnEvent.remove(false);
     if (this.powerupSpawnEvent) this.powerupSpawnEvent.remove(false);
     if (this.firstPowerupEvent) this.firstPowerupEvent.remove(false);
+    clearWeaponRefreshEvent(this);
     if (sfx && sfx.setEngine) sfx.setEngine(0);
     this.physics.pause();
 
@@ -9795,17 +10401,23 @@ function endLevel(title, color, options = {}) {
     const resultDifficulty = getDifficultyMode();
     const displayScopeBase = leaderboardScopeBase(displayScope);
     let viewedDifficulty = parseLeaderboardDifficulty(displayScope) || resultDifficulty;
-    const currentLeaderboard = getLocalLeaderboard(makeLeaderboardScope(displayScopeBase, viewedDifficulty));
     const unrankedLine = formatUnrankedReasonLine();
+    const checkingRecord = 'Checking the record...';
     const resultLine = continueToNext
-        ? (skipLeaderboard ? unrankedLine : 'Enter a pilot name to post this run')
+        ? (skipLeaderboard ? unrankedLine : checkingRecord)
         : (completed && !skipLeaderboard
-            ? 'Enter a pilot name to post this run'
+            ? checkingRecord
             : (completed || skipLeaderboard
                 ? unrankedLine
                 : 'Complete the boss fight to set a time'));
     let submittedEntry = null;
     let submittedRank = null;
+    let heldRecord = null;
+    let heldRecordReady = false;
+    const postedTimeMs = () => {
+        const official = options.leaderboardState && options.leaderboardState.officialTimeMs;
+        return Number.isFinite(official) && official > 0 ? official : completionTimeMs;
+    };
 
     // Keep the results card glued to the viewport even on tall canyon levels.
     if (this.cameras && this.cameras.main) {
@@ -9879,6 +10491,10 @@ function endLevel(title, color, options = {}) {
                 resultLineText.setText('Local co-op run — leaderboard and personal best disabled');
                 return;
             }
+            if (completed && !skipLeaderboard && heldRecordReady) {
+                resultLineText.setText(formatRecordGap(postedTimeMs(), heldRecord));
+                return;
+            }
             resultLineText.setText(completed
                 ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : resultLine)
                 : 'Complete the boss fight to set a time');
@@ -9894,26 +10510,47 @@ function endLevel(title, color, options = {}) {
 
     const leaderboardPanel = this.add.rectangle(555, 287, 335, 310, 0x091329, 0.88)
         .setStrokeStyle(1, 0x314d7a, 0.9).setDepth(11).setScrollFactor(0);
-    const leaderboardTitle = this.add.text(555, 151, formatLeaderboardTitle(displayScope, viewedDifficulty) + ' LEADERBOARD', {
-        fontSize: '17px',
+    const leaderboardTitle = this.add.text(555, 151, formatLeaderboardTitle(displayScope, viewedDifficulty) + ' FASTEST', {
+        fontSize: '15px',
         fill: '#ffffff',
         fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     let selectedLeaderboardScope = displayScopeBase;
-    const formatCompactLeaderboard = (entries, emptyMessage) => {
-        if (!entries.length) return [emptyMessage || leaderboardStatus || 'No completed runs yet'];
-        return entries.map((entry, index) =>
-            padLeft(index + 1, 2, ' ') + '. ' + padRight(entry.name, 12, ' ') + ' ' +
-            formatRunTime(entry.timeMs) + ' ' + padLeft(entry.score, 5, ' ')
-        );
-    };
-    const leaderboardText = this.add.text(405, 208, formatCompactLeaderboard(currentLeaderboard), {
+    const leaderboardChampion = this.add.text(555, 198, '', {
+        fontSize: '16px',
+        fill: '#ffe66d',
+        fontFamily: 'monospace', resolution: 2,
+        fontStyle: 'bold',
+        align: 'center',
+        wordWrap: { width: 300 }
+    }).setOrigin(0.5, 0).setDepth(12).setScrollFactor(0);
+    const leaderboardText = this.add.text(408, 248, '', {
         fontSize: '12px',
         fill: '#c7ddff',
         fontFamily: 'monospace', resolution: 2,
         align: 'left'
-    }).setOrigin(0, 0).setDepth(11).setScrollFactor(0).setLineSpacing(4);
+    }).setOrigin(0, 0).setDepth(11).setScrollFactor(0).setLineSpacing(3);
+    const renderResultBoard = (entries, scope) => {
+        if (!leaderboardChampion.scene) return;
+        if (!entries.length) {
+            leaderboardChampion.setStyle({
+                fontFamily: 'monospace', fontSize: '13px', fontStyle: 'normal', fill: '#c7ddff', align: 'center'
+            });
+            if (leaderboardChampion.setWordWrapWidth) leaderboardChampion.setWordWrapWidth(300);
+            leaderboardChampion.setText(formatUnclaimedMessage(scope));
+            leaderboardText.setText('');
+            return;
+        }
+        const top = entries[0];
+        leaderboardChampion.setStyle({
+            fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', fill: '#ffe66d', align: 'center'
+        });
+        if (leaderboardChampion.setWordWrapWidth) leaderboardChampion.setWordWrapWidth(300);
+        leaderboardChampion.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase() + '\n' + top.kills + ' kills');
+        leaderboardText.setText(formatRivalLines(entries.slice(1)).join('\n'));
+        leaderboardText.setY(leaderboardChampion.y + leaderboardChampion.height + 8);
+    };
 
     const tabScopes = getLeaderboardScopes();
     const tabLeft = 430;
@@ -9943,32 +10580,34 @@ function endLevel(title, color, options = {}) {
         tabTexts.forEach(tab => {
             tab.text.setFill(tab.scope === selectedLeaderboardScope ? '#ffe66d' : '#8aa0c8');
         });
-        leaderboardText.setText('Loading...');
         loadLeaderboardFromServer(board).then(result => {
-            if (!leaderboardText.scene || board !== result.scope) return;
-            leaderboardText.setText(formatCompactLeaderboard(
-                result.entries || [],
-                result.online ? 'No online scores yet' : 'No local scores yet'
-            ));
+            if (!leaderboardChampion.scene || board !== result.scope) return;
+            const entries = result.entries || [];
+            if (!heldRecordReady && result.scope === displayScope && completed && !skipLeaderboard) {
+                heldRecordReady = true;
+                heldRecord = entries[0] || null;
+                if (resultLineText.active) resultLineText.setText(formatRecordGap(postedTimeMs(), heldRecord));
+            }
+            if (makeLeaderboardScope(selectedLeaderboardScope, viewedDifficulty) !== result.scope) return;
+            renderResultBoard(entries, result.scope);
         });
     };
     tabTexts.forEach(tab => {
         tab.text.on('pointerdown', () => selectLeaderboardScope(tab.scope));
     });
 
-    const nameLabel = this.add.text(218, 430, completed && !skipLeaderboard ? 'PILOT NAME' : '', {
+    const postedName = completed && !skipLeaderboard
+        ? sanitizePlayerName(getSavedPlayerName() || 'Pilot')
+        : '';
+    const nameLabel = this.add.text(218, 430, postedName ? 'PILOT' : '', {
         fontSize: '13px', fill: '#8aa4ff', fontFamily: 'monospace', resolution: 2
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
-    const pilotInput = completed && !skipLeaderboard
-        ? createPilotNameInput(this, 218, 458, 245)
-        : null;
-    if (pilotInput) {
-        pilotInput.input.addEventListener('input', () => {
-            const typedName = sanitizePlayerName(pilotInput.input.value);
-            const typedBest = getPersonalBestScore(displayScopeBase, resultDifficulty, typedName);
-            personalBestText.setText('PERSONAL BEST  ' + Math.max(typedBest, eligibleResultScore));
-        });
-    }
+    const nameValue = this.add.text(218, 456, postedName ? postedName.toUpperCase() : '', {
+        fontSize: '18px', fill: '#ffffff', fontFamily: 'monospace', resolution: 2, fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+    const postStatusText = this.add.text(218, 500, postedName ? 'POSTING SCORE...' : '', {
+        fontSize: '15px', fill: '#66f6ff', fontFamily: 'monospace', resolution: 2
+    }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
 
     const shareStatusText = this.add.text(555, 430, '', {
         fontSize: '14px',
@@ -9984,16 +10623,8 @@ function endLevel(title, color, options = {}) {
     shareText.setInteractive({ useHandCursor: true });
     shareText.on('pointerdown', () => {
         if (!submittedEntry) return;
-        shareScoreResult(submittedEntry, submittedRank, shareStatusText);
+        shareScoreResult(submittedEntry, resultLineText, heldRecord);
     });
-
-    const submitBg = this.add.rectangle(218, 505, 245, 38, 0x123c4b, 1)
-        .setStrokeStyle(2, 0x66f6ff, 0.9).setDepth(11).setScrollFactor(0)
-        .setVisible(Boolean(pilotInput)).setInteractive({ useHandCursor: true });
-    const submitText = this.add.text(218, 505, 'SUBMIT SCORE', {
-        fontSize: '16px', fill: '#66f6ff', fontFamily: 'monospace', resolution: 2
-    }).setOrigin(0.5).setDepth(12).setScrollFactor(0).setVisible(Boolean(pilotInput));
-    submitText.setInteractive({ useHandCursor: true });
 
     const restartX = continueToNext ? 275 : 400;
     const restartBg = this.add.rectangle(restartX, 558, 210, 42, 0x252d43, 1)
@@ -10023,8 +10654,8 @@ function endLevel(title, color, options = {}) {
     let continued = false;
     const overlayNodes = [
         panel, titleText, resultLineText, difficultyHint, statsPanel, statsHeading, scoreText,
-        personalBestText, statsText, leaderboardPanel, leaderboardTitle, leaderboardText, nameLabel,
-        shareStatusText, shareText, submitBg, submitText, restartBg, restartText, actionBg, actionText
+        personalBestText, statsText, leaderboardPanel, leaderboardTitle, leaderboardChampion, leaderboardText,
+        nameLabel, nameValue, postStatusText, shareStatusText, shareText, restartBg, restartText, actionBg, actionText
     ];
 
     const goNext = () => {
@@ -10046,19 +10677,17 @@ function endLevel(title, color, options = {}) {
 
     const keyboard = this.input.keyboard;
     const onEnter = () => {
-        if (pilotInput && document.activeElement === pilotInput.input) return;
         if (continueToNext) goNext();
         else restartScene();
     };
     const onSpace = () => {
-        if (!pilotInput || document.activeElement !== pilotInput.input) goNext();
+        goNext();
     };
     const onContinue = () => goNext();
     const onRestart = () => restartScene();
 
     cleanupResults = () => {
         resultsGamepadActions = null;
-        if (pilotInput) pilotInput.destroy();
         if (keyboard) {
             keyboard.off('keydown-ENTER', onEnter);
             keyboard.off('keydown-SPACE', onSpace);
@@ -10070,9 +10699,7 @@ function endLevel(title, color, options = {}) {
     resultsGamepadActions = {
         goNext: continueToNext ? goNext : null,
         restart: restartScene,
-        isNameFocused: () => Boolean(
-            pilotInput && typeof document !== 'undefined' && document.activeElement === pilotInput.input
-        )
+        isNameFocused: () => false
     };
 
     if (continueToNext) {
@@ -10103,11 +10730,9 @@ function endLevel(title, color, options = {}) {
     clearTouchActionState();
 
     const applySubmitResult = (result, fallbackEntry) => {
-        if (!resultLineText.scene || !leaderboardText.scene) return;
+        if (!resultLineText.scene || !leaderboardChampion.scene) return;
         if (!result) {
-            resultLineText.setText(skipLeaderboard
-                ? 'Debug run — leaderboard disabled'
-                : 'Score saved locally');
+            if (postStatusText.scene) postStatusText.setText('SAVED ON THIS DEVICE');
             return;
         }
         const rank = Number(result.rank);
@@ -10121,28 +10746,28 @@ function endLevel(title, color, options = {}) {
                 resultDifficulty,
                 submittedEntry.name
             ));
+            if (nameValue.scene) nameValue.setText(String(submittedEntry.name || playerName).toUpperCase());
         }
-        resultLineText.setText(rankedInTop
-            ? (result.online ? 'Online leaderboard rank: #' : 'Local leaderboard rank: #') + rank
-            : 'Finished outside top ' + LEADERBOARD_LIMIT);
+        if (postStatusText.scene) {
+            postStatusText.setText(rankedInTop
+                ? (result.online ? 'ONLINE RANK #' : 'LOCAL RANK #') + rank
+                : 'OUTSIDE TOP ' + LEADERBOARD_LIMIT);
+        }
         if (makeLeaderboardScope(selectedLeaderboardScope, viewedDifficulty) === displayScope) {
-            leaderboardText.setText(formatCompactLeaderboard(result.entries || []));
+            renderResultBoard(result.entries || [], displayScope);
         }
         shareText.setVisible(true);
-        shareStatusText.setText(result.online ? 'Score posted online' : 'Score saved locally');
     };
 
     selectLeaderboardScope(displayScope);
     let submissionStarted = false;
     const submitScore = () => {
-        if (!pilotInput || submissionStarted || !completed || skipLeaderboard) return;
+        if (submissionStarted || !completed || skipLeaderboard) return;
         submissionStarted = true;
-        playerName = sanitizePlayerName(pilotInput.input.value);
-        pilotInput.input.value = playerName;
-        pilotInput.input.disabled = true;
+        playerName = sanitizePlayerName(getSavedPlayerName() || 'Pilot');
         savePlayerName(playerName);
-        submitText.setText('SUBMITTING...');
-        resultLineText.setText('Verifying run...');
+        if (nameValue.scene) nameValue.setText(playerName.toUpperCase());
+        if (postStatusText.scene) postStatusText.setText('POSTING SCORE...');
         const scoreEntry = {
             name: playerName,
             scope: displayScope,
@@ -10176,33 +10801,14 @@ function endLevel(title, color, options = {}) {
                 );
             }
             applySubmitResult(result, scoreEntry);
-            if (!submitText.scene) return;
-            submitText.setText('SCORE SUBMITTED');
-            submitText.disableInteractive();
-            submitBg.disableInteractive();
         });
     };
-    submitText.on('pointerdown', submitScore);
-    submitBg.on('pointerdown', submitScore);
-    if (pilotInput) {
-        pilotInput.input.addEventListener('keydown', event => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            submitScore();
-            pilotInput.input.blur();
-        });
-    }
+    if (postedName) submitScore();
 }
 
-function shareScoreResult(entry, rank, statusText) {
-    const rankText = Number.isFinite(rank) && rank > 0 ? ' Rank #' + rank + '.' : '';
+function shareScoreResult(entry, statusText, holder) {
     const shareUrl = window.location.origin + window.location.pathname;
-    const shareMode = parseLeaderboardDifficulty(entry.scope);
-    const shareModeBit = shareMode === 'normal' ? '' : ' (' + formatDifficultyModeName(shareMode) + ')';
-    const shareText = entry.name + ' beat NovaWing' + shareModeBit + ' in ' +
-        formatRunTime(entry.timeMs) + ' with ' +
-        entry.score + ' points and ' +
-        entry.kills + ' kills.' + rankText + ' ' + shareUrl;
+    const shareText = formatShareChallenge(entry, holder, shareUrl);
 
     if (navigator.share) {
         navigator.share({
@@ -10675,6 +11281,91 @@ function bodyCenter(sprite) {
     };
 }
 
+function snapshotBody(sprite, extra) {
+    const body = bodyCenter(sprite);
+    return Object.assign({
+        x: body.x,
+        y: body.y,
+        vx: body.vx || sprite.baseVelocityX || 0,
+        vy: body.vy || sprite.baseVelocityY || 0,
+        w: body.w || sprite.displayWidth || 16,
+        h: body.h || sprite.displayHeight || 16
+    }, extra || {});
+}
+
+function soonestFutureMs(now, stamps) {
+    let best = null;
+    for (let i = 0; i < stamps.length; i++) {
+        const stamp = stamps[i];
+        if (!Number.isFinite(stamp) || stamp === Infinity) continue;
+        const left = stamp - now;
+        if (left < 0) continue;
+        if (best == null || left < best) best = left;
+    }
+    return best;
+}
+
+function buildPilotFacts() {
+    if (!window.NovaWingPilot || !player || !player.active) return null;
+    const now = playtestNow(game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0] : null);
+    const cruise = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity || 0);
+    const bullets = collectActiveSpriteSnapshots(enemyBullets, sprite => snapshotBody(sprite, {
+        kind: 'bullet',
+        type: sprite.isBossLaser ? 'laser' : 'bullet',
+        laser: Boolean(sprite.isBossLaser),
+        vx: sprite.body ? sprite.body.velocity.x : 0,
+        vy: sprite.body ? sprite.body.velocity.y : 0
+    }));
+    const enemyBodies = collectActiveSpriteSnapshots(enemies, sprite => snapshotBody(sprite, {
+        kind: 'enemy',
+        type: sprite.enemyType || 'regular'
+    }));
+    const rocks = collectActiveSpriteSnapshots(obstacles, sprite => snapshotBody(sprite, {
+        kind: 'obstacle',
+        type: 'obstacle'
+    }));
+    let bossBody = null;
+    if (boss && boss.active) {
+        const nextShot = soonestFutureMs(now, [bossNextVolleyAt, bossNextLaserAt, bossNextDroneAt]);
+        bossBody = snapshotBody(boss, {
+            kind: 'boss',
+            type: 'boss',
+            phase: bossPhase,
+            health: bossHealth,
+            maxHealth: bossMaxHealth,
+            nextShotMs: nextShot
+        });
+    }
+    let hole = null;
+    if ((blackHoleActive || blackHolePreview) && blackHoleConfig) {
+        const anchor = blackHoleActive
+            ? blackHoleConfig
+            : (blackHoleConfig.previewAnchor || { x: 400, y: 40 });
+        hole = {
+            x: anchor.x != null ? anchor.x : 400,
+            y: anchor.y != null ? anchor.y : 260,
+            killRadius: blackHoleConfig.killRadius != null ? blackHoleConfig.killRadius : 28
+        };
+    }
+    const ship = snapshotBody(player, {});
+    return window.NovaWingPilot.facts({
+        ship: ship,
+        speed: cruise,
+        boostSpeed: BOOST_PLAYER_SPEED,
+        canBoost: !boostLocked && boostEnergy > 20,
+        worldW: GAME_WIDTH,
+        worldH: (typeof getLevelWorldHeight === 'function'
+            ? getLevelWorldHeight(typeof currentLevel === 'number' ? currentLevel : 1)
+            : GAME_HEIGHT) || GAME_HEIGHT,
+        invulnerableMs: Math.max(0, (playerInvulnerableUntil || 0) - now),
+        bullets: bullets,
+        enemies: enemyBodies,
+        obstacles: rocks,
+        boss: bossBody,
+        blackHole: blackHoleActive ? hole : null
+    });
+}
+
 function getBotSnapshot() {
     const levelDef = typeof getLevelDef === 'function'
         ? getLevelDef(typeof currentLevel === 'number' ? currentLevel : 1)
@@ -10718,6 +11409,7 @@ function getBotSnapshot() {
         score,
         lives,
         weaponLevel,
+        weaponMs: soonestWeaponChargeMs(weaponCharges),
         hasShield: Boolean(hasShield),
         boostEnergy,
         isBoosting: Boolean(isBoosting),
@@ -10807,7 +11499,8 @@ function getBotSnapshot() {
                 w: b.w,
                 h: b.h
             };
-        })() : null
+        })() : null,
+        pilot: buildPilotFacts()
     };
 }
 
@@ -10821,13 +11514,24 @@ window.__novawingDebug = {
             active: openingActive,
             difficulty: getDifficultyMode(),
             hasOverlay: Boolean(openingOverlay),
+            leaderboardOpen: Boolean(openingLeaderboardOverlay),
             runStarted: levelStartTime > 0
         };
     },
     startGame() {
         if (!openingActive || typeof openingStartCallback !== 'function') return false;
-        openingStartCallback();
+        launchOpeningGame();
         return true;
+    },
+    probeRuntime() {
+        return {
+            level: currentLevel,
+            segment: levelSegment,
+            phase: gamePhase,
+            bosses: Boolean(bosses),
+            sfx: Boolean(sfx && sfx.warning),
+            opening: openingActive
+        };
     },
     shouldShowTouchControls,
     getMobileProfile() {
@@ -11008,5 +11712,29 @@ window.__novawingDebug = {
             canvasHeight: game.canvas ? game.canvas.clientHeight : null,
             mode: game.scale.scaleMode
         };
+    },
+    debugWeaponState() {
+        return {
+            weaponLevel,
+            weaponMs: soonestWeaponChargeMs(weaponCharges),
+            text: weaponText && weaponText.text ? weaponText.text : '',
+            randomWaves: difficultyFlag('randomWaves', false),
+            weaponPowerMs: weaponPowerDurationMs()
+        };
+    },
+    debugGrantWeapon() {
+        const scene = getActiveScene();
+        if (!scene) return null;
+        applyWeaponPowerup(scene, player ? player.x : 400, player ? player.y : 300);
+        return window.__novawingDebug.debugWeaponState();
+    },
+    debugAgeWeapons(ms) {
+        const scene = getActiveScene();
+        if (!scene) return null;
+        tickSupernovaWeapons(scene, ms);
+        return window.__novawingDebug.debugWeaponState();
+    },
+    debugWaveKeys() {
+        return getLevelWavePatterns().map(pattern => pattern.key);
     }
 };

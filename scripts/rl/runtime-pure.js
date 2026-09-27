@@ -10,7 +10,7 @@
 (function (global) {
     'use strict';
 
-    var OBS_VERSION = 2;
+    var OBS_VERSION = 3;
     var K_ENEMIES = 6;
     var K_OBSTACLES = 4;
     var K_BULLETS = 8;
@@ -26,6 +26,7 @@
     var BAND_DIM = 2;
     var BOSS_DIM = 6;
     var BH_DIM = 6;
+    var PILOT_DIM = 16;
     var OBS_SIZE =
         SELF_DIM +
         K_ENEMIES * ENEMY_DIM +
@@ -35,7 +36,8 @@
         K_POWERUPS * POWERUP_DIM +
         K_BANDS * BAND_DIM +
         BOSS_DIM +
-        BH_DIM;
+        BH_DIM +
+        PILOT_DIM;
     var ACTION_SIZE = 4;
 
     var ENEMY_TYPE_ID = {
@@ -346,6 +348,60 @@
         return o;
     }
 
+    var PILOT_MOVES = [
+        'hold', 'up', 'down', 'left', 'right',
+        'up_left', 'up_right', 'down_left', 'down_right'
+    ];
+
+    function writePilot(out, o, snap, vertical) {
+        var pilot = snap.pilot || null;
+        var moves = pilot && pilot.moves ? pilot.moves : {};
+        var edges = pilot && pilot.edges ? pilot.edges : {};
+        var threats = pilot && pilot.threats ? pilot.threats : [];
+        var hitting = null;
+        for (var i = 0; i < threats.length; i++) {
+            if (threats[i].hitsIfHold) { hitting = threats[i]; break; }
+        }
+        out[o++] = pilot && pilot.holdHits ? 1 : 0;
+        out[o++] = clamp((hitting && hitting.ttiMs != null ? hitting.ttiMs : 1500) / 1500, 0, 1);
+        // Keep edge and move order in the same canonical frame as actions.
+        var edgeKeys = vertical ? ['down', 'up', 'left', 'right'] : ['left', 'right', 'up', 'down'];
+        for (var e = 0; e < edgeKeys.length; e++) {
+            out[o++] = clamp((edges[edgeKeys[e]] || 0) / 240, 0, 1);
+        }
+        var moveKeys = vertical
+            ? ['hold', 'left', 'right', 'down', 'up', 'down_left', 'up_left', 'down_right', 'up_right']
+            : PILOT_MOVES;
+        for (var m = 0; m < PILOT_MOVES.length; m++) {
+            var move = moves[moveKeys[m]];
+            out[o++] = move && move.safe ? 1 : 0;
+        }
+        var nextShot = pilot && pilot.boss && Number.isFinite(pilot.boss.nextShotMs)
+            ? pilot.boss.nextShotMs
+            : 2500;
+        out[o++] = clamp(nextShot / 2500, 0, 1);
+        return o;
+    }
+
+    function rankBullets(bullets, px, py, pilot) {
+        var threats = pilot && pilot.threats ? pilot.threats : [];
+        return sortByDist(bullets, px, py).sort(function (a, b) {
+            function urgency(row) {
+                var dx = row.dx;
+                var dy = row.dy;
+                for (var i = 0; i < threats.length; i++) {
+                    var threat = threats[i];
+                    if (threat.kind !== 'bullet') continue;
+                    if (Math.abs(threat.dx - dx) < 3 && Math.abs(threat.dy - dy) < 3) {
+                        return threat.hitsIfHold ? (threat.ttiMs || 0) : 50000 + row.d2;
+                    }
+                }
+                return 100000 + row.d2;
+            }
+            return urgency(a) - urgency(b);
+        });
+    }
+
     function encodeObservation(snap, buffer) {
         var out = buffer && buffer.length >= OBS_SIZE
             ? buffer
@@ -361,12 +417,13 @@
         o = writeSelf(out, o, snap);
         o = writeEnemies(out, o, sortByDist(snap.enemies, px, py), K_ENEMIES, vertical);
         o = writeObstacles(out, o, sortByDist(snap.obstacles, px, py), K_OBSTACLES, vertical);
-        o = writeBullets(out, o, sortByDist(snap.enemyBullets, px, py), K_BULLETS, vertical);
+        o = writeBullets(out, o, rankBullets(snap.enemyBullets, px, py, snap.pilot), K_BULLETS, vertical);
         o = writeWalls(out, o, sortByDist(snap.walls, px, py), K_WALLS, vertical);
         o = writePowerups(out, o, sortByDist(snap.powerups, px, py), K_POWERUPS, vertical);
         o = writeBands(out, o, snap);
         o = writeBoss(out, o, snap);
         o = writeBlackHole(out, o, snap);
+        o = writePilot(out, o, snap, vertical);
         if (o !== OBS_SIZE) {
             throw new Error('obs encode size mismatch: wrote ' + o + ', expected ' + OBS_SIZE);
         }
@@ -534,6 +591,7 @@
             selfDim: SELF_DIM,
             bossDim: BOSS_DIM,
             blackHoleDim: BH_DIM,
+            pilotDim: PILOT_DIM,
             k: {
                 enemies: K_ENEMIES,
                 obstacles: K_OBSTACLES,
@@ -542,7 +600,7 @@
                 powerups: K_POWERUPS,
                 bands: K_BANDS
             },
-            notes: 'v2: +segment/orientation + BH; spatial/action axes remapped so vertical L3 matches horizontal frame',
+            notes: 'v3: pilot dodge block (hold-hit, edges, 9 move safes, next boss shot). Bullets are ordered by hold-hit time.',
             canonicalAxes: true
         },
         isVerticalSnap: isVerticalSnap,

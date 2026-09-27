@@ -11,7 +11,9 @@ difficulty control or press D. The same names appear on the HUD and results.
 | Enemy movement speed | 90% | 100% | 112% |
 | Enemy projectile speed | 78% | 100% | 112% |
 | Enemy firing delay | 135% | 100% | 78% |
-| Time between waves | 2.1–2.8 s | 1.65–2.3 s | 1.25–1.7 s |
+| Time between waves | 2.1–2.8 s | 1.65–2.3 s | 1.25–1.7 s, then clumped |
+| Wave order | Taught, then pressured | Taught, then pressured | Any catalog wave, sometimes two at once |
+| Weapon upgrades | Permanent | Permanent | Each rank lasts 14 s; new pods keep spawning |
 | Protection after damage | 1.4 s | 0.9 s | 0.7 s |
 | Boost restored per ordinary kill | 24 | 16 | 10 |
 | Boss health | 80% | Authored health | Same as Hotshot |
@@ -21,7 +23,11 @@ difficulty control or press D. The same names appear on the HUD and results.
 
 Supernova does not multiply enemy HP (the old multiplier rounded a 2-HP
 enemy up to 3). Speed, firing cadence, and spawn density supply the
-challenge. Space Cadet also slows enemy and boss projectiles and spaces
+challenge. It also ignores the Level 3 teach schedule, so any wave in that
+level's catalog can show up immediately, and about one wave in three brings
+a second pattern with it. Weapon ranks expire after 14 seconds. Fresh weapon
+pods keep spawning during waves, including the boss approach, so a faded gun
+can be replaced. The timer pauses during a boss fight. Space Cadet also slows enemy and boss projectiles and spaces
 attacks out. Tracking and boost drain are gentler. Hotshot’s level-two
 interceptor aim bridges the opener and the finale.
 

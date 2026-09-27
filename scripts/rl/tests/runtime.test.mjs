@@ -67,11 +67,11 @@ function fixtureSnap() {
 describe('OBS contract', () => {
     it('matches Python contract constants', () => {
         const py = fs.readFileSync(path.join(ROOT, 'rl', 'contract.py'), 'utf8');
-        assert.match(py, /OBS_VERSION\s*=\s*2/);
-        assert.match(py, /OBS_SIZE\s*=\s*176/);
+        assert.match(py, /OBS_VERSION\s*=\s*3/);
+        assert.match(py, /OBS_SIZE\s*=\s*192/);
         assert.match(py, /ACTION_SIZE\s*=\s*4/);
-        assert.equal(OBS_VERSION, 2);
-        assert.equal(OBS_SIZE, 176);
+        assert.equal(OBS_VERSION, 3);
+        assert.equal(OBS_SIZE, 192);
         assert.equal(ACTION_SIZE, 4);
         assert.equal(OBS_LAYOUT.canonicalAxes, true);
     });
@@ -80,6 +80,46 @@ describe('OBS contract', () => {
         const obs = encodeObservation(fixtureSnap());
         assert.equal(obs.length, OBS_SIZE);
         assert.ok(obs.some((v) => v !== 0));
+    });
+
+    it('appends pilot dodge flags after the black-hole block', () => {
+        const snap = fixtureSnap();
+        snap.pilot = {
+            holdHits: true,
+            threats: [{ kind: 'bullet', hitsIfHold: true, ttiMs: 200 }],
+            edges: { left: 240, right: 0, up: 120, down: 120 },
+            moves: {
+                hold: { safe: false },
+                up: { safe: true }
+            },
+            boss: { nextShotMs: 1250 }
+        };
+        const obs = encodeObservation(snap);
+        assert.equal(obs[176], 1);
+        assert.ok(Math.abs(obs[177] - 200 / 1500) < 1e-5);
+        assert.equal(obs[178], 1);
+        assert.equal(obs[179], 0);
+        assert.equal(obs[182], 0);
+        assert.equal(obs[183], 1);
+        assert.ok(Math.abs(obs[191] - 0.5) < 1e-5);
+    });
+
+    it('maps vertical pilot edges and safe moves to canonical axes', () => {
+        const snap = fixtureSnap();
+        snap.scrollMode = 'vertical';
+        snap.combatOrientation = 'up';
+        snap.pilot = {
+            edges: { left: 24, right: 48, up: 72, down: 96 },
+            moves: { up: { safe: true }, down_left: { safe: true } },
+            threats: []
+        };
+        const obs = encodeObservation(snap);
+        assert.ok(Math.abs(obs[178] - 96 / 240) < 1e-5); // back = screen down
+        assert.ok(Math.abs(obs[179] - 72 / 240) < 1e-5); // ahead = screen up
+        assert.ok(Math.abs(obs[180] - 24 / 240) < 1e-5); // left strafe
+        assert.ok(Math.abs(obs[181] - 48 / 240) < 1e-5); // right strafe
+        assert.equal(obs[186], 1); // canonical forward = screen up
+        assert.equal(obs[187], 1); // canonical back-left = screen down-left
     });
 
     it('encode/decode action round-trip', () => {
