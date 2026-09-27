@@ -206,6 +206,13 @@ export async function casePolish(browser, base, evidenceDir) {
             savePlayerName('FinalPilot');
             completeLevel.call(scene);
         });
+        await page.waitForFunction(() => getActiveScene().children.list.some(node =>
+            node.active && node.name === 'campaign-victory' && node.text === 'THE STAR IS QUIET'
+        ));
+        await page.screenshot({ path: path.join(evidenceDir, 'polish-victory.png') });
+        await page.waitForFunction(() => getActiveScene().children.list.some(node =>
+            node.active && node.text === 'CAMPAIGN COMPLETE'
+        ));
         await page.waitForFunction(() => getLocalLeaderboard('campaign').some(entry => entry.name === 'FinalPilot'));
         await page.waitForFunction(() => getLocalLeaderboard('level-3').some(entry => entry.name === 'FinalPilot'));
         assert.deepEqual(await page.evaluate(() => ({
@@ -218,6 +225,15 @@ export async function casePolish(browser, base, evidenceDir) {
         assert.equal(await page.evaluate(() => openingActive), true);
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => !openingActive);
+        const failedBoot = await browser.newContext();
+        try {
+            const failedPage = await failedBoot.newPage();
+            await failedPage.route('**/phaser.min.js', route => route.abort());
+            await failedPage.goto(new URL('/', base).href);
+            await failedPage.locator('#boot-hint.is-error').waitFor();
+            assert.match(await failedPage.locator('#boot-hint').innerText(), /could not load/i);
+            assert.equal(await failedPage.getByRole('button', { name: 'RETRY' }).count(), 1);
+        } finally { await failedBoot.close(); }
         const mobileContext = await browser.newContext({
             viewport: { width: 740, height: 360 }, isMobile: true, hasTouch: true
         });
@@ -228,27 +244,48 @@ export async function casePolish(browser, base, evidenceDir) {
             await mobile.goto(new URL('/', base).href);
             await mobile.waitForFunction(() => __novawingDebug.getBotSnapshot().ready);
             const canvas = await mobile.locator('canvas').boundingBox();
+            assert.equal(await mobile.locator('#touch-launch').count(), 0, 'duplicate mobile launch button remains');
             await mobile.screenshot({ path: path.join(evidenceDir, 'polish-opening-mobile.png') });
+            const canvasPoint = (x, y) => ({
+                x: canvas.x + x * canvas.width / 800,
+                y: canvas.y + y * canvas.height / 600
+            });
+            const cadetPoint = canvasPoint(210, 310);
+            await mobile.touchscreen.tap(cadetPoint.x, cadetPoint.y);
+            assert.equal(await mobile.evaluate(() => __novawingDebug.getDifficultyMode()), 'easy', 'mobile flight mode is blocked');
+            const hotshotPoint = canvasPoint(400, 310);
+            await mobile.touchscreen.tap(hotshotPoint.x, hotshotPoint.y);
+            assert.equal(await mobile.evaluate(() => __novawingDebug.getDifficultyMode()), 'normal');
+            await mobile.evaluate(() => {
+                const entries = Array.from({ length: 10 }, (_, index) => ({
+                    id: 'mobile-' + index,
+                    version: GAME_VERSION,
+                    scope: 'level-1',
+                    name: 'Pilot ' + (index + 1),
+                    timeMs: 60000 + index * 1000,
+                    score: 1500 - index * 10,
+                    kills: 12,
+                    accuracy: 80,
+                    createdAt: new Date(Date.UTC(2020, 0, index + 1)).toISOString()
+                }));
+                localStorage.setItem('novawing-fastest-runs:' + GAME_VERSION + ':level-1', JSON.stringify(entries));
+            });
             const linkPoint = await mobile.evaluate(() => {
                 const node = getActiveScene().children.list.find(n => n.active && n.name === 'opening-record');
-                const launch = document.getElementById('touch-launch').getBoundingClientRect();
                 const rect = game.canvas.getBoundingClientRect();
                 const scaleX = rect.width / 800;
                 const scaleY = rect.height / 600;
-                const link = {
-                    left: rect.left + (node.x - node.width / 2) * scaleX,
-                    top: rect.top + (node.y - node.height / 2) * scaleY,
-                    right: rect.left + (node.x + node.width / 2) * scaleX,
-                    bottom: rect.top + (node.y + node.height / 2) * scaleY
-                };
-                const overlaps = launch.width > 0 && !(link.right < launch.left || link.left > launch.right ||
-                    link.bottom < launch.top || link.top > launch.bottom);
-                if (overlaps) throw new Error('leaderboard link sits under the touch launch button');
                 return { x: rect.left + node.x * scaleX, y: rect.top + node.y * scaleY };
             });
             await mobile.touchscreen.tap(linkPoint.x, linkPoint.y);
             await mobile.waitForFunction(() => __novawingDebug.getOpeningState().leaderboardOpen);
-            assert.equal(await mobile.evaluate(() => document.getElementById('touch-launch').classList.contains('is-active')), false);
+            assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.listText.style.fontSize), '20px');
+            await mobile.waitForFunction(() => openingLeaderboardOverlay.listText.text.includes('Pilot 6'));
+            assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.listText.text.includes('Pilot 7')), false);
+            assert.ok(await mobile.evaluate(() => {
+                const view = openingLeaderboardOverlay;
+                return view.listText.y + view.listText.height < view.noteText.y - view.noteText.height / 2;
+            }), 'mobile leaderboard rows overlap the footer');
             await mobile.screenshot({ path: path.join(evidenceDir, 'polish-leaderboard-mobile.png') });
             const backPoint = await mobile.evaluate(() => {
                 const node = getActiveScene().children.list.find(n => n.active && n.text === 'BACK' && n.input);
@@ -260,8 +297,8 @@ export async function casePolish(browser, base, evidenceDir) {
             });
             await mobile.touchscreen.tap(backPoint.x, backPoint.y);
             await mobile.waitForFunction(() => openingActive && !__novawingDebug.getOpeningState().leaderboardOpen);
-            assert.equal(await mobile.evaluate(() => document.getElementById('touch-launch').classList.contains('is-active')), true);
-            await mobile.touchscreen.tap(canvas.x + canvas.width / 2, canvas.y + canvas.height * 2 / 3);
+            const launchPoint = canvasPoint(400, 425);
+            await mobile.touchscreen.tap(launchPoint.x, launchPoint.y);
             await mobile.waitForFunction(() => !openingActive);
             assert.equal(await mobile.evaluate(() => Boolean(touchControls?.container.visible)), true);
             await mobile.screenshot({ path: path.join(evidenceDir, 'polish-mobile.png') });

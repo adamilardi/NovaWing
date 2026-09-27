@@ -36,12 +36,11 @@ skilled human clear.
 
 1. A skilled Hotshot clear of L1–L3 with no `?level=`.
 2. An L3 vertical opener that teaches fire-up instead of punishing it.
-3. A campaign-victory beat that is more than the same results board.
-4. Favicon, description, Open Graph tags, a real loading/error state.
-5. Phaser that still boots if the CDN is blocked.
-6. One version string (`GAME_VERSION` is `1.2.1`; scripts load as `?v=1.3.3`).
-7. Recorded music (tracks are still procedural `waves` / `boss`).
-8. Playwright smoke on CI. Today CI is `node --check` only.
+3. Favicon, description, and Open Graph tags.
+4. Phaser that still boots if the CDN is blocked.
+5. Automated cache-bust versioning for changed browser scripts.
+6. Recorded music (tracks are still procedural `waves` / `boss`).
+7. Playwright smoke on CI. Today CI is `node --check` only.
 
 ## Do this in order
 
@@ -66,7 +65,7 @@ the polish backlog.
 | L2 path rewards | Canyon routes exist; choice barely pays | One exclusive pickup on an alt band; tiny score for visiting 2+ paths |
 | Hit-stop | Big kills still feel flat | 2–4 frames on splitter break, boss phase, bomb |
 | Flip cinematic | `REALITY SHEAR` is a floating label | Stinger, unique music color, slightly longer hold |
-| Between-level glue | Mid-run clear and campaign win feel the same | 1–2 line lore card, distinct stinger per stage, short credits hold before results |
+| Between-level glue | Mid-run clears still need more identity | 1–2 line lore card and a distinct stinger per stage; campaign win now has its own hold and fanfare |
 
 Skip combo/graze until those land. They retune scoring and the leaderboard.
 Do not add them in the same pass as L3 pacing.
@@ -77,12 +76,11 @@ The opening, HUD, and results are done. What’s missing is everything around
 the canvas.
 
 - Favicon, `<meta name="description">`, Open Graph tags.
-- Loading bar during preload. If Phaser’s CDN fails, show a message instead
-  of a blank flex box.
+- Loading bar during preload. Failed boot now shows a retryable error message.
 - Vendor Phaser into `dist/` (or keep the CDN pin with a local fallback).
   SRI is already on 3.55.2; remaining risk is availability.
-- Align `GAME_VERSION` with the `?v=` cache-bust on script tags before any
-  public cache.
+- Automate `?v=` cache busting for changed scripts. `GAME_VERSION` is the
+  leaderboard schema version and should only change when score compatibility changes.
 - Recorded music. Authoring already supports files. Distinct L3 top-down vs
   boss recordings sell the finale more than another particle.
 - Share fallback: replace the `window.prompt` clipboard last resort with an
@@ -116,7 +114,7 @@ Ship when all of these are true:
 - A skilled Hotshot run can clear L3, and Space Cadet can too with continues.
 - Vertical L3 is readable in the first wave (orientation + fire vector
   obvious).
-- Title → launch → pause → death/continue → results → name submit works on
+- Title → launch → pause → death/continue → results → automatic score post works on
   desktop and a real phone.
 - Public page has a favicon, description, loading/error state, and a Phaser
   load that does not depend on a live CDN.

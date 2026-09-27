@@ -880,6 +880,18 @@
                     duration: 1.1, type: 'sine', volume: 0.035, attack: 0.03,
                     sustain: true, when: audio.currentTime + 0.42 }));
             },
+            campaignVictory: function () {
+                this.stopMusic();
+                const audio = getContext();
+                if (!audio) return;
+                [392, 523.25, 659.25, 783.99, 1046.5].forEach((frequency, i) => {
+                    tone({ frequency, duration: i === 4 ? 1.25 : 0.3, type: 'triangle',
+                        volume: 0.052, filterFreq: 2600, when: audio.currentTime + i * 0.18 });
+                });
+                [261.63, 329.63, 392, 523.25].forEach(frequency => tone({ frequency,
+                    duration: 1.35, type: 'sine', volume: 0.024, attack: 0.05,
+                    sustain: true, when: audio.currentTime + 0.76 }));
+            },
             gameOver: function () {
                 this.stopMusic();
                 tone({ frequency: 140, endFrequency: 50, duration: 0.5, type: 'triangle', volume: 0.055, filterFreq: 400, pan: 0 });

@@ -5139,11 +5139,13 @@ function completeLevel() {
     const completionTimeMs = playtestNow(this) - levelStartTime;
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
     musicDirector.stop();
-    sfx.victory();
+    if (sfx.campaignVictory) sfx.campaignVictory();
+    else sfx.victory();
     window.setTimeout(() => {
         if (sessionGen !== runtimeSessionGen) return;
-        scene.time.delayedCall(650, () => {
-            endLevel.call(scene, 'BOSS DESTROYED', '#55ffaa', {
+        showCampaignVictoryBeat(scene, () => {
+            if (sessionGen !== runtimeSessionGen) return;
+            endLevel.call(scene, 'CAMPAIGN COMPLETE', '#55ffaa', {
                 completed: true,
                 completionTimeMs,
                 skipLeaderboard: !scoreEligible,
@@ -5163,6 +5165,27 @@ function completeLevel() {
             });
         });
     }, 0);
+}
+
+function showCampaignVictoryBeat(scene, onComplete) {
+    const veil = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.94)
+        .setDepth(70).setScrollFactor(0);
+    const rule = scene.add.rectangle(400, 310, 460, 2, 0x66f6ff, 0.9)
+        .setDepth(71).setScrollFactor(0);
+    const title = scene.add.text(400, 246, 'THE STAR IS QUIET', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '39px', fontStyle: 'bold',
+        fill: '#eafcff', stroke: '#176c9a', strokeThickness: 5
+    }).setOrigin(0.5).setDepth(71).setScrollFactor(0).setName('campaign-victory');
+    const subtitle = scene.add.text(400, 352, 'THE SQUADRON MADE IT HOME', {
+        fontFamily: 'monospace', resolution: 2, fontSize: '19px', fill: '#ffe66d'
+    }).setOrigin(0.5).setDepth(71).setScrollFactor(0);
+    const nodes = [veil, rule, title, subtitle];
+    nodes.forEach(node => node.setAlpha(0));
+    scene.tweens.add({ targets: nodes, alpha: 1, duration: 360, ease: 'Sine.easeOut' });
+    scene.time.delayedCall(2200, () => {
+        nodes.forEach(node => node.destroy());
+        onComplete();
+    });
 }
 
 function beginNextLevel() {
@@ -7390,7 +7413,6 @@ function setOpeningPlayerVisible(visible) {
 
 function hideOpeningOverlay() {
     hideOpeningLeaderboard();
-    hideMobileLaunchButton();
     setOpeningPlayerVisible(true);
     if (!openingOverlay) return;
     (openingOverlay.nodes || []).forEach(node => {
@@ -7418,7 +7440,6 @@ function showOpeningOverlay(scene, onPlay) {
     hideOpeningOverlay();
     if (!scene || !scene.add) return;
     openingStartCallback = onPlay;
-    showMobileLaunchButton(launchOpeningGame);
     const nodes = [];
     setOpeningPlayerVisible(false);
     const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.38)
@@ -7561,27 +7582,6 @@ function addOpeningTitleShip(scene) {
     return titleShip;
 }
 
-function showMobileLaunchButton(onLaunch) {
-    if (!shouldShowTouchControls() || typeof document === 'undefined') return;
-    const button = document.getElementById('touch-launch');
-    if (!button) return;
-    const launch = () => {
-        if (!openingActive || typeof onLaunch !== 'function') return;
-        if (sfx && sfx.unlock) sfx.unlock();
-        onLaunch();
-    };
-    button.onclick = launch;
-    button.classList.add('is-active');
-}
-
-function hideMobileLaunchButton() {
-    if (typeof document === 'undefined') return;
-    const button = document.getElementById('touch-launch');
-    if (!button) return;
-    button.onclick = null;
-    button.classList.remove('is-active');
-}
-
 function refreshOpeningDifficulty() {
     if (!openingOverlay) return;
     const selected = getDifficultyMode();
@@ -7638,7 +7638,6 @@ function hideOpeningLeaderboard() {
     });
     openingLeaderboardOverlay = null;
     if (openingOverlay && openingOverlay.pilotName) openingOverlay.pilotName.setVisible(true);
-    if (openingActive) showMobileLaunchButton(launchOpeningGame);
 }
 
 function commitOpeningPilotName() {
@@ -7665,8 +7664,8 @@ function formatOpeningLeaderboardNote() {
 
 function showOpeningLeaderboard(scene, initialScope) {
     if (!scene || !scene.add || !openingActive) return;
+    const touchLayout = shouldShowTouchControls();
     hideOpeningLeaderboard();
-    hideMobileLaunchButton();
     if (openingOverlay && openingOverlay.pilotName) openingOverlay.pilotName.setVisible(false);
     const nodes = [];
     const dim = scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.94)
@@ -7692,7 +7691,7 @@ function showOpeningLeaderboard(scene, initialScope) {
         const bg = scene.add.rectangle(x, 156, 156, 34, 0x0b1930, 0.98)
             .setDepth(92).setScrollFactor(0).setInteractive({ useHandCursor: true });
         const label = scene.add.text(x, 156, modeLabels[mode], {
-            fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8',
+            fontFamily: 'monospace', resolution: 2, fontSize: touchLayout ? '15px' : '13px', fill: '#8aa0c8',
             stroke: '#050816', strokeThickness: 3
         }).setOrigin(0.5).setDepth(93).setScrollFactor(0).setInteractive({ useHandCursor: true });
         const choose = () => {
@@ -7713,7 +7712,7 @@ function showOpeningLeaderboard(scene, initialScope) {
     const tabs = tabScopes.map((scope, index) => {
         const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
         const text = scene.add.text(tabLeft + t * (tabRight - tabLeft), 196, scope === 'campaign' ? 'CAMPAIGN' : 'L' + scope.slice('level-'.length), {
-            fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#8aa0c8'
+            fontFamily: 'monospace', resolution: 2, fontSize: touchLayout ? '17px' : '15px', fill: '#8aa0c8'
         }).setOrigin(0.5).setDepth(92).setScrollFactor(0).setInteractive({ useHandCursor: true });
         text.on('pointerdown', () => {
             if (!openingLeaderboardOverlay) return;
@@ -7732,10 +7731,11 @@ function showOpeningLeaderboard(scene, initialScope) {
         fontFamily: 'monospace', resolution: 2, fontSize: '14px', fill: '#8aa4ff', align: 'center'
     }).setOrigin(0.5, 0).setDepth(92).setScrollFactor(0);
     const listText = scene.add.text(168, 320, '', {
-        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#c7ddff', align: 'left'
+        fontFamily: 'monospace', resolution: 2, fontSize: touchLayout ? '20px' : '13px', fill: '#c7ddff', align: 'left'
     }).setOrigin(0, 0).setDepth(92).setScrollFactor(0).setLineSpacing(1);
+    if (touchLayout) listText.setX(245);
     const noteText = scene.add.text(400, 498, formatOpeningLeaderboardNote(), {
-        fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8', align: 'center',
+        fontFamily: 'monospace', resolution: 2, fontSize: touchLayout ? '18px' : '13px', fill: '#aebfe0', align: 'center',
         wordWrap: { width: 640 }
     }).setOrigin(0.5).setDepth(92).setScrollFactor(0);
     const backBg = scene.add.rectangle(400, 546, 220, 40, 0x123c4b, 1)
@@ -7764,6 +7764,7 @@ function showOpeningLeaderboard(scene, initialScope) {
         killsText,
         listText,
         noteText,
+        touchLayout,
         request: 0
     };
     refreshOpeningLeaderboard();
@@ -7785,7 +7786,9 @@ function refreshOpeningLeaderboard() {
     view.tabs.forEach(tab => {
         tab.text.setFill(tab.scope === view.scope ? '#ffe66d' : '#8aa0c8');
     });
-    view.noteText.setText(formatOpeningLeaderboardNote());
+    view.noteText.setText(view.touchLayout
+        ? 'Top six shown. Ranked clears post automatically.'
+        : formatOpeningLeaderboardNote());
     const request = ++view.request;
     loadLeaderboardFromServer(board).then(result => {
         if (openingLeaderboardOverlay !== view || view.request !== request) return;
@@ -7815,7 +7818,9 @@ function placeOpeningLeaderboard(view, entries, scope) {
     view.championText.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase());
     view.killsText.setText(top.kills + ' kills');
     view.killsText.setY(view.championText.y + view.championText.height + 2);
-    view.listText.setText(formatRivalLines(entries.slice(1)).join('\n'));
+    view.listText.setText((view.touchLayout
+        ? formatCompactRivalLines(entries.slice(1, 6))
+        : formatRivalLines(entries.slice(1))).join('\n'));
     view.listText.setY(view.killsText.y + view.killsText.height + 10);
 }
 
@@ -7921,7 +7926,7 @@ function showPauseOverlay(scene) {
     difficultyBtn.label.setFontSize(14).setLineSpacing(3);
     nodes.push(difficultyBtn.bg, difficultyBtn.label);
 
-    const muteBtn = addPauseMenuButton(scene, 226, audioMuted ? 'SOUND OFF' : 'SOUND ON', audioMuted ? '#ff8877' : '#8aa0c8', () => {
+    const muteBtn = addPauseMenuButton(scene, 226, audioMuted ? 'SOUND OFF' : 'SOUND ON', audioMuted ? '#ffb0a4' : '#e8f0ff', () => {
         pauseRestartArmed = false;
         toggleMute();
         refreshPauseOverlay();
@@ -7986,7 +7991,7 @@ function refreshPauseOverlay() {
     }
     if (pauseOverlay.muteLabel && pauseOverlay.muteLabel.active) {
         pauseOverlay.muteLabel.setText(audioMuted ? 'SOUND OFF' : 'SOUND ON');
-        pauseOverlay.muteLabel.setFill(audioMuted ? '#ff8877' : '#8aa0c8');
+        pauseOverlay.muteLabel.setFill(audioMuted ? '#ffb0a4' : '#e8f0ff');
     }
     if (pauseOverlay.restartLabel && pauseOverlay.restartLabel.active) {
         pauseOverlay.restartLabel.setText(pauseRestartArmed ? 'CONFIRM RESTART' : 'RESTART');
@@ -10299,6 +10304,13 @@ function formatRivalLines(entries) {
     });
 }
 
+function formatCompactRivalLines(entries) {
+    return entries.map((entry, index) =>
+        padLeft(index + 2, 2, ' ') + '. ' +
+        padRight(String(entry.name || '').slice(0, 12), 12, ' ') + '  ' +
+        formatPosterTime(entry.timeMs));
+}
+
 function formatOpeningRecordLine(poster) {
     if (!poster || poster.kind === 'unclaimed' || !poster.entry) {
         return formatDifficultyModeName(poster && poster.difficulty) + '  UNCLAIMED';
@@ -10525,8 +10537,9 @@ function endLevel(title, color, options = {}) {
         align: 'center',
         wordWrap: { width: 300 }
     }).setOrigin(0.5, 0).setDepth(12).setScrollFactor(0);
+    const compactBoard = shouldShowTouchControls();
     const leaderboardText = this.add.text(408, 248, '', {
-        fontSize: '12px',
+        fontSize: compactBoard ? '15px' : '12px',
         fill: '#c7ddff',
         fontFamily: 'monospace', resolution: 2,
         align: 'left'
@@ -10548,7 +10561,9 @@ function endLevel(title, color, options = {}) {
         });
         if (leaderboardChampion.setWordWrapWidth) leaderboardChampion.setWordWrapWidth(300);
         leaderboardChampion.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase() + '\n' + top.kills + ' kills');
-        leaderboardText.setText(formatRivalLines(entries.slice(1)).join('\n'));
+        leaderboardText.setText((compactBoard
+            ? formatCompactRivalLines(entries.slice(1, 7))
+            : formatRivalLines(entries.slice(1))).join('\n'));
         leaderboardText.setY(leaderboardChampion.y + leaderboardChampion.height + 8);
     };
 
