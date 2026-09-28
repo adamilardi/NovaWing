@@ -565,6 +565,7 @@ let levelStartScore = 0;
 let levelStartKills = 0;
 let levelStartShotsFired = 0;
 let levelStartShotsHit = 0;
+let levelStartContinuesUsed = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
 let victoryPending = false;
@@ -1229,6 +1230,7 @@ function create() {
     levelStartKills = enemiesKilled;
     levelStartShotsFired = shotsFired;
     levelStartShotsHit = shotsHit;
+    levelStartContinuesUsed = continuesUsed;
     levelProgressMs = 0;
     victoryPending = false;
     awaitingNextLevel = false;
@@ -5097,6 +5099,7 @@ function completeLevel() {
     const levelScore = Math.max(0, score - levelStartScore);
     const levelKills = Math.max(0, enemiesKilled - levelStartKills);
     const levelAccuracy = getLevelRunAccuracy();
+    const levelContinues = Math.max(0, continuesUsed - levelStartContinuesUsed);
     const scoreEligible = isLeaderboardEligibleSession();
     const sessionGen = runtimeSessionGen;
     const scene = this;
@@ -5106,13 +5109,15 @@ function completeLevel() {
         completeScopedRunOnServer(levelRunState, {
             score: levelScore,
             kills: levelKills,
-            accuracy: levelAccuracy
+            accuracy: levelAccuracy,
+            continues: levelContinues
         });
         if (isFinalLevel) {
             completeScopedRunOnServer(campaignRunState, {
                 score,
                 kills: enemiesKilled,
-                accuracy: getRunAccuracy()
+                accuracy: getRunAccuracy(),
+                continues: continuesUsed
             });
         }
     }
@@ -5131,6 +5136,7 @@ function completeLevel() {
                 score: levelScore,
                 kills: levelKills,
                 accuracy: levelAccuracy,
+                continues: levelContinues,
                 leaderboardState: levelRunState
             });
         }, 0);
@@ -5155,6 +5161,7 @@ function completeLevel() {
                 score,
                 kills: enemiesKilled,
                 accuracy: getRunAccuracy(),
+                continues: continuesUsed,
                 leaderboardState: campaignRunState,
                 finalLevelSubmission: {
                     scope: levelScope,
@@ -5162,6 +5169,7 @@ function completeLevel() {
                     score: levelScore,
                     kills: levelKills,
                     accuracy: levelAccuracy,
+                    continues: levelContinues,
                     leaderboardState: levelRunState
                 }
             });
@@ -5225,6 +5233,7 @@ function startLevel(levelId, options = {}) {
     levelStartKills = enemiesKilled;
     levelStartShotsFired = shotsFired;
     levelStartShotsHit = shotsHit;
+    levelStartContinuesUsed = continuesUsed;
     levelRunState = isLeaderboardEligibleSession()
         ? startScopedRunOnServer(getLevelLeaderboardScope(currentLevel))
         : null;
@@ -5927,7 +5936,7 @@ function getDebugBossSkip() {
     }
 }
 
-/** Debug, bot, co-op, continue, and query-tainted sessions never write public scores. */
+/** Debug, bot, co-op, and query-tainted sessions never write public scores. */
 function isLeaderboardEligibleSession() {
     if (coopEnabled) return false;
     if (leaderboardDebugTainted) return false;
@@ -5937,7 +5946,6 @@ function isLeaderboardEligibleSession() {
         if (difficultyOverlay && Object.keys(difficultyOverlay).length) {
             return false;
         }
-        if (continueUsedThisRun) return false;
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
             'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
@@ -7101,7 +7109,6 @@ function formatDifficultyToggleLabel() {
 
 function formatUnrankedReasonLine() {
     if (coopEnabled) return 'Local co-op run — leaderboard and personal best disabled';
-    if (continueUsedThisRun) return 'Continued run — public leaderboard disabled';
     if (leaderboardIneligibleReason === 'difficulty') return 'Flight mode changed during play — leaderboard disabled';
     return 'Debug run — leaderboard disabled';
 }
@@ -7251,8 +7258,8 @@ function showContinueOverlay(scene) {
     }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
     const ranked = isLeaderboardEligibleSession();
     const note = scene.add.text(400, 442, ranked
-        ? 'Using a continue makes this run unranked'
-        : 'Continued runs do not post to the public leaderboard', {
+        ? 'Your leaderboard entry will show this Continue'
+        : formatUnrankedReasonLine(), {
         fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa0c8',
         stroke: '#050816', strokeThickness: 4
     }).setOrigin(0.5).setDepth(41).setScrollFactor(0);
@@ -7354,7 +7361,6 @@ function acceptArcadeContinue(scene) {
     continuesRemaining -= 1;
     continuesUsed += 1;
     continueUsedThisRun = true;
-    markSessionLeaderboardIneligible('continue');
     hideContinueOverlay();
     if (active.time) active.time.paused = false;
     restoreArcadeContinue(active);
@@ -7820,7 +7826,7 @@ function placeOpeningLeaderboard(view, entries, scope) {
     });
     if (view.championText.setWordWrapWidth) view.championText.setWordWrapWidth(620);
     view.championText.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase());
-    view.killsText.setText(top.kills + ' kills');
+    view.killsText.setText(top.kills + ' kills' + (top.continues ? ' · ' + formatContinueLabel(top) : ''));
     view.killsText.setY(view.championText.y + view.championText.height + 2);
     view.listText.setText((view.touchLayout
         ? formatCompactRivalLines(entries.slice(1, 6))
@@ -9927,6 +9933,7 @@ function normalizeLeaderboardEntry(entry) {
         score: entryScore,
         kills,
         accuracy,
+        continues: Math.max(0, Math.min(3, Math.round(Number(entry.continues) || 0))),
         createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
     };
 }
@@ -9950,6 +9957,7 @@ function recordLocalLeaderboard(entry, scope = entry && entry.scope) {
         score: entry.score,
         kills: entry.kills,
         accuracy: entry.accuracy,
+        continues: entry.continues || 0,
         createdAt: new Date().toISOString()
     });
     if (!savedEntry) return { rank: null, entries: currentEntries };
@@ -10098,7 +10106,8 @@ function completeScopedRunOnServer(state, stats = {}) {
                     runId,
                     score,
                     kills,
-                    accuracy
+                    accuracy,
+                    continues: stats.continues || 0
                 })
             }).then(response => ({ response, runId }));
         })
@@ -10219,7 +10228,8 @@ function mergeCompletionStats(entry, completion) {
             : entry.timeMs,
         score: Number.isFinite(officialScore) ? officialScore : entry.score,
         kills: Number.isFinite(officialKills) ? officialKills : entry.kills,
-        accuracy: Number.isFinite(officialAccuracy) ? officialAccuracy : entry.accuracy
+        accuracy: Number.isFinite(officialAccuracy) ? officialAccuracy : entry.accuracy,
+        continues: Number(completion.continues) || 0
     };
 }
 
@@ -10299,20 +10309,25 @@ function formatShareChallenge(entry, holder, shareUrl) {
     return url ? sentence + ' ' + url : sentence;
 }
 
+function formatContinueLabel(entry) {
+    const count = Number(entry && entry.continues) || 0;
+    return count > 0 ? count + (count === 1 ? ' CONTINUE' : ' CONTINUES') : '';
+}
+
 function formatRivalLines(entries) {
     return entries.map((entry, index) => {
         return padLeft(index + 2, 2, ' ') + '. ' +
             padRight(entry.name, 14, ' ') + '  ' +
             formatRunTime(entry.timeMs) + '  ' +
-            padLeft(entry.score, 5, ' ') + ' pts';
+            (formatContinueLabel(entry) || padLeft(entry.score, 5, ' ') + ' pts');
     });
 }
 
 function formatCompactRivalLines(entries) {
     return entries.map((entry, index) =>
         padLeft(index + 2, 2, ' ') + '. ' +
-        padRight(String(entry.name || '').slice(0, 12), 12, ' ') + '  ' +
-        formatPosterTime(entry.timeMs));
+        padRight(String(entry.name || '').slice(0, entry.continues ? 8 : 12), entry.continues ? 8 : 12, ' ') + '  ' +
+        formatPosterTime(entry.timeMs) + (entry.continues ? ' ' + formatContinueLabel(entry) : ''));
 }
 
 function formatOpeningRecordLine(poster) {
@@ -10320,7 +10335,7 @@ function formatOpeningRecordLine(poster) {
         return formatDifficultyModeName(poster && poster.difficulty) + '  UNCLAIMED';
     }
     const name = String(poster.entry.name || '').toUpperCase();
-    const time = formatPosterTime(poster.entry.timeMs);
+    const time = formatPosterTime(poster.entry.timeMs) + (poster.entry.continues ? ' · ' + formatContinueLabel(poster.entry) : '');
     if (poster.kind === 'campaign') return 'CAMPAIGN  ' + time + '  ' + name;
     return 'RECORD  ' + time + '  ' + name;
 }
@@ -10564,7 +10579,7 @@ function endLevel(title, color, options = {}) {
             fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', fill: '#ffe66d', align: 'center'
         });
         if (leaderboardChampion.setWordWrapWidth) leaderboardChampion.setWordWrapWidth(300);
-        leaderboardChampion.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase() + '\n' + top.kills + ' kills');
+        leaderboardChampion.setText(formatPosterTime(top.timeMs) + '\n' + String(top.name || '').toUpperCase() + '\n' + top.kills + ' kills' + (top.continues ? ' · ' + formatContinueLabel(top) : ''));
         leaderboardText.setText((compactBoard
             ? formatCompactRivalLines(entries.slice(1, 7))
             : formatRivalLines(entries.slice(1))).join('\n'));
@@ -10793,7 +10808,8 @@ function endLevel(title, color, options = {}) {
             timeMs: (options.leaderboardState && options.leaderboardState.officialTimeMs) || completionTimeMs,
             score: displayScore,
             kills: displayKills,
-            accuracy: displayAccuracy
+            accuracy: displayAccuracy,
+            continues: options.continues || 0
         };
         const secondary = options.finalLevelSubmission;
         const secondaryEntry = secondary ? {
@@ -10802,7 +10818,8 @@ function endLevel(title, color, options = {}) {
             timeMs: secondary.timeMs,
             score: secondary.score,
             kills: secondary.kills,
-            accuracy: secondary.accuracy
+            accuracy: secondary.accuracy,
+            continues: secondary.continues || 0
         } : null;
         const primarySubmission = submitLeaderboard(scoreEntry, options.leaderboardState);
         const secondarySubmission = secondaryEntry

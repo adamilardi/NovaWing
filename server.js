@@ -125,6 +125,7 @@ function normalizeEntry(entry) {
         score,
         kills,
         accuracy,
+        continues: Number(entry.continues) || 0,
         createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
     };
 }
@@ -189,6 +190,7 @@ async function handleLeaderboardRequest(req, res) {
         score: runValidation.score,
         kills: runValidation.kills,
         accuracy: runValidation.accuracy,
+        continues: runValidation.continues,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
@@ -256,6 +258,7 @@ async function handleRunRequest(req, res) {
             score: completion.score,
             kills: completion.kills,
             accuracy: completion.accuracy,
+            continues: completion.continues,
             completedAt: new Date(completion.completedAt).toISOString()
         });
         return;
@@ -324,7 +327,8 @@ function inspectRunToken(payload) {
         timeMs: run.completedAt - run.startedAt,
         score: run.score,
         kills: run.kills,
-        accuracy: run.accuracy
+        accuracy: run.accuracy,
+        continues: run.continues || 0
     };
 }
 
@@ -368,7 +372,8 @@ function completeRunToken(payload) {
             timeMs: run.completedAt - run.startedAt,
             score: run.score,
             kills: run.kills,
-            accuracy: run.accuracy
+            accuracy: run.accuracy,
+            continues: run.continues || 0
         };
     }
 
@@ -395,6 +400,7 @@ function completeRunToken(payload) {
     run.score = stats.score;
     run.kills = stats.kills;
     run.accuracy = stats.accuracy;
+    run.continues = stats.continues;
 
     return {
         ok: true,
@@ -405,7 +411,8 @@ function completeRunToken(payload) {
         timeMs,
         score: stats.score,
         kills: stats.kills,
-        accuracy: stats.accuracy
+        accuracy: stats.accuracy,
+        continues: stats.continues
     };
 }
 
@@ -415,12 +422,14 @@ function parseRunStats(payload) {
     const score = Math.round(Number(payload.score));
     const kills = Math.round(Number(payload.kills));
     const accuracy = Math.round(Number(payload.accuracy));
+    const continues = Number(payload.continues ?? 0);
 
     if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
     if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
     if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
+    if (!Number.isInteger(continues) || continues < 0 || continues > 3) return null;
 
-    return { score, kills, accuracy };
+    return { score, kills, accuracy, continues };
 }
 
 function pruneExpiredRuns() {

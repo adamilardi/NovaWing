@@ -41,6 +41,7 @@ export async function onRequest(context) {
             score: completion.score,
             kills: completion.kills,
             accuracy: completion.accuracy,
+            continues: completion.continues,
             completedAt: new Date(completion.completedAt).toISOString()
         });
     }
@@ -155,7 +156,7 @@ async function completeRun(db, payload) {
     const now = Date.now();
 
     const run = await db.prepare(`
-        SELECT id, game_version, scope, created_at, expires_at, used_at, completed_at, score, kills, accuracy
+        SELECT id, game_version, scope, created_at, expires_at, used_at, completed_at, score, kills, accuracy, continues
         FROM leaderboard_runs
         WHERE id = ?
     `).bind(runId).first();
@@ -186,7 +187,8 @@ async function completeRun(db, payload) {
             timeMs,
             score,
             kills,
-            accuracy
+            accuracy,
+            continues: Number(run.continues) || 0
         };
     }
 
@@ -209,13 +211,14 @@ async function completeRun(db, payload) {
 
     const update = await db.prepare(`
         UPDATE leaderboard_runs
-        SET completed_at = ?, score = ?, kills = ?, accuracy = ?
+        SET completed_at = ?, score = ?, kills = ?, accuracy = ?, continues = ?
         WHERE id = ? AND completed_at IS NULL AND used_at IS NULL
     `).bind(
         new Date(completedAt).toISOString(),
         stats.score,
         stats.kills,
         stats.accuracy,
+        stats.continues,
         runId
     ).run();
 
@@ -232,7 +235,8 @@ async function completeRun(db, payload) {
         timeMs,
         score: stats.score,
         kills: stats.kills,
-        accuracy: stats.accuracy
+        accuracy: stats.accuracy,
+        continues: stats.continues
     };
 }
 
@@ -242,12 +246,14 @@ function parseRunStats(payload) {
     const score = Math.round(Number(payload.score));
     const kills = Math.round(Number(payload.kills));
     const accuracy = Math.round(Number(payload.accuracy));
+    const continues = Number(payload.continues ?? 0);
 
     if (!Number.isFinite(score) || score < 0 || score > 1000000) return null;
     if (!Number.isFinite(kills) || kills < 0 || kills > 10000) return null;
     if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return null;
+    if (!Number.isInteger(continues) || continues < 0 || continues > 3) return null;
 
-    return { score, kills, accuracy };
+    return { score, kills, accuracy, continues };
 }
 
 

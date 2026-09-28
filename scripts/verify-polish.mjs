@@ -7,9 +7,10 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/**', route => route.abort());
-    const launch = async () => {
+    const launch = async (mode = 'normal') => {
         await page.goto(new URL('/', base).href);
         await page.waitForFunction(() => window.__novawingDebug?.getBotSnapshot()?.ready);
+        await page.evaluate(mode => setDifficultyMode(mode), mode);
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => !openingActive && levelStartTime > 0);
     };
@@ -37,27 +38,46 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
             node.active && typeof node.text === 'string' && node.text.includes('Debug run'))), false);
         await page.screenshot({ path: path.join(evidenceDir, 'campaign-ranked.png') });
 
-        for (const reason of ['continue', 'difficulty']) {
-            await launch();
-            await page.evaluate(reason => {
-                const scene = getActiveScene();
-                if (reason === 'continue') {
-                    if (!tryArcadeContinue(scene) || !acceptArcadeContinue(scene)) throw new Error('continue failed');
-                } else {
-                    setDifficultyMode(getDifficultyMode() === 'hard' ? 'normal' : 'hard');
-                }
-                endLevel.call(scene, 'CAMPAIGN COMPLETE', '#55ffaa', {
-                    completed: true, skipLeaderboard: !isLeaderboardEligibleSession(), scope: 'campaign'
-                });
-            }, reason);
-            const expected = reason === 'continue'
-                ? 'Continued run — public leaderboard disabled'
-                : 'Flight mode changed during play — leaderboard disabled';
-            assert.equal(await page.evaluate(expected => getActiveScene().children.list.some(node =>
-                node.active && node.text === expected), expected), true);
-        }
+        await launch('easy');
+        await page.evaluate(() => {
+            const scene = getActiveScene();
+            const campaignToken = campaignRunState;
+            const levelToken = levelRunState;
+            if (!tryArcadeContinue(scene) || !acceptArcadeContinue(scene)) throw new Error('continue failed');
+            if (!isLeaderboardEligibleSession()) throw new Error('continue disqualified run');
+            if (campaignToken !== campaignRunState || levelToken !== levelRunState) throw new Error('continue lost tokens');
+            completeLevel.call(scene);
+        });
+        await page.waitForFunction(() => awaitingNextLevel && getLocalLeaderboard('level-1-easy').some(entry => entry.continues === 1));
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            node.active && typeof node.text === 'string' && node.text.includes('1 CONTINUE'))), true);
+        await page.screenshot({ path: path.join(evidenceDir, 'continued-ranked.png') });
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => currentLevel === 2 && !levelTransitioning);
+        assert.equal(await page.evaluate(() => continuesUsed - levelStartContinuesUsed), 0);
+        await page.evaluate(() => completeLevel.call(getActiveScene()));
+        await page.waitForFunction(() => awaitingNextLevel);
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => currentLevel === 3 && !levelTransitioning);
+        await page.evaluate(() => {
+            const scene = getActiveScene();
+            if (!tryArcadeContinue(scene) || !acceptArcadeContinue(scene)) throw new Error('Level 3 continue failed');
+            completeLevel.call(scene);
+        });
+        await page.waitForFunction(() => levelEnded && getLocalLeaderboard('campaign-easy').some(entry => entry.continues === 2));
+        assert.equal(await page.evaluate(() => getLocalLeaderboard('level-3-easy').some(entry => entry.continues === 1)), true);
+        assert.equal(await page.evaluate(() => getLocalLeaderboard('level-2-easy').every(entry => entry.continues === 0)), true);
+        await launch();
+        await page.evaluate(() => {
+            setDifficultyMode(getDifficultyMode() === 'hard' ? 'normal' : 'hard');
+            endLevel.call(getActiveScene(), 'CAMPAIGN COMPLETE', '#55ffaa', {
+                completed: true, skipLeaderboard: !isLeaderboardEligibleSession(), scope: 'campaign'
+            });
+        });
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            node.active && node.text === 'Flight mode changed during play — leaderboard disabled')), true);
         assert.deepEqual(errors, []);
-        return { name: 'campaign-ranking', ok: true, detail: 'natural campaign progression stays ranked; final results preserve continue and flight-mode reasons' };
+        return { name: 'campaign-ranking', ok: true, detail: 'normal and continued campaigns rank; counts stay scoped to each level; flight-mode changes remain unranked' };
     } finally { await context.close(); }
 }
 
@@ -319,6 +339,7 @@ export async function casePolish(browser, base, evidenceDir) {
             await mobile.evaluate(() => {
                 const entries = Array.from({ length: 10 }, (_, index) => ({
                     id: 'mobile-' + index,
+                    continues: index < 2 ? index + 1 : 0,
                     version: GAME_VERSION,
                     scope: 'level-1',
                     name: 'Pilot ' + (index + 1),
@@ -342,6 +363,12 @@ export async function casePolish(browser, base, evidenceDir) {
             assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.listText.style.fontSize), '20px');
             await mobile.waitForFunction(() => openingLeaderboardOverlay.listText.text.includes('Pilot 6'));
             assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.listText.text.includes('Pilot 7')), false);
+            assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.killsText.text.includes('1 CONTINUE')), true);
+            assert.equal(await mobile.evaluate(() => openingLeaderboardOverlay.listText.text.includes('2 CONTINUES')), true);
+            assert.ok(await mobile.evaluate(() => {
+                const view = openingLeaderboardOverlay;
+                return view.listText.x + view.listText.width <= 780;
+            }), 'continued mobile rows overflow the leaderboard');
             assert.ok(await mobile.evaluate(() => {
                 const view = openingLeaderboardOverlay;
                 return view.listText.y + view.listText.height < view.noteText.y - view.noteText.height / 2;

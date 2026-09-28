@@ -46,6 +46,7 @@ export async function onRequest(context) {
         score: runValidation.score,
         kills: runValidation.kills,
         accuracy: runValidation.accuracy,
+        continues: runValidation.continues,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
     });
@@ -132,7 +133,7 @@ async function getLeaderboard(db, version, scope) {
 
 async function getRankedEntries(db, version, scope) {
     const result = await db.prepare(`
-        SELECT id, game_version, scope, name, time_ms, score, kills, accuracy, created_at
+        SELECT id, game_version, scope, name, time_ms, score, kills, accuracy, continues, created_at
         FROM leaderboard_entries
         WHERE game_version = ? AND scope = ?
         ORDER BY time_ms ASC, score DESC, kills DESC, created_at ASC
@@ -148,6 +149,7 @@ async function getRankedEntries(db, version, scope) {
         score: row.score,
         kills: row.kills,
         accuracy: row.accuracy,
+        continues: Number(row.continues) || 0,
         createdAt: row.created_at
     }));
 }
@@ -177,7 +179,7 @@ async function inspectRunToken(db, payload) {
     const now = Date.now();
 
     const result = await db.prepare(`
-        SELECT id, game_version, scope, created_at, expires_at, used_at, completed_at, score, kills, accuracy
+        SELECT id, game_version, scope, created_at, expires_at, used_at, completed_at, score, kills, accuracy, continues
         FROM leaderboard_runs
         WHERE id = ?
     `).bind(runId).first();
@@ -213,7 +215,8 @@ async function inspectRunToken(db, payload) {
         timeMs,
         score,
         kills,
-        accuracy
+        accuracy,
+        continues: Number(result.continues) || 0
     };
 }
 
@@ -234,9 +237,9 @@ async function consumeRunTokenAndInsert(db, runId, entry) {
             `).bind(usedAt, runId),
             db.prepare(`
                 INSERT INTO leaderboard_entries (
-                    id, game_version, scope, name, time_ms, score, kills, accuracy, created_at
+                    id, game_version, scope, name, time_ms, score, kills, accuracy, continues, created_at
                 )
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE EXISTS (
                     SELECT 1
                     FROM leaderboard_runs
@@ -251,6 +254,7 @@ async function consumeRunTokenAndInsert(db, runId, entry) {
                 entry.score,
                 entry.kills,
                 entry.accuracy,
+                entry.continues,
                 entry.createdAt,
                 runId,
                 usedAt
@@ -297,6 +301,7 @@ function normalizeEntry(entry) {
         score,
         kills,
         accuracy,
+        continues: Number(entry.continues) || 0,
         createdAt: entry.createdAt
     };
 }

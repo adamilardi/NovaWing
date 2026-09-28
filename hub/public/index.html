@@ -88,7 +88,7 @@
         }
         function show(kind, entry) {
           var name = String(entry.name || '').toUpperCase();
-          record.textContent = (kind === 'campaign' ? 'CAMPAIGN  ' : 'RECORD  ') + posterTime(entry.timeMs) + '  ' + name;
+          record.textContent = (kind === 'campaign' ? 'CAMPAIGN  ' : 'RECORD  ') + posterTime(entry.timeMs) + '  ' + name + (entry.continues ? ' · ' + entry.continues + (entry.continues === 1 ? ' CONTINUE' : ' CONTINUES') : '');
         }
         load('campaign').then(function (campaign) {
           var rows = campaign.entries || [];

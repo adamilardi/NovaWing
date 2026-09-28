@@ -219,7 +219,7 @@ test('Pages leaderboard accepts shared extended-campaign duration and run endpoi
     const rules = Rules.rulesForScope('campaign');
     const row = { id: 'extended-probe', game_version: 'extended', scope: 'campaign',
         created_at: new Date(now - 16 * 60 * 1000).toISOString(), completed_at: new Date(now).toISOString(),
-        expires_at: new Date(now + 60000).toISOString(), score: rules.bossScore, kills: rules.bossKills, accuracy: 90 };
+        expires_at: new Date(now + 60000).toISOString(), score: rules.bossScore, kills: rules.bossKills, accuracy: 90, continues: 2 };
     const DB = {
         prepare() { return { bind() { return this; }, async first() { return row; },
             async run() { return { meta: { changes: 1 } }; }, async all() { return { results: [] }; } }; },
@@ -230,10 +230,33 @@ test('Pages leaderboard accepts shared extended-campaign duration and run endpoi
         body: JSON.stringify({ runId: row.id, version: row.game_version, scope: row.scope, name: 'Extended' }) });
     const response = await leaderboard({ request, env: { DB } });
     assert.equal(response.status, 201, await response.clone().text());
-    assert.equal((await response.json()).entry.timeMs, 16 * 60 * 1000);
+    const entry = (await response.json()).entry;
+    assert.equal(entry.timeMs, 16 * 60 * 1000);
+    assert.equal(entry.continues, 2);
     const started = await run({ request: new Request('https://example.test/api/run', { method: 'POST',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'campaign' }) }), env: { DB } });
     assert.equal(started.status, 201, await started.clone().text());
     const token = await started.json();
     assert.equal(Date.parse(token.expiresAt) - Date.parse(token.startedAt), Rules.runTokenTtlMs('campaign'));
+});
+
+
+test('Continue count is validated, locked at completion, and retained on the leaderboard', async t => {
+    const { request, advance } = await serverFixture(t);
+    const started = (await request('/api/run', { method: 'POST', body: { scope: 'level-1', version: 'continues' } })).json();
+    advance(60000);
+    const body = { runId: started.runId, scope: 'level-1', version: 'continues', score: 1500, kills: 1, accuracy: 90, continues: 2 };
+    for (const continues of [-1, 1.5, 4]) {
+        assert.equal((await request('/api/run', { method: 'PATCH', body: { ...body, continues } })).status, 400);
+    }
+    const completed = await request('/api/run', { method: 'PATCH', body });
+    assert.equal(completed.status, 200, completed.bytes.toString());
+    assert.equal(completed.json().continues, 2);
+    const repeated = await request('/api/run', { method: 'PATCH', body: { ...body, continues: 0 } });
+    assert.equal(repeated.json().continues, 2);
+    const posted = await request('/api/leaderboard', { method: 'POST', body: { ...body, continues: 0, name: 'Continued' } });
+    assert.equal(posted.status, 201, posted.bytes.toString());
+    assert.equal(posted.json().entry.continues, 2);
+    const reloaded = await request('/api/leaderboard?scope=level-1&version=continues');
+    assert.equal(reloaded.json().entries[0].continues, 2);
 });
