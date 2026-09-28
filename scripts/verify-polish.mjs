@@ -1,6 +1,66 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
+export async function caseCampaignRanking(browser, base, evidenceDir) {
+    const context = await browser.newContext({ viewport: { width: 960, height: 720 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/api/**', route => route.abort());
+    const launch = async () => {
+        await page.goto(new URL('/', base).href);
+        await page.waitForFunction(() => window.__novawingDebug?.getBotSnapshot()?.ready);
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => !openingActive && levelStartTime > 0);
+    };
+    try {
+        await launch();
+        // Exercise real next-level and segment paths; only combat is shortened.
+        for (const level of [1, 2]) {
+            assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
+            await page.evaluate(() => completeLevel.call(getActiveScene()));
+            await page.waitForFunction(() => awaitingNextLevel);
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(next => currentLevel === next && !levelTransitioning, level + 1);
+        }
+        await page.waitForFunction(() => levelSegment === 'introBoss' && boss && boss.active);
+        await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
+        await page.waitForFunction(() => levelSegment === 'topdown' && !levelTransitioning);
+        await page.evaluate(() => finishLevelSegment(getActiveScene(), 'progressComplete'));
+        await page.waitForFunction(() => levelSegment === 'finalBoss' && boss && boss.active);
+        assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
+        await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
+        await page.waitForFunction(() => levelEnded);
+        assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
+        await page.waitForFunction(() => getLocalLeaderboard('campaign').length > 0 && getLocalLeaderboard('level-3').length > 0);
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            node.active && typeof node.text === 'string' && node.text.includes('Debug run'))), false);
+        await page.screenshot({ path: path.join(evidenceDir, 'campaign-ranked.png') });
+
+        for (const reason of ['continue', 'difficulty']) {
+            await launch();
+            await page.evaluate(reason => {
+                const scene = getActiveScene();
+                if (reason === 'continue') {
+                    if (!tryArcadeContinue(scene) || !acceptArcadeContinue(scene)) throw new Error('continue failed');
+                } else {
+                    setDifficultyMode(getDifficultyMode() === 'hard' ? 'normal' : 'hard');
+                }
+                endLevel.call(scene, 'CAMPAIGN COMPLETE', '#55ffaa', {
+                    completed: true, skipLeaderboard: !isLeaderboardEligibleSession(), scope: 'campaign'
+                });
+            }, reason);
+            const expected = reason === 'continue'
+                ? 'Continued run — public leaderboard disabled'
+                : 'Flight mode changed during play — leaderboard disabled';
+            assert.equal(await page.evaluate(expected => getActiveScene().children.list.some(node =>
+                node.active && node.text === expected), expected), true);
+        }
+        assert.deepEqual(errors, []);
+        return { name: 'campaign-ranking', ok: true, detail: 'natural campaign progression stays ranked; final results preserve continue and flight-mode reasons' };
+    } finally { await context.close(); }
+}
+
 export async function casePolish(browser, base, evidenceDir) {
     const context = await browser.newContext({ viewport: { width: 960, height: 720 } });
     const page = await context.newPage();

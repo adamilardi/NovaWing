@@ -653,6 +653,7 @@ let levelRunState = null;
 let runtimeSessionGen = 0;
 // Set by L-skip / debug boss jumps so those sessions cannot write public boards.
 let leaderboardDebugTainted = false;
+let leaderboardIneligibleReason = null;
 
 function preload() {
     window.NovaWingAssets.preload(this);
@@ -1234,6 +1235,7 @@ function create() {
     leaderboardLoadPromises = new Map();
     runtimeSessionGen += 1;
     leaderboardDebugTainted = false;
+    leaderboardIneligibleReason = null;
     leaderboardEntries = getLocalLeaderboard(makeLeaderboardScope('campaign', getDifficultyMode()));
     leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer(makeLeaderboardScope('campaign', getDifficultyMode()));
@@ -5946,8 +5948,9 @@ function isLeaderboardEligibleSession() {
     }
 }
 
-function markSessionLeaderboardIneligible() {
+function markSessionLeaderboardIneligible(reason = 'debug') {
     leaderboardDebugTainted = true;
+    if (!leaderboardIneligibleReason) leaderboardIneligibleReason = reason;
     campaignRunState = null;
     levelRunState = null;
 }
@@ -7099,6 +7102,7 @@ function formatDifficultyToggleLabel() {
 function formatUnrankedReasonLine() {
     if (coopEnabled) return 'Local co-op run — leaderboard and personal best disabled';
     if (continueUsedThisRun) return 'Continued run — public leaderboard disabled';
+    if (leaderboardIneligibleReason === 'difficulty') return 'Flight mode changed during play — leaderboard disabled';
     return 'Debug run — leaderboard disabled';
 }
 
@@ -7111,7 +7115,7 @@ function setDifficultyMode(next) {
     // Title browsing is pre-run. Results pick the next run. Mid-combat swaps unrank.
     const runInProgress = !openingActive && levelStartTime > 0 &&
         !levelEnded && !awaitingNextLevel && !victoryPending && !continuePending;
-    if (runInProgress && previous !== mode) markSessionLeaderboardIneligible();
+    if (runInProgress && previous !== mode) markSessionLeaderboardIneligible('difficulty');
     if (openingActive || (typeof levelStartTime === 'number' && levelStartTime === 0)) {
         resetContinueStock();
     } else {
@@ -7350,7 +7354,7 @@ function acceptArcadeContinue(scene) {
     continuesRemaining -= 1;
     continuesUsed += 1;
     continueUsedThisRun = true;
-    markSessionLeaderboardIneligible();
+    markSessionLeaderboardIneligible('continue');
     hideContinueOverlay();
     if (active.time) active.time.paused = false;
     restoreArcadeContinue(active);
@@ -10508,7 +10512,7 @@ function endLevel(title, color, options = {}) {
                 return;
             }
             resultLineText.setText(completed
-                ? (skipLeaderboard ? 'Debug run — leaderboard disabled' : resultLine)
+                ? (skipLeaderboard ? unrankedLine : resultLine)
                 : 'Complete the boss fight to set a time');
         }
     };

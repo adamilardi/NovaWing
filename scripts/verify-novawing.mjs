@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import { defaultHeadless, defaultLaunchOptions, appendPlaytestTimeScale } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
-import { casePolish } from './verify-polish.mjs';
+import { casePolish, caseCampaignRanking } from './verify-polish.mjs';
 import { caseCombatPolish } from './verify-combat-polish.mjs';
 import { caseGraphicsPolish } from './verify-graphics-polish.mjs';
 
@@ -980,6 +980,7 @@ async function caseRlPolicy(browser, base, evidenceDir) {
 
 const CASES = {
     polish: casePolish,
+    'campaign-ranking': caseCampaignRanking,
     'combat-polish': caseCombatPolish,
     'graphics-polish': caseGraphicsPolish,
     content: caseContent,
