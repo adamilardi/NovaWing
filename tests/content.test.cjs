@@ -54,7 +54,7 @@ test('authoring validation rejects missing links, cycles, unreachable segments a
     assert.throws(() => Flow.validate([level], { waves: new Set() }), /unknown key missing/);
 });
 
-test('segment reset cancels timers/tweens and rejects callbacks queued by the previous segment', () => {
+test('segment reset destroys owned objects, cancels timers/tweens and rejects previous callbacks', () => {
     const scope = Flow.createScope();
     const timers = [], tweens = [];
     const scene = {
@@ -62,6 +62,11 @@ test('segment reset cancels timers/tweens and rejects callbacks queued by the pr
         tweens: { add(config) { const tween = { ...config, remove() { this.removed = true; } }; tweens.push(tween); return tween; } }
     };
     let calls = 0;
+    const { EventEmitter } = require('node:events');
+    const warning = new EventEmitter();
+    let destroyed = 0;
+    warning.destroy = () => { destroyed++; warning.emit('destroy'); };
+    assert.equal(scope.own(warning), warning);
     scope.delay(scene, 10, () => calls++);
     scope.tween(scene, { onComplete: () => calls++ });
     scope.reset();
@@ -69,6 +74,9 @@ test('segment reset cancels timers/tweens and rejects callbacks queued by the pr
     tweens[0].onComplete();
     assert.equal(calls, 0);
     assert.ok(timers[0].removed && tweens[0].removed);
+    assert.equal(destroyed, 1);
+    scope.reset();
+    assert.equal(destroyed, 1);
     scope.delay(scene, 10, () => calls++);
     timers[1].callback();
     assert.equal(calls, 1);

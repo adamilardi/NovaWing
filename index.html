@@ -127,19 +127,45 @@
             font: 11px monospace;
         }
         @media (orientation: portrait) {
+            html.touch-device {
+                --touch-playfield-height: min(75vw, calc(100dvh - 230px));
+                --touch-stack-top: max(env(safe-area-inset-top, 0px), calc((100dvh - var(--touch-playfield-height) - 214px) / 2));
+            }
             html.touch-device #game-container {
-                height: calc(100% - 190px - env(safe-area-inset-bottom, 0px));
+                position: fixed;
+                top: var(--touch-stack-top);
+                height: var(--touch-playfield-height);
                 min-height: 0;
-                align-items: flex-start;
-                padding-top: max(8px, env(safe-area-inset-top));
+                align-items: center;
                 box-sizing: border-box;
             }
-            #touch-dock { height: 190px; }
+            html.touch-device #touch-dock {
+                top: calc(var(--touch-stack-top) + var(--touch-playfield-height) + 12px);
+                bottom: auto;
+                height: 202px;
+            }
             .touch-stick { left: max(20px, env(safe-area-inset-left)); bottom: 22px; width: 104px; height: 104px; }
             .touch-action { right: max(20px, env(safe-area-inset-right)); bottom: 24px; width: 96px; height: 96px; }
             .touch-boost { right: max(28px, env(safe-area-inset-right)); bottom: 126px; width: 68px; height: 68px; }
             .touch-auto { right: max(118px, env(safe-area-inset-right, 0px)); bottom: 130px; }
             .touch-utility { left: 4px; top: 6px; transform: none; }
+        }
+        @media (orientation: landscape) {
+            html.touch-device #game-container {
+                width: calc(100% - 264px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+                margin-left: calc(132px + env(safe-area-inset-left, 0px));
+            }
+            #touch-dock { top: env(safe-area-inset-top, 0px); height: auto; }
+            .touch-stick { left: max(8px, env(safe-area-inset-left)); bottom: 12px; }
+            .touch-action { right: max(12px, env(safe-area-inset-right)); bottom: 12px; }
+            .touch-boost { right: max(24px, env(safe-area-inset-right)); bottom: 118px; }
+            .touch-auto { right: max(24px, env(safe-area-inset-right)); bottom: 198px; }
+            .touch-utility {
+                left: max(12px, env(safe-area-inset-left));
+                top: 12px;
+                flex-direction: column;
+                transform: none;
+            }
         }
         #game-container canvas {
             border: 1px solid #30465c;
@@ -213,13 +239,13 @@
         <div class="touch-utility"><button type="button" data-touch="pause">PAUSE</button><button type="button" data-touch="mute">SOUND</button></div>
     </div>
     <div id="boot-hint" role="status" aria-live="polite">Preparing NovaWing…</div>
-    <script src="src/assets.js?v=1.3.6"></script>
-    <script src="src/level-flow.js?v=1.3.6"></script>
+    <script src="src/assets.js?v=1.3.8"></script>
+    <script src="src/level-flow.js?v=1.3.7"></script>
     <script src="src/audio-director.js?v=1.3.6"></script>
     <script src="levels.js?v=1.3.12"></script>
     <script src="audio.js?v=1.3.14"></script>
     <script src="src/pilot-facts.js?v=1.3.13"></script>
-    <script src="game.js?v=1.3.15"></script>
+    <script src="game.js?v=1.3.18"></script>
     <script>
         // Keep a recovery action available when the game or its CDN dependency fails.
         (function () {

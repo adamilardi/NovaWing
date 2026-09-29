@@ -70,7 +70,49 @@ export async function caseGraphicsPolish(browser, base, evidenceDir) {
             updateCoopText();
             if (coopHud[1].marker.visible || coopHud[1].life.text !== 'DOWN') throw new Error('downed pilot HUD incorrect');
         });
+        await page.evaluate(() => {
+            const scene = getActiveScene();
+            debugSkipToLevel.call(scene, 3);
+            __novawingDebug.setSegment('finalBoss');
+            if (bossHealthBar.getBounds().top <= 90) throw new Error('boss health overlaps co-op HUD');
+            boss.y = boss.arenaY;
+            for (const angle of [-Math.PI / 2, 0, Math.PI / 2, Math.PI]) {
+                boss.orbitAngle = angle;
+                updateBossFight.call(scene, scene.time.now, 16);
+                const targetY = boss.y + boss.body.velocity.y / 6;
+                if (targetY - boss.displayHeight / 2 < 115) throw new Error('boss orbit enters HUD');
+            }
+        });
+        for (const [level, encounter] of [[2, 'standard'], [3, 'intro'], [3, 'final']]) {
+            await page.goto(new URL('/?bot=1&level=' + level, base).href);
+            await page.waitForFunction(() => window.__novawingDebug?.getBotSnapshot()?.ready);
+            await page.evaluate(encounter => {
+                const scene = getActiveScene();
+                __novawingDebug.startBoss(encounter);
+                gamePaused = true;
+                scene.physics.pause();
+                const before = new Set(scene.children.list);
+                fireBossLaserLane.call(scene, scene.time.now);
+                window.laserWarningProbe = scene.children.list.find(object => !before.has(object) && object.type === 'Rectangle');
+                if (!window.laserWarningProbe?.active) throw new Error('laser warning missing');
+            }, encounter);
+            await page.waitForFunction(() => !window.laserWarningProbe.active && enemyBullets.getChildren().some(bullet => bullet.active && bullet.isBossLaser));
+            await page.waitForFunction(() => !enemyBullets.getChildren().some(bullet => bullet.active && bullet.isBossLaser));
+            await page.evaluate(() => {
+                const scene = getActiveScene();
+                const before = new Set(scene.children.list);
+                fireBossLaserLane.call(scene, scene.time.now);
+                const warning = scene.children.list.find(object => !before.has(object) && object.type === 'Rectangle');
+                if (bossEncounterKey === 'intro') bossEscapes.call(scene, 'laser-cleanup-probe');
+                else defeatBoss.call(scene, boss);
+                if (warning.active) throw new Error('laser warning survived boss encounter');
+            });
+            await page.waitForTimeout(1400);
+            await page.evaluate(() => {
+                if (enemyBullets.getChildren().some(bullet => bullet.active && bullet.isBossLaser)) throw new Error('canceled warning fired after boss encounter');
+            });
+        }
         assert.deepEqual(errors, []);
-        return { name: 'graphics-polish', ok: true, detail: 'pilot HUD bounds, markers, boost/down state, text resolution, projectile direction/damage/hitboxes, quality and cleanup', details };
+        return { name: 'graphics-polish', ok: true, detail: 'pilot HUD bounds, boss health/orbit bounds, markers, boost/down state, text resolution, projectile direction/damage/hitboxes, quality and cleanup; stage 2/3 laser timing and encounter cleanup', details };
     } finally { await context.close(); }
 }

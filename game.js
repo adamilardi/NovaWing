@@ -1381,7 +1381,7 @@ function create() {
     hudPanel = this.add.graphics();
     hudPanel.setDepth(9);
     hudPanel.setScrollFactor(0);
-    hudPanel.fillStyle(0x081018, 0.42);
+    hudPanel.fillStyle(0x081018, 0.94);
     hudPanel.fillRoundedRect(8, 8, 230, 78, 8);
     hudPanel.fillRoundedRect(562, 8, 230, 78, 8);
     hudPanel.fillRoundedRect(274, 8, 252, 50, 8);
@@ -4136,6 +4136,8 @@ function spawnWallSlice(openBands, options = {}) {
     // Split very tall solid regions so arcade body scales stay stable.
     // Prefer chunks near the wall texture height to limit vertical stretch.
     const maxChunk = 340;
+    const sliceVariant = this.wallArtSequence || 0;
+    this.wallArtSequence = (sliceVariant + 1) % 4;
     blocked.forEach(([top, bottom]) => {
         let cursor = top;
         while (cursor < bottom) {
@@ -4145,7 +4147,8 @@ function spawnWallSlice(openBands, options = {}) {
                 const centerY = (cursor + chunkBottom) * 0.5;
                 const sealsPath = closing.some(region => yOverlapsBand(centerY, region, 0));
                 spawnWallBlock.call(this, x, centerY, WALL_SLICE_WIDTH, height, {
-                    danger: sealsPath
+                    danger: sealsPath,
+                    artVariant: (sliceVariant + Math.floor(cursor / maxChunk)) % 4
                 });
             }
             cursor = chunkBottom;
@@ -4163,6 +4166,7 @@ function seedLevelPathWalls(scene) {
     const firstBands = levelDef.pathEvents[0].openBands;
     previousOpenBands = null;
     currentOpenBands = firstBands.map(band => [band[0], band[1]]);
+    scene.wallArtSequence = 0;
 
     WALL_SEED_XS.forEach((x, index) => {
         spawnWallSlice.call(scene, firstBands, {
@@ -4186,6 +4190,11 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     wall.setTexture(wallKey);
     activateSprite(wall, x, y);
     wall.setOrigin(0.5, 0.5);
+    // Cycle through distinct atlas strips without moving the collision body.
+    const wallVariant = options.artVariant || 0;
+    const variantKey = wallKey + '-' + wallVariant;
+    if (wallVariant && this.textures.exists(variantKey)) wall.setTexture(variantKey);
+    wall.setFlip(false, false);
     const sourceW = Math.max(1, wall.frame ? wall.frame.width : WALL_TEXTURE_FALLBACK_SIZE);
     const sourceH = Math.max(1, wall.frame ? wall.frame.height : WALL_TEXTURE_FALLBACK_SIZE);
     // Scale the crystal tile to the authored corridor block size.
@@ -4582,6 +4591,10 @@ function startBossFight(encounterKey) {
     boss.escapeHpRatio = Number.isFinite(profile.escapeHpRatio) ? profile.escapeHpRatio : null;
     const aspect = boss.height > 0 ? boss.width / boss.height : 1.9;
     boss.setDisplaySize(targetWidth, Math.round(targetWidth / aspect));
+    if (verticalBoss) {
+        // Keep the complete silhouette below the HUD and its health strip.
+        boss.arenaY = 116 + boss.displayHeight * 0.5;
+    }
     if (verticalBoss && hasBossVertical) {
         const vertBody = (SPRITES[bossVertKey] && SPRITES[bossVertKey].body) || SPRITES.bossVertical.body;
         applySpriteBody(boss, vertBody);
@@ -4608,11 +4621,11 @@ function startBossFight(encounterKey) {
         bossHealthFill.destroy();
         bossHealthFill = null;
     }
-    bossHealthBar = this.add.rectangle(400, 54, 330, 16, 0x202438, 0.95);
+    bossHealthBar = this.add.rectangle(400, 102, 330, 16, 0x202438, 0.95);
     bossHealthBar.setStrokeStyle(2, 0xff6677, 1);
     bossHealthBar.setDepth(8);
     bossHealthBar.setScrollFactor(0);
-    bossHealthFill = this.add.rectangle(236, 54, 326, 10, 0xff3355, 1);
+    bossHealthFill = this.add.rectangle(236, 102, 326, 10, 0xff3355, 1);
     bossHealthFill.setOrigin(0, 0.5);
     bossHealthFill.setDepth(9);
     bossHealthFill.setScrollFactor(0);
@@ -4641,7 +4654,7 @@ function updateBossFight(time, frameDelta) {
             const bhx = blackHoleConfig.x;
             const bhy = blackHoleConfig.y;
             const tx = bhx + Math.cos(boss.orbitAngle) * r;
-            const ty = bhy + Math.sin(boss.orbitAngle) * r;
+            const ty = Math.max(boss.arenaY, bhy + Math.sin(boss.orbitAngle) * r);
             boss.setVelocity((tx - boss.x) * 6, (ty - boss.y) * 6);
         } else {
             boss.setVelocity(0, 0);
@@ -4901,13 +4914,13 @@ function fireBossLaserLane(time) {
     // Vertical mode (K15): constant-X strips (vertical lanes on screen).
     if (boss.verticalMode) {
         const laneX = Phaser.Math.Clamp(player ? player.x : boss.x, 100, 700);
-        const warning = this.add.rectangle(laneX, 300, 36, 620, 0xff3355, 0.16);
+        const warning = segmentScope.own(this.add.rectangle(laneX, 300, 36, 620, 0xff3355, 0.16));
         warning.setStrokeStyle(2, 0xfff0aa, 0.95);
         warning.setDepth(6);
         warning.setScrollFactor(0);
 
         sfx.laserWarn(laneX);
-        this.tweens.add({
+        segmentScope.tween(this, {
             targets: warning,
             alpha: 0.78,
             duration: 110,
@@ -4956,12 +4969,12 @@ function fireBossLaserLane(time) {
 
     const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : 300;
     const laneY = Phaser.Math.Clamp(player ? player.y : boss.y, arenaY - 220, arenaY + 220);
-    const warning = this.add.rectangle(400, laneY, 820, 30, 0xff3355, 0.16);
+    const warning = segmentScope.own(this.add.rectangle(400, laneY, 820, 30, 0xff3355, 0.16));
     warning.setStrokeStyle(2, 0xfff0aa, 0.95);
     warning.setDepth(6);
 
     sfx.laserWarn(400);
-    this.tweens.add({
+    segmentScope.tween(this, {
         targets: warning,
         alpha: 0.78,
         duration: 110,
@@ -7441,9 +7454,12 @@ function formatGameplayControlsHint() {
         return 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL';
     }
     if (coopEnabled) {
-        return 'P1 WASD / PAD 1   ·   P2 ARROWS / PAD 2   ·   START PAUSE';
+        return 'P1 WASD / SPACE / L SHIFT  ·  P2 ARROWS / ENTER / R SHIFT  ·  ESC PAUSE';
     }
-    return 'WASD / STICK TO FLY  ·  SHIFT / LT BOOST  ·  SPACE / RT FIRE  ·  START PAUSE';
+    if (readRawGamepads().some(Boolean)) {
+        return 'STICK MOVE  ·  LT / B BOOST  ·  RT / A FIRE  ·  START PAUSE';
+    }
+    return 'WASD / ARROWS MOVE  ·  SHIFT BOOST  ·  SPACE FIRE  ·  ESC / P PAUSE';
 }
 
 function showOpeningOverlay(scene, onPlay) {
@@ -7467,14 +7483,14 @@ function showOpeningOverlay(scene, onPlay) {
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
     const rule = scene.add.rectangle(400, 180, 360, 2, 0x66f6ff, 0.85)
         .setDepth(81).setScrollFactor(0);
-    const mission = scene.add.text(400, 252, 'CHOOSE FLIGHT MODE', {
+    const mission = scene.add.text(400, 272, 'CHOOSE FLIGHT MODE', {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#c7ddff', letterSpacing: 2
     }).setOrigin(0.5).setDepth(81).setScrollFactor(0);
-    const pilotLabel = scene.add.text(248, 206, 'PILOT', {
+    const pilotLabel = scene.add.text(248, 224, 'PILOT', {
         fontFamily: 'monospace', resolution: 2, fontSize: '13px', fill: '#8aa4ff',
         stroke: '#050816', strokeThickness: 3
     }).setOrigin(0.5).setDepth(82).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    const pilotName = createPilotNameInput(scene, 430, 206, 230);
+    const pilotName = createPilotNameInput(scene, 430, 224, 230);
     pilotLabel.on('pointerdown', () => {
         if (pilotName.input) pilotName.input.focus();
     });
@@ -7846,13 +7862,14 @@ function maybeShowFirstRunTutorial(scene) {
     const tutorialY = touch ? 180 : 500;
     const copy = touch
         ? 'DRAG TO STEER\nHOLD FIRE / BOOST  ·  AUTO-FIRE IS OPTIONAL'
-        : 'WASD / STICK  MOVE\nLT / B BOOST   ·   RT / A FIRE   ·   START PAUSE';
+        : formatGameplayControlsHint().replace('  ·  ', '\n');
     const panel = scene.add.rectangle(400, tutorialY, 560, 72, 0x071220, 0.9)
         .setStrokeStyle(1, 0x66f6ff, 0.7).setDepth(45).setScrollFactor(0).setAlpha(0);
     const label = scene.add.text(400, tutorialY, copy, {
         fontFamily: 'monospace', resolution: 2, fontSize: '15px', fill: '#e8f0ff', align: 'center',
-        lineSpacing: 7, stroke: '#050816', strokeThickness: 3
+        lineSpacing: 7, stroke: '#050816', strokeThickness: 3, wordWrap: { width: 530 }
     }).setOrigin(0.5).setDepth(46).setScrollFactor(0).setAlpha(0);
+    panel.setSize(560, label.height + 24);
     const tween = scene.tweens.add({ targets: [panel, label], alpha: 1, duration: 250, hold: 3200, yoyo: true,
         onComplete: () => hideFirstRunTutorial() });
     tutorialOverlay = { nodes: [panel, label], tween };
@@ -7955,7 +7972,7 @@ function showPauseOverlay(scene) {
 
     const hint = scene.add.text(400, 440, shouldShowTouchControls()
         ? 'Each flight mode has its own leaderboard'
-        : 'START / P resume  ·  D difficulty  ·  R restart', {
+        : ((readRawGamepads().some(Boolean) ? 'START' : 'ESC / P') + ' resume  ·  D difficulty  ·  R restart'), {
         fontFamily: 'monospace', resolution: 2,
         fontSize: '14px',
         fill: '#8aa0c8',
@@ -9869,10 +9886,11 @@ function createPilotNameInput(scene, gameX, gameY, gameWidth) {
         const rect = game.canvas.getBoundingClientRect();
         const scaleX = rect.width / 800;
         const scaleY = rect.height / 600;
+        const inputHeight = Math.max(30, 34 * scaleY);
         input.style.left = (rect.left + (gameX - gameWidth / 2) * scaleX) + 'px';
-        input.style.top = (rect.top + (gameY - 17) * scaleY) + 'px';
+        input.style.top = (rect.top + gameY * scaleY - inputHeight / 2) + 'px';
         input.style.width = (gameWidth * scaleX) + 'px';
-        input.style.height = Math.max(30, 34 * scaleY) + 'px';
+        input.style.height = inputHeight + 'px';
         input.style.fontSize = Math.max(16, 18 * Math.min(scaleX, scaleY)) + 'px';
     };
     const destroy = () => {
@@ -10475,7 +10493,7 @@ function endLevel(title, color, options = {}) {
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     const formatResultStats = (timeMs) => [
-        'TIME       ' + (completed ? formatRunTime(timeMs) : '--:--.--'),
+        (completed ? 'TIME       ' : 'SURVIVED   ') + formatRunTime(timeMs),
         'KILLS      ' + displayKills,
         'SHOTS      ' + (continueToNext
             ? Math.max(0, shotsFired - levelStartShotsFired)

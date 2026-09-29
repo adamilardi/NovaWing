@@ -64,7 +64,8 @@ const BAKED_SPRITE_ASSETS = {
     powerupBoost: { path: 'assets/powerup-boost.png', sourceKey: 'powerupBoostSource' },
     powerupBomb: { path: 'assets/powerup-bomb.png', sourceKey: 'powerupBombSource' },
     // Crystal asteroid canyon walls for corridor levels.
-    wall: { path: 'assets/wall.png', sourceKey: 'wallSource' }
+    wall: { path: 'assets/canyon-wall-atlas-v2.png', sourceKey: 'wallSource',
+        variants: 4, textureWidth: 96, textureHeight: 320 }
 };
 
 
@@ -218,7 +219,8 @@ function preload(scene) {
 function install(scene) {
     Object.entries(SPRITES).forEach(([key, sprite]) => {
         if (!sprite.sourceKey) return;
-        if (sprite.hasAlpha) installImageTexture(scene, key, sprite.sourceKey);
+        if (key === 'wall') installWallTexture(scene, key, sprite.sourceKey);
+        else if (sprite.hasAlpha) installImageTexture(scene, key, sprite.sourceKey);
         else if (sprite.crop) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
     });
     SPRITE_FRAMES.forEach(frame => {
@@ -270,6 +272,58 @@ function sheetFrameKeys(sheet, keyPrefix) {
     return keys;
 }
 
+
+function installWallTexture(scene, key, sourceKey) {
+    if (scene.textures.exists(key) && scene.textures.get(key).novaSeamlessWall) return;
+    if (!scene.textures.exists(sourceKey)) return;
+    const source = scene.textures.get(sourceKey).getSourceImage();
+    const definition = SPRITES[key];
+    const width = definition.textureWidth;
+    const height = definition.textureHeight;
+    // Decode the atlas into small textures with the original collision geometry.
+    const tiles = Array.from({ length: definition.variants }, (_, variant) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        const stripWidth = source.width / definition.variants;
+        context.drawImage(source, variant * stripWidth, 0, stripWidth, source.height,
+            0, 0, width, height);
+        return { canvas, context, pixels: context.getImageData(0, 0, width, height) };
+    });
+    const blendEdges = horizontal => {
+        const length = horizontal ? width : height;
+        const cross = horizontal ? height : width;
+        const band = Math.max(2, Math.round(length * 0.05));
+        for (let row = 0; row < cross; row++) {
+            const first = (horizontal ? row * width : row) * 4;
+            const last = (horizontal ? row * width + width - 1 : (height - 1) * width + row) * 4;
+            for (let channel = 0; channel < 4; channel++) {
+                // All variants share one seam, so different strips can meet.
+                const seam = tiles.reduce((sum, tile) => sum + tile.pixels.data[first + channel] + tile.pixels.data[last + channel], 0) / (tiles.length * 2);
+                for (let offset = 0; offset < band; offset++) {
+                    const weight = 1 - offset / band;
+                    const a = (horizontal ? row * width + offset : offset * width + row) * 4;
+                    const b = (horizontal ? row * width + width - 1 - offset : (height - 1 - offset) * width + row) * 4;
+                    for (const { pixels } of tiles) {
+                        pixels.data[a + channel] = Math.round(pixels.data[a + channel] * (1 - weight) + seam * weight);
+                        pixels.data[b + channel] = Math.round(pixels.data[b + channel] * (1 - weight) + seam * weight);
+                    }
+                }
+            }
+        }
+    };
+    blendEdges(true);
+    blendEdges(false);
+    tiles.forEach(({ canvas, context, pixels }, variant) => {
+        context.putImageData(pixels, 0, 0);
+        const variantKey = variant ? key + '-' + variant : key;
+        if (scene.textures.exists(variantKey)) scene.textures.remove(variantKey);
+        const texture = scene.textures.addCanvas(variantKey, canvas);
+        texture.novaSeamlessWall = true;
+        texture.novaWallSource = source;
+    });
+}
 
 function installImageTexture(scene, key, sourceKey) {
     // Phaser's texture manager survives scene restarts. Alpha images are already

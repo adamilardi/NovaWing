@@ -30,7 +30,8 @@ function fail(name, detail = '') {
 
 async function waitForGame(page, timeout = 20000) {
     await page.waitForFunction(() => {
-        return window.__novawingDebug && window.__novawingDebug.ready();
+        return window.__novawingDebug && window.__novawingDebug.ready() &&
+            window.__novawingDebug.getPlayerState() !== null;
     }, null, { timeout });
 }
 
@@ -72,16 +73,28 @@ async function assertTouchDockHitTargets(page, label) {
                 center: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.getAttribute('data-touch') }];
         }));
         const overlaps = [];
+        const canvas = document.querySelector('#game-container canvas').getBoundingClientRect();
+        const occlusions = Object.entries(boxes).filter(([, box]) => box &&
+            box.left < canvas.right && box.right > canvas.left &&
+            box.top < canvas.bottom && box.bottom > canvas.top).map(([name]) => name);
         const names = Object.keys(boxes);
         for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
             const a = boxes[names[i]], b = boxes[names[j]];
             if (a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) overlaps.push(names[i] + '/' + names[j]);
         }
-        return { dockActive: dock && dock.classList.contains('is-active'), boxes, overlaps };
+        const dockGap = dock.getBoundingClientRect().top - canvas.bottom;
+        return { dockActive: dock && dock.classList.contains('is-active'), boxes, overlaps, occlusions,
+            portrait: innerHeight > innerWidth, dockGap };
     });
     const centerTargets = Object.entries(probe.boxes).every(([name, box]) => box && box.center === name);
     if (probe.dockActive && centerTargets && probe.overlaps.length === 0) pass(label + ' hit targets do not overlap');
     else fail(label + ' hit targets do not overlap', JSON.stringify(probe));
+    if (!probe.occlusions.length) pass(label + ' controls stay outside playfield');
+    else fail(label + ' controls stay outside playfield', probe.occlusions.join(', '));
+    if (probe.portrait) {
+        if (probe.dockGap >= 0 && probe.dockGap <= 24) pass(label + ' dock stays near playfield');
+        else fail(label + ' dock stays near playfield', 'gap ' + probe.dockGap);
+    }
 }
 
 async function testDomTouchControls(page) {

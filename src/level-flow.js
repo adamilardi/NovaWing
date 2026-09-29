@@ -1,4 +1,4 @@
-/** Pure level-flow rules plus a lifetime for segment timers and tweens. */
+/** Pure level-flow rules plus a lifetime for segment timers, tweens and objects. */
 (function (root) {
     'use strict';
 
@@ -99,13 +99,21 @@
         let generation = 0;
         const timers = new Set();
         const tweens = new Set();
+        const objects = new Set();
         return {
             reset() {
                 generation += 1;
                 for (const timer of timers) timer.remove(false);
                 for (const tween of tweens) tween.remove();
+                for (const object of objects) object.destroy();
                 timers.clear();
                 tweens.clear();
+                objects.clear();
+            },
+            own(object) {
+                objects.add(object);
+                object.once('destroy', () => objects.delete(object));
+                return object;
             },
             delay(scene, ms, callback) {
                 const entered = generation;

@@ -267,6 +267,9 @@ export async function casePolish(browser, base, evidenceDir) {
         assert.equal(await input.count(), 0, 'name field leaked into next level');
         assert.equal(await page.evaluate(() => openingActive), false);
         await page.evaluate(() => endLevel.call(getActiveScene(), 'GAME OVER', '#ff5555', { skipLeaderboard: true }));
+        assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
+            typeof node.text === 'string' && /^SURVIVED\s+\d+:\d{2}\.\d{2}/.test(node.text)
+        )), true, 'failed run must show survival time');
         await clickText('RETRY');
         await page.waitForFunction(() => currentLevel === 1 && !levelEnded);
         assert.equal(await page.evaluate(() => openingActive), false, 'retry repeated title');

@@ -22,7 +22,39 @@ export async function caseContent(browser, base, evidenceDir) {
             const check = (ok, label) => { if (!ok) throw new Error(label); };
             for (const [key, asset] of Object.entries(NovaWingAssets.sprites)) {
                 if (asset.hasAlpha && asset.sourceKey) {
-                    check(scene.textures.get(key).getSourceImage() === scene.textures.get(asset.sourceKey).getSourceImage(),
+                    const texture = scene.textures.get(key);
+                    const source = scene.textures.get(asset.sourceKey).getSourceImage();
+                    if (key === 'wall') {
+                        const canvas = texture.getSourceImage();
+                        check(texture.novaWallSource === source && canvas.width === asset.textureWidth && canvas.height === asset.textureHeight,
+                            'wall must retain authored art and collision dimensions');
+                        const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                        for (let variant = 0; variant < asset.variants; variant++) {
+                            const variantTexture = scene.textures.get(variant ? key + '-' + variant : key);
+                            const tile = variantTexture.getSourceImage();
+                            check(variantTexture.novaWallSource === source && tile.width === canvas.width && tile.height === canvas.height,
+                                'wall variants must preserve collision dimensions');
+                            const data = tile.getContext('2d').getImageData(0, 0, tile.width, tile.height).data;
+                            for (let y = 0; y < tile.height; y++) {
+                                for (let channel = 0; channel < 4; channel++) {
+                                    const left = (y * tile.width) * 4 + channel;
+                                    const right = (y * tile.width + tile.width - 1) * 4 + channel;
+                                    check(data[left] === data[right] && data[left] === pixels[left],
+                                        'different wall variants must join seamlessly');
+                                }
+                            }
+                            for (let x = 0; x < tile.width; x++) {
+                                for (let channel = 0; channel < 4; channel++) {
+                                    const top = x * 4 + channel;
+                                    const bottom = ((tile.height - 1) * tile.width + x) * 4 + channel;
+                                    check(data[top] === data[bottom] && data[top] === pixels[top],
+                                        'stacked wall variants must join seamlessly');
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    check(texture.getSourceImage() === source,
                         'authored art replaced by procedural fallback: ' + key);
                 }
             }
