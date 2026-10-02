@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "candidate_id": "level-5-enemy-dart",
+  "canonical_source_path": "../../../../assets/enemy-dart.png",
+  "camera": "top-down",
+  "facing": "down",
+  "target_display_width_px": 52,
+  "root_pivot": {
+    "space": "normalized",
+    "origin": "top-left",
+    "x": 0.5,
+    "y": 0.5
+  },
+  "body_bounds": {
+    "space": "normalized",
+    "w": 0.55,
+    "h": 0.58,
+    "ox": 0.22,
+    "oy": 0.2
+  },
+  "assets": [
+    {
+      "role": "canonical",
+      "path": "../../../../assets/enemy-dart.png"
+    },
+    {
+      "role": "runtime-code",
+      "path": "../../../../game.js",
+      "function": "updateRosterEnemyAnimation"
+    }
+  ],
+  "parts": [
+    {
+      "name": "left-shutter",
+      "pivot": [
+        -0.08,
+        0.15
+      ]
+    },
+    {
+      "name": "right-shutter",
+      "pivot": [
+        0.08,
+        0.15
+      ]
+    }
+  ],
+  "part_coordinate_space": "root-relative display width/height units",
+  "states": [
+    {
+      "name": "idle",
+      "method": "code motion",
+      "loop": true,
+      "description": "Existing banking and engine pulse; shutters closed."
+    },
+    {
+      "name": "anticipation",
+      "method": "articulated graphics",
+      "duration_ms": 320,
+      "loop": false,
+      "description": "Shutters rotate out through 0.85 radians on the eligible-shot timer."
+    },
+    {
+      "name": "firing-recovery",
+      "method": "articulated graphics",
+      "duration_ms": 140,
+      "loop": false,
+      "event": "Existing enemyAnimationFiredAt timestamp; shutters close as flash decays."
+    }
+  ],
+  "preview_paths": [
+    "playback.webm",
+    "idle.png",
+    "anticipation.png",
+    "firing.png",
+    "recovery.png"
+  ],
+  "verification_path": "verification.json",
+  "notes": [
+    "Original raster retained. Shutters are supplemental procedural panels, not extracted canonical parts.",
+    "Applies only to Level 5 enemies using enemyDart art.",
+    "No generated pose frames or packed sprite sheet; runtime parts inherit the sprite root transform."
+  ],
+  "logical_canvas_px": [
+    285,
+    601
+  ]
+}

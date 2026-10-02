@@ -7055,6 +7055,26 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
         fx.fillStyle(0xfff3df, strength * 0.65);
         fx.fillCircle(x, y, radius * 0.6);
     };
+    if (currentLevel === 5 && enemy.texture.key === 'enemyDart') {
+        // Articulated reactor shutters: local visual parts only. The simulation
+        // clock and existing shot timestamp own anticipation/recoil; no timers
+        // or projectile callbacks are introduced on pooled enemies.
+        const opening = Math.max(charge, flash);
+        const hingeY = h * 0.15;
+        const hingeX = w * 0.08;
+        const length = w * 0.22;
+        const spread = opening * 0.85;
+        for (const side of [-1, 1]) {
+            const x = side * hingeX;
+            const tipX = x + side * length * Math.cos(spread);
+            const tipY = hingeY - length * Math.sin(spread);
+            fx.fillStyle(0x321b2d, 1);
+            fx.fillTriangle(x, hingeY - 2, tipX, tipY, x, hingeY + 3);
+            fx.lineStyle(1.2, 0xffb34d, 0.65 + opening * 0.35);
+            fx.lineBetween(x, hingeY - 2, tipX, tipY);
+        }
+        glow(0, hingeY, 1.5 + opening * 3, 0.2 + opening * 0.7);
+    }
     if (type === 'orbiter') {
         // Counter-rotating core arcs emphasize its circular flight and radial attack.
         const radius = w * (0.15 + charge * 0.025 + flash * 0.08);

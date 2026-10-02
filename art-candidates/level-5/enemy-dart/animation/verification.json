@@ -1,0 +1,16 @@
+{
+  "level": 5,
+  "waveCount": 7,
+  "checks": [
+    "authored-spawn",
+    "charge-playback",
+    "single-shot",
+    "stable-body",
+    "frozen-clock",
+    "recovery",
+    "release-cleanup",
+    "restart"
+  ],
+  "errors": [],
+  "evidence": "debug-isolated states plus authored wave playback; balance not evaluated"
+}
