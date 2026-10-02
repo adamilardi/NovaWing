@@ -568,6 +568,7 @@ let levelStartShotsHit = 0;
 let levelStartContinuesUsed = 0;
 let levelProgressMs = 0;
 let levelEnded = false;
+let levelCompleted = false;
 let victoryPending = false;
 let awaitingNextLevel = false;
 let playerInvulnerableUntil = 0;
@@ -1209,6 +1210,7 @@ function create() {
     levelTransitioning = false;
     lastFired = 0;
     levelEnded = false;
+    levelCompleted = false;
     playerInvulnerableUntil = 0;
     gamePhase = 'waves';
     scrollMode = 'horizontal';
@@ -5510,6 +5512,7 @@ function beginNextLevel() {
     if (currentLevel >= totalLevels()) return;
     awaitingNextLevel = false;
     levelEnded = false;
+    levelCompleted = false;
     startLevel.call(this, currentLevel + 1, { fromClear: true });
 }
 
@@ -5525,6 +5528,7 @@ function startLevel(levelId, options = {}) {
     hideFirstRunTutorial();
     if (levelEnded || victoryPending) return;
 
+    levelCompleted = false;
     segmentScope.reset();
     segmentEnterGen += 1;
     this.cameras.main.setZoom(1);
@@ -6260,7 +6264,7 @@ function isLeaderboardEligibleSession() {
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
             'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
-            'diff', 'difficulty'
+            'diff', 'difficulty', 'playtestContinues'
         ].some(key => params.has(key));
     } catch (error) {
         return true;
@@ -7490,7 +7494,15 @@ function updatePauseHud() {
     }
 }
 
+function hasUnlimitedPlaytestContinues() {
+    if (bonusTestingLevel) return true;
+    try {
+        return new URLSearchParams(window.location.search || '').get('playtestContinues') === 'unlimited';
+    } catch (error) { return false; }
+}
+
 function continueStockForMode(mode) {
+    if (hasUnlimitedPlaytestContinues()) return Infinity;
     const id = parseDifficultyModeName(mode || getDifficultyMode()) || 'normal';
     if (typeof getDifficultyContinues === 'function') {
         return getDifficultyContinues(id);
@@ -7515,14 +7527,16 @@ function resetContinueStock() {
 function getContinueState() {
     return {
         pending: Boolean(continuePending),
-        remaining: continuesRemaining,
+        remaining: hasUnlimitedPlaytestContinues() ? null : continuesRemaining,
+        unlimited: hasUnlimitedPlaytestContinues(),
         used: continuesUsed,
-        allowed: continueStockForMode(),
+        allowed: hasUnlimitedPlaytestContinues() ? null : continueStockForMode(),
         usedThisRun: Boolean(continueUsedThisRun)
     };
 }
 
 function formatContinueStockLine() {
+    if (hasUnlimitedPlaytestContinues()) return 'UNLIMITED PLAYTEST CONTINUES';
     const left = Math.max(0, continuesRemaining);
     if (left === 1) return '1 CONTINUE LEFT';
     return left + ' CONTINUES LEFT';
@@ -7530,7 +7544,7 @@ function formatContinueStockLine() {
 
 function tryArcadeContinue(scene) {
     if (!scene || levelEnded || victoryPending || awaitingNextLevel || continuePending) return false;
-    if (isPlaytestBotSession()) return false;
+    if (isPlaytestBotSession() && !hasUnlimitedPlaytestContinues()) return false;
     if (coopEnabled && hasAnyCoopPilotAlive()) return false;
     syncContinueStockToMode();
     if (continuesRemaining <= 0) return false;
@@ -10822,6 +10836,7 @@ function endLevel(title, color, options = {}) {
     const accuracy = getRunAccuracy();
     const completionTimeMs = options.completionTimeMs || Math.max(0, playtestNow(this) - levelStartTime);
     const completed = Boolean(options.completed);
+    levelCompleted = completed;
     const skipLeaderboard = Boolean(options.skipLeaderboard);
     const displayScope = sanitizeLeaderboardScope(options.scope || 'campaign');
     const displayScore = Number.isFinite(options.score) ? options.score : score;
@@ -11844,12 +11859,15 @@ function getBotSnapshot() {
             config: blackHoleConfig
         },
         levelEnded: Boolean(levelEnded),
+        levelCompleted: Boolean(levelCompleted),
         levelTransitioning: Boolean(levelTransitioning),
         victoryPending: Boolean(victoryPending),
         awaitingNextLevel: Boolean(awaitingNextLevel),
         paused: Boolean(gamePaused),
         continuePending: Boolean(continuePending),
-        continuesRemaining,
+        continuesRemaining: hasUnlimitedPlaytestContinues() ? null : continuesRemaining,
+        unlimitedContinues: hasUnlimitedPlaytestContinues(),
+        continuesUsed,
         continueUsedThisRun: Boolean(continueUsedThisRun),
         difficultyMode: getDifficultyMode(),
         playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,

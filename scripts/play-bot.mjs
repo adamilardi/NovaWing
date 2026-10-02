@@ -1874,7 +1874,7 @@ export function installInPagePilot() {
             if (!snap || !snap.ready) return;
             if (snap.levelEnded || snap.victoryPending) {
                 window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
-                window.__novawingPilotOutcome = snap.victoryPending ? 'win' : 'lose';
+                window.__novawingPilotOutcome = (snap.victoryPending || snap.levelCompleted) ? 'win' : 'lose';
                 return;
             }
             const decision = decide(snap);
@@ -1912,6 +1912,7 @@ export function installInPagePilot() {
     window.__novawingPilotLastNote = '';
     window.__novawingPilotLastSnap = null;
     window.__novawingPilotInstalled = true;
+    window.__novawingPilotTick = tick;
     window.__novawingPilotStop = function () {
         if (window.__novawingPilotRaf) cancelAnimationFrame(window.__novawingPilotRaf);
         window.__novawingPilotRaf = null;
@@ -1937,6 +1938,7 @@ async function runOnce(browser, trialIndex) {
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     url.searchParams.set('trial', String(trialIndex));
+    url.searchParams.set('playtestContinues', 'unlimited');
     appendPlaytestTimeScale(url);
     if (process.env.LEVEL) {
         url.searchParams.set('level', String(process.env.LEVEL));
@@ -2002,8 +2004,7 @@ async function runOnce(browser, trialIndex) {
     try {
         while (Date.now() - started < DURATION_MS) {
             const status = await page.evaluate(() => {
-                const snap = window.__novawingPilotLastSnap ||
-                    (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
+                const snap = (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
                         ? window.__novawingDebug.getBotSnapshot()
                         : null);
                 return {
@@ -2035,7 +2036,11 @@ async function runOnce(browser, trialIndex) {
                 }
             }
 
-            if (status.outcome === 'win' || (snap && snap.victoryPending)) {
+            if (snap?.continuePending) {
+                await page.evaluate(() => __novawingDebug.acceptContinue());
+                continue;
+            }
+            if (status.outcome === 'win' || (snap && (snap.victoryPending || snap.levelCompleted))) {
                 won = true;
                 await page.waitForTimeout(2000);
                 break;
@@ -2110,6 +2115,7 @@ async function runOnce(browser, trialIndex) {
         peakScore,
         peakWeapon,
         lives: finalSnap ? finalSnap.lives : null,
+        unlimitedContinues: finalSnap?.unlimitedContinues, continuesUsed: finalSnap?.continuesUsed,
         phase: finalSnap ? finalSnap.phase : null,
         level: finalSnap ? finalSnap.level : null,
         levelEnded: finalSnap ? finalSnap.levelEnded : null,

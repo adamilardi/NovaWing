@@ -16,7 +16,7 @@ record demos (heuristic expert / human later)
 
 ---
 
-## Observation / action contract (OBS v3)
+## Observation / action contract (OBS v4)
 
 **Single source of truth:** `scripts/rl/runtime-pure.js` (loaded by Node via `load-runtime.mjs` and by Playwright via `addInitScript`). Mirrored by:
 
@@ -24,17 +24,37 @@ record demos (heuristic expert / human later)
 |-------|----------|
 | Encode + forward + in-page pilot | `scripts/rl/runtime-pure.js` |
 | Node re-exports | `obs-encode.mjs`, `policy-infer.mjs` |
-| Python constants | `rl/contract.py` (`OBS_VERSION=3`, `OBS_SIZE=192`) |
+| Python constants | `rl/contract.py` (`OBS_VERSION=4`, `OBS_SIZE=320`) |
 | Trainers | `rl/train_bc.py`, `rl/train_rl.py` (PPO) |
 
-- **Obs v3** (`OBS_SIZE=192`): v2 features plus pilot dodge facts (hold collision, time to impact, edge distances, nine safe move flags, next boss shot). Edge and move flags use canonical axes in vertical play. Enemy bullets are ordered by hold collision time.
+- **Obs v4** (`OBS_SIZE=320`): the v3 prefix plus 128 tactical features covering all observed threats, warnings, movement rules and action estimates. The prefix includes pilot dodge facts (hold collision, time to impact, edge distances, nine safe move flags, next boss shot). Edge and move flags use canonical axes in vertical play. Enemy bullets are ordered by hold collision time.
 - **Action**: `[ax, ay, fire, boost]` with `ax,ay ∈ [-1,1]`, buttons in `{0,1}`.
 
-**Do not mix earlier demos with v3 training.** Old demos are skipped with a counter; re-record after the bump:
+**Do not mix earlier demos with v4 training.** Old demos are skipped with a counter; re-record after the bump:
 
 ```bash
 # optional: archive demos from older observation versions
 npm run rl:archive-demos
+```
+
+## Controlled playtesting and PPO collection
+
+The recorder, scenario harness and policy evaluator freeze the browser clock while choosing actions, then advance every 16 ms game frame at 1× player rules. `DURATION_MS` is a simulated-time budget; `TIMESCALE` does not accelerate these runners. Headless runs omit GPU drawing between decisions. Headless recording defaults to three concurrent episodes (`WORKERS=1` serializes them); `SAMPLE_MS` defaults to 64 ms and controls how long each recorded action is held. JEV likewise freezes during API calls and retains screenshots.
+
+Policy recording stores complete `(obs, action, reward, nextObs)` transitions, including terminal and timeout markers. Rewards follow the action that earned them. Timeout rollouts bootstrap the last observation; wins and deaths bootstrap zero. Terminal snapshots can have no player body.
+
+For PPO, stochastic movement uses a Gaussian with the exported `moveLogStd`; buttons use Bernoulli draws from the network probabilities. The environment receives bounded movement, while `behaviorAction` retains the unclipped latent sample and `behaviorLogProb` records its joint likelihood. `EXPLORE_MOVE_STD` can override the collection variance; the override is saved with the behavior policy. `EXPERT=policy` always samples during collection and rejects tactical assistance because an assisted action has a different distribution.
+
+Each recording saves `policy-<sha256>.json` beside the demos. Keep that file with its rollouts. PPO selects the latest behavior-policy cohort, restores that exact actor, verifies its hash, and keeps recorded likelihoods and advantages fixed throughout the update. Older demos without `transitionVersion: 1` remain available for BC but are skipped by PPO; record fresh policy demos before fine-tuning. The included policy weights may also need current-contract BC training first.
+
+Scenario jumps must reach their requested segment and authored orientation; a failed jump aborts instead of reporting a mislabeled trial. Scenario reports include wall and simulated durations and effective player rules. `DURATION_MS` can cap a scenario for a quick smoke check.
+
+Run `npm run rl:verify-control` against a freshly built local server for the real-browser clock, segment and terminal-outcome regressions.
+
+```bash
+WORKERS=3 EPISODES=6 npm run rl:record
+EXPERT=policy WORKERS=3 EPISODES=6 npm run rl:record
+SCENARIO=l3-topdown,l3-final DURATION_MS=10000 npm run rl:playtest
 ```
 
 ---
@@ -321,3 +341,9 @@ Used in `scripts/rl/rewards.mjs` for PPO:
 ```bash
 bash scripts/rl/status.sh
 ```
+
+### Hotshot playtest continues
+
+Recorders and evaluators opt into `playtestContinues=unlimited`; Bonus Testing Grounds also enables it for manual play. This preserves ordinary damage, movement and collisions while allowing repeated continues. Reports include `unlimitedContinues` and `continuesUsed`; distinguish continued clears from death-free clears. The engine exposes `levelCompleted` for bonus-stage wins.
+
+Collection may freeze simulation while computing actions, then advance a controlled 1x clock. Set `SAMPLE_MS=128` for cheaper collection (actions stay held for 128 simulated milliseconds), and use `WORKERS=3` for concurrent episodes. For PPO, collect fresh policy rollouts into a separate directory for each policy snapshot; old demos lack the validated behavior contract.

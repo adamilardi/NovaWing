@@ -62,7 +62,7 @@ test('authored geometry displaces flight while leaving reachable timed openings 
                         assert.ok(edgeHi <= lo + 0.01 || edgeLo >= hi - 0.01, 'visible openings must have no solid bodies');
                     }
                 }
-                const drop = segment.powerups[index];
+                const drop = segment.powerups.find(p => p.progressMs === event.progressMs);
                 assert.equal(drop.progressMs, event.progressMs);
                 assert.equal(drop.terrainSpeed, true, 'reward must travel with its open gate');
                 assert.equal(segment.scrollMode === 'vertical' ? drop.x : drop.y, event.routeCenter);
@@ -84,7 +84,7 @@ test('authored geometry displaces flight while leaving reachable timed openings 
                 assert.ok(Math.max(...events.map(e => e.routeCenter)) - Math.min(...events.map(e => e.routeCenter)) > span * 0.18);
                 assert.ok(events.slice(1).some(e => e.escort), 'geometry must be combined with live pressure');
             } else {
-                assert.deepEqual(segment.powerups.map(p => p.type), ['repair', 'shield']);
+                assert.deepEqual(segment.powerups.filter(p => p.type !== 'weapon').map(p => p.type), ['repair', 'shield']);
                 assert.ok(events.every(e => !e.escort && e.openBands[0][1] - e.openBands[0][0] >= span * 0.59));
             }
         }
@@ -130,6 +130,23 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
             assert.ok(vertical ? wall.vx === 0 && wall.vy > 0 : wall.vx < 0 && wall.vy === 0);
             assert.ok(wall.isWall && wall.body.width > 0 && wall.body.height > 0);
             assert.ok(Assets.sprites[wall.key]);
+        }
+    }
+});
+
+ test('Level 7 Hotshot has sustained pressure and recurring route-aligned weapons', () => {
+    const level = Levels.getEffectiveLevelDefs()[6];
+    assert.ok(level.difficultyModes.normal.enemyCadenceScale < 1);
+    assert.ok(level.difficultyModes.normal.bossTempoScale < 1);
+    assert.ok(level.difficultyModes.hard.enemyShotSpeedScale > level.difficultyModes.normal.enemyShotSpeedScale);
+    for (const segment of level.segments.filter(s => s.kind === 'waves')) {
+        const weapons = segment.powerups.filter(p => p.type === 'weapon');
+        assert.ok(weapons.length >= 2);
+        for (const drop of weapons) {
+            const gate = segment.terrainEvents.find(e => e.progressMs === drop.progressMs || e.progressMs + 700 === drop.progressMs);
+            assert.ok(gate);
+            assert.equal(drop.y, gate.routeCenter);
+            assert.equal(drop.terrainSpeed, true);
         }
     }
 });

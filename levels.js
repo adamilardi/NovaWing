@@ -912,18 +912,26 @@
         art: { background: 'ashenGraveyard', wall: 'ashenSurface', boss: 'graveyardLeviathan' },
         music: { waves: 'canyon', boss: 'finalBoss' },
         durationMs: 82000, bossScore: 3800, bossHealth: 360,
-        difficultyModes: EXPANSION_MODES,
+        difficultyModes: {
+            easy: EXPANSION_MODES.easy,
+            normal: { enemyCadenceScale: 0.72, enemyShotSpeedScale: 1.15,
+                enemyFireChance: 0.8, typedFireChance: 1, interceptorChance: 0.45,
+                bossTempoScale: 0.7, bossShotSpeedScale: 1.15 },
+            hard: { enemyCadenceScale: 0.6, enemyShotSpeedScale: 1.3,
+                enemyFireChance: 0.95, typedFireChance: 1, interceptorChance: 0.55,
+                bossTempoScale: 0.65, bossShotSpeedScale: 1.3 }
+        },
         bossEncounters: { final: { behavior: 'graveyardLeviathan', health: 300, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
         segments: [
             expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation'], 'hullField', false,
-                { waveIntervalMinMs: 2900, waveIntervalMaxMs: 3500 }),
+                { waveIntervalMinMs: 1900, waveIntervalMaxMs: 2400 }),
             expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser'], 'ashShelter', false,
-                { waveIntervalMinMs: 3100, waveIntervalMaxMs: 3600 }),
+                { waveIntervalMinMs: 1800, waveIntervalMaxMs: 2300 }),
             expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
                 { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
             expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation'], 'finalBoss', false,
-                { waveIntervalMinMs: 3100, waveIntervalMaxMs: 3700 }),
+                { waveIntervalMinMs: 1700, waveIntervalMaxMs: 2200 }),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
         ]
@@ -996,6 +1004,15 @@
                 : ['weapon', 'shield', 'repair', 'boost', 'bomb'][index % 5],
             terrainSpeed: true
         }, vertical ? { x: event.routeCenter, y: -110 } : { x: 910, y: event.routeCenter }));
+        if (level.id === 7) {
+            // Follow the same open route, just behind its gate. Supply weapons
+            // throughout the pressure sections and during the recovery window.
+            for (const event of events.filter((_, index) => recovery || index % 2 === 1)) {
+                segment.powerups.push({ progressMs: event.progressMs + 700,
+                    type: 'weapon', terrainSpeed: true, x: 910, y: event.routeCenter });
+            }
+            segment.powerups.sort((a, b) => a.progressMs - b.progressMs);
+        }
         return events;
     }
     [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7].forEach(level => {

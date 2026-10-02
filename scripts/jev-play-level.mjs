@@ -12,6 +12,7 @@ import path from 'node:path';
 import { defaultLaunchOptions } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
+import { endpointError, jumpControlledSegment, synchronizeControlledLoop } from './rl/controlled-play.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const LEVEL = Number(process.env.LEVEL || 4);
@@ -32,7 +33,7 @@ async function chooseMove(client, observation, recent) {
     const durationMs = Math.max(16, Math.floor((observation.phase === 'boss' ? Math.min(HOLD_MS, 160) : HOLD_MS) / 16) * 16);
     const state = buildJevCombatState(observation.snapshot, durationMs, recent);
     const request = {
-        state: { goal: `Clear Level ${LEVEL} under ordinary Hotshot rules. Auto-fire is held.`, ...state },
+        state: { goal: `Clear Level ${LEVEL} under ordinary Hotshot combat rules with unlimited playtest continues. Auto-fire is held.`, ...state },
         questions: {
             action: choice({
                 task: `Choose one direction AND boost setting to hold for exactly ${durationMs} ms.`,
@@ -84,6 +85,7 @@ async function main() {
     } });
     const browser = await chromium.launch(defaultLaunchOptions(true));
     const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
+    await page.clock.install();
     const pageErrors = [];
     page.on('pageerror', (error) => {
         const message = String(error.message || error);
@@ -94,13 +96,15 @@ async function main() {
     const url = new URL(BASE);
     url.searchParams.set('level', String(LEVEL));
     url.searchParams.set('timescale', '1');
+    url.searchParams.set('playtestContinues', 'unlimited');
     url.searchParams.set('diff', 'normal');
     console.log(`Jev Hotshot Level ${LEVEL}`, url.toString());
     await page.goto(url.toString(), { waitUntil: 'load', timeout: 30000 });
-    await page.waitForFunction(() => window.__novawingDebug && window.__novawingDebug.ready(), null, { timeout: 30000 });
-    await page.clock.install();
+    await page.waitForFunction(() => window.__novawingDebug?.ready() &&
+        window.__novawingDebug.getBotSnapshot().ready, null, { timeout: 45000 });
     // Model latency must not become unobserved flight.
     await page.clock.pauseAt(new Date(Date.now() + 100));
+    await synchronizeControlledLoop(page);
     await page.evaluate((targetLevel) => {
         window.__novawingDebug.setDifficultyMode('normal');
         if (!window.__novawingDebug.startGame() && currentLevel !== targetLevel) {
@@ -122,8 +126,7 @@ async function main() {
         continues:initial.continuesRemaining, segment:initial.segment, orientation:initial.combatOrientation,
         elapsedMs:initial.elapsedMs, rules:initial.movementRules};
     if (process.env.JEV_BOSS_ONLY === '1') {
-        await page.evaluate(() => __novawingDebug.setSegment('finalBoss'));
-        await page.clock.runFor(32);
+        await jumpControlledSegment(page, 'finalBoss');
     }
     console.log('booted', JSON.stringify(boot));
     if (boot.level !== LEVEL) throw new Error('Requested level did not start');
@@ -168,6 +171,7 @@ async function main() {
                 opening: window.__novawingDebug.getOpeningState().active,
                 transitioning: snap.levelTransitioning,
                 victory: snap.victoryPending,
+                completed: snap.levelCompleted,
                 ended: snap.levelEnded,
                 continuePending: snap.continuePending,
                 awaitingNext: snap.awaitingNextLevel
@@ -233,8 +237,7 @@ async function main() {
             const elapsed = await stepGame(decision.durationMs);
             const outcome = await observe();
             const actualDurationMs = outcome.snapshot.time - observation.snapshot.time;
-            const endpointErrorPx = Math.hypot(decision.end.x - outcome.snapshot.player.x,
-                decision.end.y - outcome.snapshot.player.y);
+            const endpointErrorPx = endpointError(decision.end, outcome.snapshot);
             actions.push({
                 actualDurationMs, endpointErrorPx,
                 livesChange: outcome.lives - observation.lives,
@@ -267,14 +270,15 @@ async function main() {
         const finalSnap = await observe().catch(() => null);
         await page.screenshot({ path: path.join(OUT, 'final.png') }).catch(() => {});
         await browser.close();
-        const beaten = Boolean(finalSnap && (finalSnap.flags.victory || finalSnap.flags.awaitingNext || finalSnap.level > LEVEL));
+        const beaten = Boolean(finalSnap && (finalSnap.flags.completed || finalSnap.flags.victory || finalSnap.flags.awaitingNext || finalSnap.level > LEVEL));
         const report = {
             when: new Date().toISOString(),
             level: LEVEL,
             segmentEvidence,
             adapterVersion: 2,
             runtimeHashes,
-            ordinaryPlayerRules: true,
+            ordinaryPlayerRules: false,
+            ordinaryCombatRules: true, unlimitedContinues: true,
             effectiveRules: finalSnap?.snapshot?.movementRules,
             playtestBot: finalSnap?.snapshot?.playtestBot,
             holdMs: HOLD_MS, bossHoldMs: Math.min(HOLD_MS, 160),

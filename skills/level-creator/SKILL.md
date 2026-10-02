@@ -80,3 +80,11 @@ Exercise completion in the actual flow. A shortened test or debug skip can verif
 Write a build report in the project's established content documentation location, or default to `docs/level-builds/<level-id>.md`. Include the brief and assumptions, source selection/path, mapping of selected art to runtime asset keys, existing enemy and wave identifiers used, level structure, changed files, entry/playtest instructions, check results, and remaining limitations. Distinguish selected enemy concepts from the working enemies actually used.
 
 Finish with the playable level's identity, how to start it, the art/enemies used, and verification results. Creating the level authorizes local implementation and checks. Deployment follows only an explicit deployment request and the project's deployment instructions. If required inputs or execution capabilities prevent completion, retain useful work and report the specific remaining dependency.
+
+## NovaWing playtesting and difficulty requirements
+
+For NovaWing level creation, default to **VERY hard Hotshot (`diff=normal`)** unless the user specifies otherwise. Build difficulty from sustained enemy pressure, demanding movement and distinct boss patterns, while preserving readable tells and physically traversable escape routes. Verify the actual Hotshot difficulty overlay; do not substitute Supernova or make an encounter difficult solely by increasing health.
+
+Every level must contain reachable weapon powerups, including recurring replenishment through long combat sections and a weapon opportunity in recovery sections. Keep pickups aligned with safe terrain routes and verify their runtime scheduling and collection.
+
+Bonus Testing Grounds offers unlimited continues. Automated playtests must use `playtestContinues=unlimited`, retain ordinary movement, damage and collision rules, and explicitly accept pending continues. Report continues used and distinguish a continued clear from a death-free clear. Pausing simulation to compute actions is allowed; prefer controlled 1x simulation, suppress rendering between captures, and record simulated duration separately from wall time. Unlimited continues are a playtest setting, not a change to ranked campaign continue budgets.

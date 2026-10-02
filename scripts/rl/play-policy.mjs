@@ -7,18 +7,21 @@
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
+import { bootControlledGame, jumpControlledSegment, suppressRendering,
+    pauseAutomaticPilot, decideControlledAction } from './controlled-play.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions, appendPlaytestTimeScale } from './chrome.mjs';
+import { defaultLaunchOptions } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HEADLESS = process.env.HEADLESS !== '0';
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
+if (!Number.isFinite(DURATION_MS) || DURATION_MS < 16) throw new Error('DURATION_MS must be at least 16');
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
 const EVAL_OUT = process.env.EVAL_OUT || path.join(ROOT, 'rl', 'weights', 'last-eval.json');
@@ -30,19 +33,9 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
     : (process.env.BOSS_ENCOUNTER || '1');
 
 function isLevelOrCampaignWin(snap, outcome) {
-    if (outcome === 'win' || (snap && snap.victoryPending)) return true;
+    if (outcome === 'win' || (snap && (snap.victoryPending || snap.levelCompleted))) return true;
     if (START_LEVEL != null && snap && (Number(snap.level) > START_LEVEL || snap.awaitingNextLevel)) return true;
     return false;
-}
-
-async function waitForGame(page, timeout = 25000) {
-    await page.waitForFunction(() => {
-        return window.__novawingDebug &&
-            window.__novawingDebug.ready &&
-            window.__novawingDebug.ready() &&
-            typeof window.__novawingDebug.setBotInput === 'function' &&
-            typeof window.__novawingDebug.getBotSnapshot === 'function';
-    }, null, { timeout });
 }
 
 /**
@@ -82,8 +75,11 @@ async function main() {
     }
     if (process.env.EXPLORE === '1') {
         policy.explore = true;
-        if (process.env.EXPLORE_MOVE_STD) policy.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
-        if (process.env.EXPLORE_BOOST_P) policy.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
+        if (process.env.EXPLORE_MOVE_STD) {
+            const std = Math.log(Number(process.env.EXPLORE_MOVE_STD));
+            if (!Number.isFinite(std)) throw new Error('Invalid EXPLORE_MOVE_STD');
+            policy.moveLogStd = [std, std];
+        }
     }
 
     policy.tacticalAssist = process.env.POLICY_ASSIST !== '0';
@@ -108,6 +104,7 @@ async function main() {
         deviceScaleFactor: 1
     });
     const page = await context.newPage();
+    await page.clock.install();
     await page.addInitScript({ path: RUNTIME_PURE_PATH });
     page.on('dialog', async (dialog) => {
         if (dialog.type() === 'prompt') await dialog.accept('RLPilot');
@@ -117,64 +114,41 @@ async function main() {
 
     try {
         const url = new URL(BASE);
-        url.searchParams.set('bot', String(Date.now()));
+        url.searchParams.delete('bot');
         url.searchParams.set('policy', '1');
-        appendPlaytestTimeScale(url);
+        url.searchParams.set('timescale', '1');
+        url.searchParams.set('diff', 'normal');
+        url.searchParams.set('playtestContinues', 'unlimited');
         if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
-        if (BOSS_SKIP) url.searchParams.set('boss', BOSS_ENCOUNTER);
-        if (process.env.SEGMENT) url.searchParams.set('segment', String(process.env.SEGMENT));
 
         const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
         if (!resp || !resp.ok()) throw new Error(`load failed: ${resp && resp.status()}`);
-        await waitForGame(page);
-        // Runtime may not attach via addInitScript on all Playwright versions if
-        // navigated before — ensure present.
-        const hasRt = await page.evaluate(() => Boolean(window.NovaWingRL));
-        if (!hasRt) {
-            await page.addScriptTag({ path: RUNTIME_PURE_PATH });
-        }
-        await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
-        await page.waitForTimeout(150);
-
+        await bootControlledGame(page, START_LEVEL || 1);
         if (BOSS_SKIP) {
-            await page.waitForTimeout(350);
-            await page.evaluate((enc) => {
-                if (window.__novawingDebug && window.__novawingDebug.startBoss) {
-                    window.__novawingDebug.startBoss(enc === '1' ? true : enc);
-                }
-            }, BOSS_ENCOUNTER);
-            await page.waitForFunction(() => {
-                const d = window.__novawingDebug;
-                if (!d || !d.getBotSnapshot) return false;
-                const s = d.getBotSnapshot();
-                return s && s.phase === 'boss' && s.boss;
-            }, null, { timeout: 8000 });
-            await page.waitForTimeout(100);
+            await page.evaluate(enc => __novawingDebug.startBoss(enc === '1' ? true : enc), BOSS_ENCOUNTER);
+            for (let i = 0; i < 180; i++) {
+                await page.clock.runFor(16);
+                if (await page.evaluate(() => { const s = __novawingDebug.getBotSnapshot(); return s.phase === 'boss' && !!s.boss; })) break;
+                if (i === 179) throw new Error('Boss practice failed to start');
+            }
         }
-        if (process.env.SEGMENT && !BOSS_SKIP) {
-            await page.waitForTimeout(350);
-            const jumped = await page.evaluate((seg) => {
-                if (window.__novawingDebug && window.__novawingDebug.setSegment) {
-                    return window.__novawingDebug.setSegment(seg);
-                }
-                return false;
-            }, process.env.SEGMENT);
-            if (!jumped) console.warn(`[play-policy] setSegment(${process.env.SEGMENT}) failed`);
-            await page.waitForTimeout(200);
-        }
+        if (process.env.SEGMENT && !BOSS_SKIP) await jumpControlledSegment(page, process.env.SEGMENT);
+        if (HEADLESS) await suppressRendering(page);
 
         await page.evaluate(installPolicyPilot, policy);
+        await pauseAutomaticPilot(page, 'policy');
         console.log('policy pilot installed');
 
         const started = Date.now();
         let lastLog = 0;
+        let simulatedMs = 0;
         let won = false;
         let finalSnap = null;
         let peakLevel = START_LEVEL || 1;
 
-        while (Date.now() - started < DURATION_MS) {
+        while (simulatedMs < DURATION_MS) {
             const status = await page.evaluate(() => ({
-                snap: window.__novawingPolicyLastSnap ||
+                snap:
                     (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
                         ? window.__novawingDebug.getBotSnapshot()
                         : null),
@@ -182,8 +156,12 @@ async function main() {
                 outcome: window.__novawingPolicyOutcome,
                 error: window.__novawingPolicyError
             }));
-            if (status.error) console.error('[policy]', status.error);
+            if (status.error) throw new Error(status.error);
             finalSnap = status.snap;
+            if (status.snap?.continuePending) {
+                await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
+                continue;
+            }
             if (status.snap && status.snap.level > peakLevel) peakLevel = status.snap.level;
 
             if (isLevelOrCampaignWin(status.snap, status.outcome)) {
@@ -213,14 +191,23 @@ async function main() {
                 );
                 lastLog = now;
             }
-            await page.waitForTimeout(100);
+            await decideControlledAction(page, 'policy');
+            const advanceMs = Math.min(64, DURATION_MS - simulatedMs);
+            await page.clock.runFor(advanceMs);
+            simulatedMs += advanceMs;
         }
 
+        finalSnap = await page.evaluate(() => __novawingDebug.getBotSnapshot());
+        won = Boolean(isLevelOrCampaignWin(finalSnap));
         const elapsedMs = finalSnap && finalSnap.elapsedMs != null
             ? finalSnap.elapsedMs
             : (Date.now() - started);
         const result = {
             won,
+            simulatedMs, wallMs: Date.now() - started,
+            playtestBot: finalSnap?.playtestBot, timeScale: finalSnap?.timeScale,
+            difficultyMode: finalSnap?.difficultyMode,
+            unlimitedContinues: finalSnap?.unlimitedContinues, continuesUsed: finalSnap?.continuesUsed,
             score: finalSnap ? finalSnap.score : null,
             lives: finalSnap ? finalSnap.lives : null,
             level: finalSnap ? finalSnap.level : null,
@@ -253,7 +240,7 @@ async function main() {
         }
 
         try {
-            const boardPath = path.join(ROOT, 'rl', 'weights', 'eval-log.jsonl');
+            const boardPath = process.env.EVAL_LOG || path.join(ROOT, 'rl', 'weights', 'eval-log.jsonl');
             fs.mkdirSync(path.dirname(boardPath), { recursive: true });
             fs.appendFileSync(boardPath, JSON.stringify({
                 at: new Date().toISOString(),

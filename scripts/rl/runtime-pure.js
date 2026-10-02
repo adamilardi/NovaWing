@@ -546,6 +546,27 @@
         return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     }
 
+    // Likelihood is for the latent (unclipped) Gaussian action. The environment
+    // receives its clipped counterpart; retaining the latent avoids boundary atoms.
+    function samplePolicyAction(policy, obs, random = Math.random, normal = gauss) {
+        var y = forwardPolicy(policy, obs);
+        var stds = policy.moveLogStd || [Math.log(0.22), Math.log(0.22)];
+        if (stds.length !== 2 || !stds.every(Number.isFinite)) throw new Error('Invalid movement variance');
+        var raw = [], logp = 0;
+        for (var i = 0; i < 2; i++) {
+            var ls = clamp(stds[i], -4, 0.5), std = Math.exp(ls);
+            raw[i] = y[i] + std * normal();
+            logp += -0.5 * (Math.pow((raw[i] - y[i]) / std, 2) + 2 * ls + Math.log(2 * Math.PI));
+        }
+        for (var j = 2; j < 4; j++) {
+            var probability = clamp(y[j], 1e-6, 1 - 1e-6);
+            raw[j] = random() < probability ? 1 : 0;
+            logp += Math.log(raw[j] ? probability : 1 - probability);
+        }
+        return { behaviorAction: raw, behaviorLogProb: logp,
+            action: [clamp(raw[0], -1, 1), clamp(raw[1], -1, 1), raw[2], raw[3]] };
+    }
+
     /**
      * Install rAF pilot inside the page. Expects this runtime already loaded.
      * @param {object} policy JSON weights (+ optional explore flags)
@@ -555,27 +576,14 @@
         if(assisted && !global.NovaWingTactics) throw new Error('Tactical runtime is required for assisted policy');
         var lastDecisionAt=-Infinity;
         var explore = Boolean(policy && policy.explore);
-        var exploreMove = Number.isFinite(policy && policy.exploreMoveStd)
-            ? policy.exploreMoveStd
-            : 0.18;
-        var exploreBoostP = Number.isFinite(policy && policy.exploreBoostP)
-            ? policy.exploreBoostP
-            : 0.05;
-
         function actionFromObs(obs) {
+            if (explore) return decodeAction(samplePolicyAction(policy, obs).action);
             var y = forwardPolicy(policy, obs);
             var ax = y[0];
             var ay = y[1];
             var fire = y[2] >= 0.5;
             var boost = y[3] >= 0.5;
-            if (explore) {
-                ax = Math.max(-1, Math.min(1, ax + gauss() * exploreMove));
-                ay = Math.max(-1, Math.min(1, ay + gauss() * exploreMove));
-                fire = true;
-                if (Math.random() < exploreBoostP) boost = !boost;
-            } else {
-                fire = true;
-            }
+            fire = true;
             return { x: ax, y: ay, fire: fire, boost: boost };
         }
 
@@ -585,9 +593,9 @@
                 var snap = global.__novawingDebug.getBotSnapshot();
                 global.__novawingPolicyLastSnap = snap;
                 if (!snap || !snap.ready || !snap.player) return;
-                if (snap.levelEnded || snap.victoryPending) {
+                if ((snap.levelEnded && !snap.levelTransitioning) || snap.victoryPending) {
                     global.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
-                    global.__novawingPolicyOutcome = snap.victoryPending ? 'win' : 'lose';
+                    global.__novawingPolicyOutcome = (snap.victoryPending || snap.levelCompleted) ? 'win' : 'lose';
                     return;
                 }
                 if (snap.levelTransitioning) {
@@ -614,6 +622,7 @@
             global.__novawingPolicyRaf = requestAnimationFrame(loop);
         }
         global.__novawingPolicy = policy;
+        global.__novawingPolicyTick = tick;
         global.__novawingPolicyOutcome = null;
         global.__novawingPolicyError = null;
         global.__novawingPolicyStop = function () {
@@ -629,6 +638,7 @@
 
     var api = {
         OBS_VERSION: OBS_VERSION,
+        samplePolicyAction: samplePolicyAction,
         OBS_SIZE: OBS_SIZE,
         ACTION_SIZE: ACTION_SIZE,
         K_ENEMIES: K_ENEMIES,

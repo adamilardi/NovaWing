@@ -61,3 +61,13 @@ test('invulnerability expiry is explicit and a locked boost is not offered', asy
     assert.equal(r.actionOptions.hold.predictedCollision.kind, 'bullet');
     assert.equal(Object.keys(r.actionOptions).length, 9);
 });
+
+test('JEV receives unlimited continue rules and the actual continue count', async () => {
+    const { buildJevCombatState } = await api, s = fixture();
+    s.unlimitedContinues = true;
+    s.continuesUsed = 7;
+    const state = buildJevCombatState(s, 128);
+    assert.equal(state.rules.unlimitedContinues, true);
+    assert.equal(state.rules.continuesUsed, 7);
+    assert.equal(state.rules.playtestBot, false);
+});

@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { defaultLaunchOptions } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState } from './jev-combat-state.mjs';
 import { installInPagePilot } from './play-bot.mjs';
-import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
+import { bootControlledGame } from './rl/controlled-play.mjs';
+import { verifyServedRuntime } from './jev-runtime.mjs';
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const out = process.env.TERRAIN_PLAY_OUT || '/tmp/novawing-terrain-playtest';
 const predictive = process.env.TERRAIN_PILOT === 'predictive';
@@ -23,15 +24,9 @@ try {
         const page = await context.newPage();
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
-        await page.goto(`${base}?level=${level}&timescale=1&diff=normal`, { waitUntil: 'load' });
-        await page.waitForFunction(() => __novawingDebug?.getOpeningState().active);
         await page.clock.install();
-        await page.clock.pauseAt(new Date(Date.now() + 100));
-        await page.evaluate(() => {
-            __novawingDebug.startGame();
-            markSessionLeaderboardIneligible();
-        });
-        const initial = await settleLevelStart(page, level);
+        await page.goto(`${base}?level=${level}&timescale=1&diff=normal&playtestContinues=unlimited`, { waitUntil: 'load' });
+        const initial = await bootControlledGame(page, level);
         assert.equal(initial.lives, 3);
         assert.equal(initial.playtestBot, false);
         assert.equal(initial.timeScale, 1);
@@ -120,6 +115,7 @@ try {
                     walls: walls.getChildren().filter(w => w.active).length,
                     enemies: enemies.getChildren().filter(e => e.active).length,
                     bossHealth, continuesUsed, continuePending, levelEnded,
+                    levelCompleted: snap.levelCompleted,
                     awaitingNextLevel, victoryPending,
                     timeScale: snap.timeScale, playtestBot: snap.playtestBot };
             });
@@ -140,20 +136,24 @@ try {
                 await page.evaluate(() => { game.renderer.render = function () {}; });
                 console.log('pilot', level, s.segment, 'lives', s.lives, 'at', Math.round((simulated+400)/1000), 'seconds');
             }
-            if (s.awaitingNextLevel || s.victoryPending || (s.levelEnded && s.bossHealth === 0 && s.phase === 'boss') || s.level > level) { outcome = 'clear'; break; }
-            if (s.continuePending || s.levelEnded) { outcome = 'defeated'; break; }
+            if (s.awaitingNextLevel || s.victoryPending || s.levelCompleted || s.level > level) { outcome = 'clear'; break; }
+            if (s.continuePending) {
+                await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
+                continue;
+            }
+            if (s.levelEnded) { outcome = 'defeated'; break; }
         }
         assert.deepEqual(errors, []);
         const result = { level, pilot: predictive ? 'local predictive collision planner with visible-terrain lookahead' : 'existing heuristic',
             lookaheadMs: predictive ? lookaheadMs : null, outcome, simulatedMs: simulated + stepMs,
             entry: process.env.TERRAIN_PLAY_BOSS_ONLY === '1' ? 'debug boss entry; no wave playthrough' : 'full level',
             ordinaryRules: { lives: 3, mode: 'normal', timeScale: 1, playtestBot: false,
-                invulnerabilityOverride: false, continuesAccepted: 0 },
+                invulnerabilityOverride: false, unlimitedContinues: true, continuesAccepted: observations.at(-1)?.continuesUsed || 0 },
             changes, final: observations.at(-1), damageEvents: await page.evaluate(() => window.__terrainDamageEvents), errors };
         results.push(result);
         fs.writeFileSync(`${out}/l${level}-observations.json`, JSON.stringify(observations, null, 2));
         fs.writeFileSync(`${out}/report.json`, JSON.stringify({ runtimeHashes,
-            method: 'Uninterrupted automated-pilot flight under ordinary player rules using controlled 1x simulation clock; GPU rendering suppressed between captures, update and physics retained; outcomes are pilot-specific, not human balance proof', results }, null, 2));
+            method: 'Automated-pilot flight under ordinary combat rules with unlimited playtest continues using controlled 1x simulation clock; GPU rendering suppressed between captures, update and physics retained; outcomes are pilot-specific, not human balance proof', results }, null, 2));
         console.log('RESULT', level, outcome, 'lives', result.final.lives);
         await context.close();
     }

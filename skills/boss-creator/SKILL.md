@@ -70,3 +70,11 @@ Separate structural/debug checks from balance playthroughs. Forced damage, invul
 Write `docs/boss-builds/<boss-id>.md` (or the established project location) with the level assignment, identity and distinguishing mechanic, source/production art paths, texture/animation keys, behavior dispatch identifier, phase/attack summary, collision and anchor metadata, changed files, local entry instructions, check results and remaining gaps. Link source manifests or handoffs where present. Record whether each artifact is concept art, production art, or a playable implementation.
 
 Finish with what was implemented, how to reach the fight, verification and any specific remaining dependency. A source image and a new label alone are incomplete when a playable boss was requested.
+
+## NovaWing playtesting and difficulty requirements
+
+For NovaWing level creation, default to **VERY hard Hotshot (`diff=normal`)** unless the user specifies otherwise. Build difficulty from sustained enemy pressure, demanding movement and distinct boss patterns, while preserving readable tells and physically traversable escape routes. Verify the actual Hotshot difficulty overlay; do not substitute Supernova or make an encounter difficult solely by increasing health.
+
+Every level must contain reachable weapon powerups, including recurring replenishment through long combat sections and a weapon opportunity in recovery sections. Keep pickups aligned with safe terrain routes and verify their runtime scheduling and collection.
+
+Bonus Testing Grounds offers unlimited continues. Automated playtests must use `playtestContinues=unlimited`, retain ordinary movement, damage and collision rules, and explicitly accept pending continues. Report continues used and distinguish a continued clear from a death-free clear. Pausing simulation to compute actions is allowed; prefer controlled 1x simulation, suppress rendering between captures, and record simulated duration separately from wall time. Unlimited continues are a playtest setting, not a change to ranked campaign continue budgets.

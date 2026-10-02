@@ -58,6 +58,10 @@ class EpisodeRecord:
     rewards: np.ndarray  # (T,)
     headers: dict = field(default_factory=dict)
     max_progress: float = 0.0
+    behavior_logp: Optional[np.ndarray] = None
+    behavior_act: Optional[np.ndarray] = None
+    last_obs: Optional[np.ndarray] = None
+    terminal: bool = True
 
     @property
     def steps(self) -> int:
@@ -196,6 +200,14 @@ def iter_episode_records(
         obs_list: List[np.ndarray] = []
         act_list: List[np.ndarray] = []
         rew_list: List[float] = []
+        behavior_lp: List[float] = []
+        behavior_actions: List[np.ndarray] = []
+        if require_rewards and (header.get("transitionVersion") != 1 or
+                                not header.get("policyId") or header.get("tacticalAssist")):
+            yield EpisodeRecord(str(path), False, expert, None, 0, 1,
+                                np.zeros((0, require_size)), np.zeros((0, ACTION_SIZE)),
+                                np.zeros(0)), "behavior_contract"
+            continue
         keep_vertical = header_has_canonical_axes(header)
         for st in steps:
             if not keep_vertical and is_vertical_step_meta(st.get("meta")):
@@ -207,9 +219,33 @@ def iter_episode_records(
                 continue
             if obs.shape != (require_size,) or act.shape != (ACTION_SIZE,):
                 continue
+            if require_rewards:
+                try:
+                    raw = np.asarray(st["behaviorAction"], dtype=np.float32)
+                    lp = float(st["behaviorLogProb"])
+                    nxt = np.asarray(st["nextObs"], dtype=np.float32)
+                    valid = (raw.shape == (ACTION_SIZE,) and nxt.shape == (require_size,)
+                             and np.isfinite(raw).all() and np.isfinite(nxt).all()
+                             and np.isfinite(lp) and np.isfinite(obs).all() and np.isfinite(act).all()
+                             and np.allclose(act[:2], np.clip(raw[:2], -1, 1), atol=1e-6)
+                             and np.array_equal(act[2:], raw[2:])
+                             and np.isin(raw[2:], [0, 1]).all()
+                             and np.isfinite(float(st["reward"])))
+                except (KeyError, TypeError, ValueError):
+                    valid = False
+                if not valid:
+                    break
+                behavior_lp.append(lp)
+                behavior_actions.append(raw)
             obs_list.append(obs)
             act_list.append(act)
             rew_list.append(float(st.get("reward") or 0.0))
+
+        if require_rewards and len(obs_list) != len(steps):
+            yield EpisodeRecord(str(path), False, expert, None, 0, 1,
+                                np.zeros((0, require_size)), np.zeros((0, ACTION_SIZE)),
+                                np.zeros(0)), "invalid_transition"
+            continue
 
         if not obs_list:
             yield (
@@ -260,6 +296,10 @@ def iter_episode_records(
                 rewards=np.asarray(rew_list, dtype=np.float32),
                 headers=header,
                 max_progress=_max_progress(steps),
+                behavior_logp=np.asarray(behavior_lp, dtype=np.float32) if require_rewards else None,
+                behavior_act=np.stack(behavior_actions) if require_rewards else None,
+                last_obs=np.asarray(steps[-1]["nextObs"], dtype=np.float32) if require_rewards else None,
+                terminal=bool(steps[-1].get("terminated")) if require_rewards else True,
             ),
             None,
         )
@@ -453,6 +493,18 @@ def load_rl_episodes(
         meta["steps"] += ep.steps
         episodes.append(ep)
 
+    # PPO consumes one fresh behavior-policy cohort. Old versions remain useful
+    # for BC but must not be silently mixed into an on-policy update.
+    if episodes:
+        latest = max(episodes, key=lambda ep: ep.headers.get("createdAt", ep.path))
+        policy_id = latest.headers["policyId"]
+        selected = [ep for ep in episodes if ep.headers["policyId"] == policy_id]
+        meta["skipped_other"] += len(episodes) - len(selected)
+        episodes = selected
+        meta["policy_id"] = policy_id
+        meta["policy_eps"] = len(episodes)
+        meta["wins"] = sum(ep.won for ep in episodes)
+        meta["steps"] = sum(ep.steps for ep in episodes)
     return episodes, meta
 
 

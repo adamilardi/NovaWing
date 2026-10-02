@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import random
 import sys
 from pathlib import Path
@@ -91,13 +92,15 @@ def build_ppo_buffer(
 
     for ep in episodes:
         values = rollout_values(model, ep.obs, device)
-        # Bootstrap 0 at terminal (episode ends on win/death/timeout)
+        if ep.behavior_logp is None or ep.behavior_act is None:
+            raise ValueError('PPO requires recorded behavior likelihoods and latent actions')
+        last_value = 0.0 if ep.terminal else float(rollout_values(model, ep.last_obs[None, :], device)[0])
         advantages, returns = compute_gae(
-            ep.rewards, values, gamma=gamma, lam=gae_lambda, last_value=0.0
+            ep.rewards, values, gamma=gamma, lam=gae_lambda, last_value=last_value
         )
-        old_logp = rollout_logprobs(model, ep.obs, ep.act, device)
+        old_logp = ep.behavior_logp
         obs_parts.append(ep.obs)
-        act_parts.append(ep.act)
+        act_parts.append(ep.behavior_act)
         adv_parts.append(advantages)
         ret_parts.append(returns)
         old_lp_parts.append(old_logp)
@@ -215,14 +218,22 @@ def train(args: argparse.Namespace) -> Path:
     if meta["steps"] < args.min_steps:
         print(
             f"Not enough self-play data ({meta['steps']} < {args.min_steps}) — "
-            "skipping PPO (need EXPERT=policy demos with rewards)."
+            "skipping PPO (record fresh EXPERT=policy transitions and behavior likelihoods)."
         )
         return Path(args.out)
 
-    hidden = [int(x) for x in args.hidden.split(",") if x.strip()] or [128, 128]
+    behavior_path = demo_dir / f"policy-{meta['policy_id']}.json"
+    behavior_bytes = behavior_path.read_bytes()
+    if hashlib.sha256(behavior_bytes).hexdigest() != meta['policy_id']:
+        raise ValueError('Behavior policy hash does not match recorded policy identity')
+    behavior = json.loads(behavior_bytes)
+    hidden = behavior['hidden']
     device = torch.device(
         "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
     )
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     model = ActorCritic(OBS_SIZE, ACTION_SIZE, hidden).to(device)
 
     ckpt = Path(args.checkpoint)
@@ -237,22 +248,26 @@ def train(args: argparse.Namespace) -> Path:
     else:
         print(f"WARNING: no checkpoint at {ckpt}, training from scratch")
 
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    # BC may have run since collection. Restore the actual behavior actor, while
+    # retaining the value head when a compatible checkpoint exists.
+    actor = model.as_policy_mlp()
+    linears = [layer for layer in actor.net if isinstance(layer, nn.Linear)]
+    if len(linears) != len(behavior['layers']):
+        raise ValueError('Behavior policy architecture mismatch')
+    with torch.no_grad():
+        for dst, src in zip(linears, behavior['layers']):
+            dst.weight.copy_(torch.tensor(src['w'], device=device))
+            dst.bias.copy_(torch.tensor(src['b'], device=device))
+        model.load_policy_mlp_state(actor.state_dict())
+        model.move_log_std.copy_(torch.tensor(behavior['moveLogStd'], device=device))
 
-    # Rebuild buffer each outer epoch so advantages track the improving value head
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    # Keep both advantages and the behavior denominator fixed for this rollout.
+    buf = build_ppo_buffer(model, episodes, gamma=args.gamma,
+                           gae_lambda=args.gae_lambda, device=device)
     last_stats = {}
     for epoch in range(1, args.epochs + 1):
-        buf = build_ppo_buffer(
-            model,
-            episodes,
-            gamma=args.gamma,
-            gae_lambda=args.gae_lambda,
-            device=device,
-            normalize_adv=True,
-        )
         stats = ppo_update(
             model,
             opt,
@@ -273,10 +288,13 @@ def train(args: argparse.Namespace) -> Path:
             f"ent={stats['entropy']:.3f}  kl={stats['approx_kl']:.4f}  "
             f"clipfrac={stats['clipfrac']:.3f}"
         )
+        if args.target_kl > 0 and stats['approx_kl'] > args.target_kl * 1.5:
+            break
 
     payload = model.export_json()
     payload["train"] = {
         "kind": "ppo",
+        "behavior_policy_id": meta['policy_id'],
         "policy_episodes": meta["policy_eps"],
         "wins": meta["wins"],
         "steps": meta["steps"],
@@ -332,7 +350,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=str,
         default=str(DEFAULT_OUT.with_suffix(".pt")),
     )
-    p.add_argument("--epochs", type=int, default=4, help="Outer loops (rebuild GAE)")
+    p.add_argument("--epochs", type=int, default=4, help="Outer loops over one fixed rollout buffer")
     p.add_argument(
         "--ppo-epochs",
         type=int,
@@ -357,7 +375,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--include-all",
         action="store_true",
-        help="Include non-policy demos that carry rewards (default: policy only)",
+        help="Include any demos with the validated behavior contract (default: policy only)",
     )
     p.add_argument("--hidden", type=str, default="128,128")
     p.add_argument("--seed", type=int, default=42)

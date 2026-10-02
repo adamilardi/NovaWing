@@ -14,12 +14,14 @@
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
+import { bootControlledGame, jumpControlledSegment, suppressRendering,
+    pauseAutomaticPilot, decideControlledAction } from './controlled-play.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions, appendPlaytestTimeScale } from './chrome.mjs';
+import { defaultLaunchOptions } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -29,7 +31,8 @@ const TRIALS = Math.max(1, Number(process.env.TRIALS || 1));
 const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const OUT_DIR = process.env.PLAYTEST_OUT || path.join(ROOT, 'rl', 'weights');
-const SAMPLE_MS = Number(process.env.SAMPLE_MS || 100);
+const SAMPLE_MS = Number(process.env.SAMPLE_MS || 64);
+if (!Number.isFinite(SAMPLE_MS) || SAMPLE_MS < 16) throw new Error('SAMPLE_MS must be at least 16');
 
 /** Named scenarios for coverage-oriented playtests. */
 export const SCENARIOS = {
@@ -166,7 +169,7 @@ async function installExpert(page, policy) {
 async function readStatus(page, mode) {
     if (mode === 'policy') {
         return page.evaluate(() => ({
-            snap: window.__novawingPolicyLastSnap ||
+            snap:
                 (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
                     ? window.__novawingDebug.getBotSnapshot()
                     : null),
@@ -174,7 +177,7 @@ async function readStatus(page, mode) {
         }));
     }
     return page.evaluate(() => ({
-        snap: window.__novawingPilotLastSnap ||
+        snap:
             (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
                 ? window.__novawingDebug.getBotSnapshot()
                 : null),
@@ -194,16 +197,18 @@ async function stopExpert(page, mode) {
 
 async function runTrial(browser, scenarioId, scenario, trial, policy) {
     const url = new URL(BASE);
-    url.searchParams.set('bot', String(Date.now()));
+    url.searchParams.delete('bot');
     url.searchParams.set('playtest', scenarioId);
     url.searchParams.set('level', String(scenario.level));
-    appendPlaytestTimeScale(url);
+    url.searchParams.set('timescale', '1');
+    url.searchParams.set('playtestContinues', 'unlimited');
 
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
         deviceScaleFactor: 1
     });
     const page = await context.newPage();
+    await page.clock.install();
     if (EXPERT === 'policy') {
         await page.addInitScript({ path: RUNTIME_PURE_PATH });
     }
@@ -222,37 +227,25 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
         throw new Error(`Failed to load game: ${resp && resp.status()}`);
     }
 
-    await waitForGame(page);
-    await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
-    await page.waitForTimeout(200);
-
-    // Optional debug segment jump (after level has started)
-    if (scenario.segment) {
-        await page.waitForTimeout(400);
-        const ok = await page.evaluate((seg) => {
-            if (window.__novawingDebug && window.__novawingDebug.setSegment) {
-                return window.__novawingDebug.setSegment(seg);
-            }
-            return false;
-        }, scenario.segment);
-        if (!ok) {
-            console.warn(`[playtest] setSegment(${scenario.segment}) failed or unavailable`);
-        }
-        await page.waitForTimeout(300);
-    }
+    await bootControlledGame(page, scenario.level);
+    if (scenario.segment) await jumpControlledSegment(page, scenario.segment);
+    if (HEADLESS) await suppressRendering(page);
 
     const mode = await installExpert(page, policy);
+    await pauseAutomaticPilot(page, mode);
     const started = Date.now();
-    const durationMs = scenario.durationMs || 90000;
+    const durationMs = Number(process.env.DURATION_MS || scenario.durationMs || 90000);
+    if (!Number.isFinite(durationMs) || durationMs < 16) throw new Error('DURATION_MS must be at least 16');
     const segmentsSeen = new Set();
     const phasesSeen = new Set();
     const history = [];
     let finalSnap = null;
     let won = false;
     let outcome = 'timeout';
+    let simulatedMs = 0;
 
     try {
-        while (Date.now() - started < durationMs) {
+        while (simulatedMs < durationMs) {
             const status = await readStatus(page, mode);
             const snap = status.snap;
             finalSnap = snap;
@@ -269,8 +262,12 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
                 });
             }
 
-            const isWin = status.outcome === 'win' || (snap && (snap.victoryPending || snap.awaitingNextLevel || snap.level > scenario.level));
-            const isLose = status.outcome === 'lose' || (snap && snap.levelEnded);
+            if (snap?.continuePending) {
+                await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
+                continue;
+            }
+            const isWin = status.outcome === 'win' || (snap && (snap.levelCompleted || snap.victoryPending || snap.awaitingNextLevel || snap.level > scenario.level));
+            const isLose = (status.outcome === 'lose' || (snap && snap.levelEnded)) && !snap?.levelTransitioning;
             if (isWin) {
                 won = true;
                 outcome = 'win';
@@ -281,7 +278,15 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
                 outcome = classifyDeath(snap, history);
                 break;
             }
-            await page.waitForTimeout(SAMPLE_MS);
+            const advanceMs = Math.min(SAMPLE_MS, durationMs - simulatedMs);
+            await decideControlledAction(page, mode);
+            await page.clock.runFor(advanceMs);
+            simulatedMs += advanceMs;
+        }
+        finalSnap = await page.evaluate(() => __novawingDebug.getBotSnapshot());
+        if (finalSnap.levelCompleted || finalSnap.victoryPending || finalSnap.awaitingNextLevel || finalSnap.level > scenario.level) {
+            won = true;
+            outcome = 'win';
         }
         if (outcome === 'timeout' && finalSnap) {
             // Still alive at duration cap
@@ -316,7 +321,10 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
         segmentsSeen: [...segmentsSeen],
         phasesSeen: [...phasesSeen],
         pageErrors: pageErrors.slice(0, 5),
-        jumpSegment: scenario.segment || null
+        jumpSegment: scenario.segment || null,
+        playtestBot: finalSnap?.playtestBot, timeScale: finalSnap?.timeScale,
+        unlimitedContinues: finalSnap?.unlimitedContinues, continuesUsed: finalSnap?.continuesUsed,
+        simulatedMs, wallMs: Date.now() - started
     };
 }
 

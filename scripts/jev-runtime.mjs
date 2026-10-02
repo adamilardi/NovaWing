@@ -24,7 +24,10 @@ export async function settleLevelStart(page, level) {
                 (!first?.combatOrientation || combatOrientation === first.combatOrientation);
         }, level);
         if (settled) {
+            const before = await page.evaluate(() => __novawingDebug.getBotSnapshot().time);
             await page.clock.runFor(32); // synchronize animation/body dimensions after scene reset
+            const after = await page.evaluate(() => __novawingDebug.getBotSnapshot().time);
+            if (after <= before) continue;
             await page.evaluate(() => {
                 markSessionLeaderboardIneligible();
                 __novawingDebug.setBotInput({x:0,y:0,fire:true,boost:false});
@@ -32,5 +35,13 @@ export async function settleLevelStart(page, level) {
             return page.evaluate(() => __novawingDebug.getBotSnapshot());
         }
     }
-    throw new Error(`Level ${level} did not settle into its first authored segment`);
+    const state = await page.evaluate(() => ({
+        level: currentLevel, segment: levelSegment, opening: openingActive,
+        transitioning: levelTransitioning, ended: levelEnded, paused: gamePaused,
+        playerActive: player?.active, clockMs: playtestClockMs, levelStartTime,
+        sceneTime: getActiveScene()?.time?.now, performanceMs: performance.now(),
+        frame: game.loop.frame, delta: game.loop.delta, running: game.loop.running,
+        scenePaused: getActiveScene()?.sys?.isPaused()
+    }));
+    throw new Error(`Level ${level} did not settle into its first authored segment: ${JSON.stringify(state)}`);
 }

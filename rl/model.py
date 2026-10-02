@@ -138,6 +138,7 @@ class ActorCritic(nn.Module):
     def export_json(self) -> dict:
         payload = self.as_policy_mlp().export_json()
         payload["kind"] = "ppo-mlp"
+        payload["moveLogStd"] = self.move_log_std.detach().clamp(-4.0, 0.5).cpu().tolist()
         return payload
 
 
@@ -171,20 +172,16 @@ def log_prob_actions(
     boost_logit = logits[:, 3]
     fire_t = actions[:, 2].clamp(0, 1)
     boost_t = actions[:, 3].clamp(0, 1)
-    log_p_fire = -F.binary_cross_entropy_with_logits(
-        fire_logit, fire_t, reduction="none"
-    )
-    log_p_boost = -F.binary_cross_entropy_with_logits(
-        boost_logit, boost_t, reduction="none"
-    )
     p_fire = torch.sigmoid(fire_logit).clamp(1e-6, 1 - 1e-6)
     p_boost = torch.sigmoid(boost_logit).clamp(1e-6, 1 - 1e-6)
+    log_p_fire = fire_t * p_fire.log() + (1 - fire_t) * (1 - p_fire).log()
+    log_p_boost = boost_t * p_boost.log() + (1 - boost_t) * (1 - p_boost).log()
     ent_fire = -(p_fire * p_fire.log() + (1 - p_fire) * (1 - p_fire).log())
     ent_boost = -(p_boost * p_boost.log() + (1 - p_boost) * (1 - p_boost).log())
 
-    # Weight buttons less than move (fire is nearly always on in shmups)
-    logp = log_p_move + 0.25 * log_p_fire + 0.75 * log_p_boost
-    entropy = ent_move + 0.25 * ent_fire + 0.75 * ent_boost
+    # Joint probability must match the browser sampler exactly.
+    logp = log_p_move + log_p_fire + log_p_boost
+    entropy = ent_move + ent_fire + ent_boost
     return logp, entropy
 
 
