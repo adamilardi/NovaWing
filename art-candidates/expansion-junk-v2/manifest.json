@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "brief_id": "expansion-junk-v2",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "expansion-junk-v2",
+      "title": "Broken hulls, machinery, ice and masonry",
+      "status": "generated",
+      "summary": "Six flat 2D solid modules for the four experimental stages.",
+      "assets": [
+        {
+          "key": "salvageBulkhead",
+          "role": "solid-obstacle",
+          "crop": [
+            0,
+            0,
+            512,
+            512
+          ],
+          "alpha_bounds_in_cell": [
+            34,
+            24,
+            479,
+            496
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        },
+        {
+          "key": "salvageHull",
+          "role": "solid-obstacle",
+          "crop": [
+            512,
+            0,
+            1024,
+            512
+          ],
+          "alpha_bounds_in_cell": [
+            48,
+            30,
+            478,
+            494
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        },
+        {
+          "key": "salvageEngine",
+          "role": "solid-obstacle",
+          "crop": [
+            1024,
+            0,
+            1536,
+            512
+          ],
+          "alpha_bounds_in_cell": [
+            35,
+            33,
+            464,
+            492
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        },
+        {
+          "key": "riftStone",
+          "role": "solid-obstacle",
+          "crop": [
+            0,
+            512,
+            512,
+            1024
+          ],
+          "alpha_bounds_in_cell": [
+            33,
+            25,
+            510,
+            480
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        },
+        {
+          "key": "voidMasonry",
+          "role": "solid-obstacle",
+          "crop": [
+            512,
+            512,
+            1024,
+            1024
+          ],
+          "alpha_bounds_in_cell": [
+            21,
+            4,
+            495,
+            485
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        },
+        {
+          "key": "salvageGirder",
+          "role": "solid-obstacle",
+          "crop": [
+            1024,
+            512,
+            1536,
+            1024
+          ],
+          "alpha_bounds_in_cell": [
+            33,
+            26,
+            482,
+            481
+          ],
+          "path": "../../assets/levels/terrain/junk-atlas-v2.png",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "verified"
+        }
+      ],
+      "preview_paths": [
+        "../../assets/levels/terrain/junk-atlas-v2.png"
+      ],
+      "prompt_path": "prompts.md",
+      "reference_paths": [
+        "original-atlas.png"
+      ],
+      "spec": {
+        "camera": "orthographic-2d",
+        "scroll": "horizontal-or-vertical",
+        "palette": [
+          "slate gray",
+          "copper rust",
+          "ice cyan",
+          "violet stone"
+        ],
+        "tile_axes": [],
+        "layer_order": [
+          "solid-obstacle"
+        ],
+        "target_display": "Approximately 100\u2013170 pixels per dense module; compose route openings between separate bodies."
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "pass"
+      },
+      "alpha_range": [
+        0,
+        254
+      ],
+      "sha256": "f7bbd204ceed2d5ce4f97e57435434c7ffc380a6b727ed37a91c1e35403b59ac",
+      "limitations": [
+        "Dense modules use conservative inset rectangular bodies; small surface holes are not fly-through routes."
+      ]
+    }
+  ]
+}

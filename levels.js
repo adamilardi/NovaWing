@@ -539,6 +539,7 @@
     const LEVEL_2 = defineLevel({
         id: 2,
         name: 'THE CANYON',
+        music: { waves: 'canyon', boss: 'canyonBoss' },
         tier: 2,
         bossScore: 1500,
         durationMs: 90000,
@@ -613,6 +614,7 @@
     const LEVEL_3 = defineLevel({
         id: 3,
         name: 'SINGULARITY RUN',
+        music: { waves: 'gauntlet', boss: 'singularity' },
         tier: 3,
         // Fight-wide knobs (boss tempo, i-frames, boost) belong here so they
         // apply in intro + gauntlet + final. Gauntlet-only: topdown.difficulty.
@@ -797,6 +799,7 @@
             {
                 id: 'finalBoss',
                 kind: 'boss',
+                music: { boss: 'finalBoss' },
                 // Final-fight-only: difficulty: { bossTempoScale: 1.2 }
                 bossEncounter: 'final',
                 scrollMode: 'vertical',
@@ -808,8 +811,205 @@
         ]
     });
 
-    // Shipped campaign: L1 → L2 → L3 SINGULARITY RUN
-    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3];
+    // Expansion: each environment has its own teach / pressure / recovery arc.
+    // Existing enemy implementations and boss profiles remain shared.
+    const EXPANSION_MODES = {
+        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
+            typedFireChance: 0.35, bossTempoScale: 1.5, bossHealthScale: 0.72 },
+        normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
+            typedFireChance: 0.6, bossTempoScale: 1.25 },
+        hard: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.05,
+            bossTempoScale: 0.98 }
+    };
+    function expansionDrops(vertical, duration) {
+        const positions = vertical ? [400, 420, 380, 400, 420] : [300, 320, 280, 300, 320];
+        return ['weapon', 'shield', 'repair', 'boost', 'bomb'].map((type, i) =>
+            Object.assign({ progressMs: Math.round(duration * [0.1, 0.28, 0.5, 0.68, 0.82][i]), type },
+                vertical ? { x: positions[i] } : { y: positions[i] }));
+    }
+    function expansionWaves(id, durationMs, keys, next, vertical, difficulty = {}) {
+        return { id, kind: 'waves', durationMs, progressDriven: true,
+            scrollMode: vertical ? 'vertical' : 'horizontal',
+            combatOrientation: vertical ? 'up' : 'right',
+            wavePatternKeys: keys, powerups: expansionDrops(vertical, durationMs),
+            difficulty: Object.assign({ firstWaveDelayMs: 1500,
+                waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 }, difficulty), next };
+    }
+    const LEVEL_4 = defineLevel({
+        id: 4, name: 'ORBITAL FOUNDRY', tier: 3,
+        introHint: 'READ THE OFFSET GATES • CROSS BETWEEN VOLLEYS',
+        art: { background: 'orbitalFoundry', wall: 'foundryWall', boss: 'foundryWarden' },
+        music: { waves: 'canyon', boss: 'canyonBoss' },
+        durationMs: 72000, bossScore: 2800, bossHealth: 290,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'foundryWarden', health: 230, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: FOUNDRY WARDEN' } },
+        segments: [
+            expansionWaves('outerRing', 22000, ['diagonal', 'vFormation', 'chaser'], 'smelter', false,
+                { interceptorChance: 0.18, enemyFireChance: 0.32 }),
+            expansionWaves('smelter', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors'], 'cooling', false,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            expansionWaves('cooling', 9000, ['diagonal'], 'coreDefense', false,
+                { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
+            expansionWaves('coreDefense', 15000, ['splitterAmbush', 'sandwich', 'vFormation'], 'finalBoss', false),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_5 = defineLevel({
+        id: 5, name: 'AURORA PASSAGE', tier: 3, scrollMode: 'vertical',
+        introHint: 'FOLLOW THE ICE GAPS • KEEP ROOM TO DODGE',
+        art: { background: 'auroraPassage', wall: 'iceSurface', bossVertical: 'auroraSentinel' },
+        music: { waves: 'gauntlet', boss: 'singularity' },
+        durationMs: 78000, bossScore: 3000, bossHealth: 310,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'auroraSentinel', health: 245, maxPhase: 3, entry: 'warpCenter',
+            arena: 'flat', label: 'WARNING: AURORA SENTINEL' } },
+        segments: [
+            expansionWaves('iceApproach', 22000, ['verticalRegular', 'verticalV'], 'riftCrossfire', true,
+                { typedFireChance: 0.4, enemySpeedScale: 0.9 }),
+            expansionWaves('riftCrossfire', 25000, ['riserColumns', 'crossfireStrafe', 'verticalV'], 'eyeOfStorm', true,
+                { waveIntervalMinMs: 2800, waveIntervalMaxMs: 3400 }),
+            expansionWaves('eyeOfStorm', 10000, ['verticalRegular'], 'auroraCrown', true,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            expansionWaves('auroraCrown', 21000, ['orbiterRing', 'pincerDive', 'crossfireStrafe'], 'finalBoss', true,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'vertical',
+                combatOrientation: 'up', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_6 = defineLevel({
+        id: 6, name: 'VOID CATHEDRAL', tier: 3,
+        introHint: 'THREAD THE BROKEN ARCHES • DODGE THE SIGIL LANES',
+        art: { background: 'voidCathedral', wall: 'cathedralWall', bossVertical: 'voidCantor' },
+        music: { waves: 'singularity', boss: 'finalBoss', transition: null },
+        durationMs: 85000, bossScore: 3500, bossHealth: 340,
+        difficultyModes: EXPANSION_MODES,
+        blackHole: { x: 400, y: 230, pullStrength: 175, safeRadius: 120,
+            dangerRadius: 44, killRadius: 24, maxPullRadius: 380,
+            dangerTickMs: 550, previewPullScale: 0.15, previewAnchor: { x: 400, y: 40 },
+            previewAtMs: 60000 },
+        bossEncounters: { final: { behavior: 'voidCantor', health: 270, maxPhase: 3, entry: 'warpCenter',
+            arena: 'flat', label: 'WARNING: VOID CANTOR' } },
+        segments: [
+            expansionWaves('narthex', 20000, ['vFormation', 'oppositeInterceptors', 'splitterPair'], 'shear', false,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            { id: 'shear', kind: 'transition', cinematic: 'perspectiveFlip', durationMs: 3500,
+                scrollMode: 'horizontal', combatOrientation: 'right', powerups: [], next: 'ascendingNave' },
+            expansionWaves('ascendingNave', 23000, ['verticalV', 'riserColumns', 'orbiterRing'], 'sanctuary', true,
+                { waveIntervalMinMs: 2800, waveIntervalMaxMs: 3400 }),
+            expansionWaves('sanctuary', 10000, ['verticalRegular'], 'heartGuard', true,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            expansionWaves('heartGuard', 28500, ['crossfireStrafe', 'pincerDive', 'orbiterRing', 'mixedGauntlet'], 'finalBoss', true,
+                { waveIntervalMinMs: 2900, waveIntervalMaxMs: 3500 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'vertical',
+                combatOrientation: 'up', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_7 = defineLevel({
+        id: 7, name: 'ASHEN GRAVEYARD', tier: 3,
+        introHint: 'CHOOSE A WRECK CHANNEL • WATCH THE BATTERIES',
+        art: { background: 'ashenGraveyard', wall: 'ashenSurface', boss: 'graveyardLeviathan' },
+        music: { waves: 'canyon', boss: 'finalBoss' },
+        durationMs: 82000, bossScore: 3800, bossHealth: 360,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'graveyardLeviathan', health: 300, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
+        segments: [
+            expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation'], 'hullField', false,
+                { waveIntervalMinMs: 2900, waveIntervalMaxMs: 3500 }),
+            expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser'], 'ashShelter', false,
+                { waveIntervalMinMs: 3100, waveIntervalMaxMs: 3600 }),
+            expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
+                { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
+            expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation'], 'finalBoss', false,
+                { waveIntervalMinMs: 3100, waveIntervalMaxMs: 3700 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+
+    // Authored flight routes. Each gate is a set of separate solid modules;
+    // its opening stays empty in both rendering and physics.
+    function terrainEvents(level, segment, phase) {
+        const vertical = segment.scrollMode === 'vertical';
+        const span = vertical ? 800 : 600;
+        const recovery = phase === 2;
+        const routes = {
+            4: [[0.60, 0.30, 0.70, 0.36, 0.64], [0.30, 0.70, 0.34, 0.66, 0.30],
+                [0.50, 0.55], [0.70, 0.30, 0.64]],
+            5: [[0.36, 0.70, 0.30, 0.66, 0.34], [0.70, 0.30, 0.66, 0.34, 0.64],
+                [0.52, 0.46], [0.30, 0.68, 0.32, 0.66]],
+            6: [[0.62, 0.30, 0.70, 0.36], [0.30, 0.68, 0.32, 0.70, 0.36],
+                [0.48, 0.52], [0.70, 0.30, 0.66, 0.34, 0.64]],
+            7: [[0.40, 0.70, 0.30, 0.66, 0.34], [0.70, 0.30, 0.64, 0.34, 0.66],
+                [0.46, 0.53], [0.30, 0.70, 0.34, 0.66]]
+        };
+        const centers = routes[level.id][phase];
+        const gap = recovery ? span * 0.60 : (vertical ? 272 : 224);
+        const interval = recovery ? 4000 : 3600;
+        const material = { 4: 'salvageBulkhead', 5: 'riftStone', 6: 'voidMasonry', 7: 'salvageHull' }[level.id];
+        const names = { 4: ['OFFSET BULKHEADS', 'FURNACE CROSSING', 'COOLING BAY', 'REACTOR GATES'],
+            5: ['ICE SHELVES', 'RIFT SLALOM', 'STORM SHELTER', 'CRYSTAL CROWN'],
+            6: ['BROKEN ARCHES', 'ASCENDING BUTTRESSES', 'SANCTUARY', 'CHOIR GATES'],
+            7: ['WRECK APPROACH', 'SPLIT HULLS', 'SALVAGE SHELTER', 'BATTERY TRENCH'] };
+        const events = centers.map((ratio, index) => {
+            const center = Math.round(span * ratio);
+            const open = [center - gap / 2, center + gap / 2];
+            const blocks = [];
+            const length = recovery ? 110 : (level.id === 6 ? 170 : 145);
+            // Beveled solid tiles give irregular caps without painting over gaps.
+            for (const [lo, hi] of [[0, open[0]], [open[1], span]]) {
+                const count = Math.max(1, Math.ceil((hi - lo) / 120));
+                const breadth = (hi - lo) / count;
+                for (let tile = 0; tile < count; tile++) {
+                    const cap = hi === open[0] ? tile === count - 1 : tile === 0;
+                    const along = recovery ? 0 : level.id === 4 ? (lo === 0 ? 0 : 65)
+                        : level.id === 5 ? ((tile + index) % 3 - 1) * 30
+                        : level.id === 6 ? (cap ? -35 : 35) : (lo === 0 ? 45 : -25);
+                    blocks.push({ cross: lo + (tile + 0.5) * breadth, breadth,
+                        length: cap && !recovery ? length - 25 : length,
+                        along, texture: cap && level.id === 4 && phase > 0 ? 'salvageEngine' : material,
+                        artVariant: 1 + (tile + index) % 3 });
+                }
+            }
+            // A split wreck offers two real passages around a central engine.
+            const split = level.id === 7 && !recovery && index % 3 === 2;
+            const openBands = split ? [[100, 250], [350, 500]] : [open];
+            if (split) {
+                blocks.length = 0;
+                for (const [lo, hi, texture] of [[0, 100, material], [250, 350, 'salvageEngine'], [500, 600, material]]) {
+                    blocks.push({ cross: (lo + hi) / 2, breadth: hi - lo, length: 150, texture });
+                }
+            }
+            return { progressMs: index * interval, blocks, openBands,
+                routeCenter: split ? (index % 2 ? 175 : 425) : center,
+                cue: index === 0 ? names[level.id][phase] : null,
+                // Fire across the route from ahead; first gate teaches geometry.
+                escort: !recovery && index > 0 ? { cross: split ? 300 : center,
+                    type: vertical ? 'regular' : 'interceptor' } : null };
+        });
+        // Pickups travel beside their gate at the same speed, keeping the authored
+        // route reachable instead of drifting into a later wall at another speed.
+        segment.powerups = events.map((event, index) => Object.assign({
+            progressMs: event.progressMs, type: recovery ? ['repair', 'shield'][index]
+                : ['weapon', 'shield', 'repair', 'boost', 'bomb'][index % 5],
+            terrainSpeed: true
+        }, vertical ? { x: event.routeCenter, y: -110 } : { x: 910, y: event.routeCenter }));
+        return events;
+    }
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7].forEach(level => {
+        level.segments.filter(s => s.kind === 'waves').forEach((segment, phase) => {
+            segment.terrainEvents = terrainEvents(level, segment, phase);
+            // Authored gate escorts provide pressure; leave space between random waves.
+            if (phase !== 2) {
+                segment.difficulty.waveIntervalMinMs += 800;
+                segment.difficulty.waveIntervalMaxMs += 800;
+            }
+        });
+    });
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7];
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7].forEach(level => { level.bonus = true; });
 
     /**
      * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via
@@ -897,13 +1097,13 @@
     }
 
     function getCampaignBossScore() {
-        return getEffectiveLevelDefs().reduce(function (sum, def) {
+        return getEffectiveLevelDefs().filter(def => !def.bonus).reduce(function (sum, def) {
             return sum + Flow.totals(def).score;
         }, 0);
     }
 
     function getCampaignBossKills() {
-        return getEffectiveLevelDefs().reduce(function (sum, def) {
+        return getEffectiveLevelDefs().filter(def => !def.bonus).reduce(function (sum, def) {
             return sum + Flow.totals(def).kills;
         }, 0);
     }

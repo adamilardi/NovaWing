@@ -1,0 +1,1053 @@
+{
+  "runtimeHashes": {
+    "game.js": "de10f150a633edd40661accdcd52169ff15543c76cfd5bff06dc85b80953dba9",
+    "levels.js": "f57930d642144704490dc70f61a342a89dd19bbc7a48e6879144b9136152bfb9",
+    "src/assets.js": "32189db652319ace5fe5f3fd9ef3130d92926bb5c5852306de3eba080ca8fa0a",
+    "src/boss-director.js": "e970eb02ea8e464755598bffb345afcfe09451cdcf18edd2532ae3539d1e6d5f",
+    "src/pilot-facts.js": "0f484806da19e5753b1e005cc334c6eee2375622cdce8d02fc8a801e31f371f5",
+    "src/pilot-tactics.js": "457ec1b4ea2d54168f11ca6d73cd2b8fed679da899c207f9890ed5af0cf5b446"
+  },
+  "method": "Timed 1x geometry/art inspection with debug segment entry, positioned P1 and invulnerability; co-op/mobile checks, not balance proof",
+  "results": [
+    {
+      "level": 4,
+      "mobile": false,
+      "segment": "outerRing",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 372.848
+          },
+          {
+            "x": 93.48,
+            "y": 404.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 4,
+      "mobile": false,
+      "segment": "smelter",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 192.848
+          },
+          {
+            "x": 93.48,
+            "y": 404.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": false,
+      "segment": "iceApproach",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 287.88,
+            "y": 454.625
+          },
+          {
+            "x": 375.5497693920338,
+            "y": 565.6191391941416
+          }
+        ],
+        "walls": 11,
+        "enemies": 8,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": false,
+      "segment": "riftCrossfire",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 559.88,
+            "y": 454.625
+          },
+          {
+            "x": 499.88,
+            "y": 454.625
+          }
+        ],
+        "walls": 10,
+        "enemies": 11,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": false,
+      "segment": "narthex",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 384.848
+          },
+          {
+            "x": 93.48,
+            "y": 404.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 1,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": false,
+      "segment": "ascendingNave",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 239.88,
+            "y": 454.625
+          },
+          {
+            "x": 468.26160337552744,
+            "y": 515.0303014552949
+          }
+        ],
+        "walls": 10,
+        "enemies": 11,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 7,
+      "mobile": false,
+      "segment": "surfaceApproach",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 252.848
+          },
+          {
+            "x": 33.56496124031521,
+            "y": 422.05172413793105
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 7,
+      "mobile": false,
+      "segment": "hullField",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": true,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 432.848
+          },
+          {
+            "x": 33.56496124031521,
+            "y": 404.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 1,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 4,
+      "mobile": true,
+      "segment": "outerRing",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 372.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 4,
+      "mobile": true,
+      "segment": "smelter",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 192.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 1,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": true,
+      "segment": "iceApproach",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 287.88,
+            "y": 454.625
+          }
+        ],
+        "walls": 11,
+        "enemies": 7,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": true,
+      "segment": "riftCrossfire",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 559.88,
+            "y": 454.625
+          }
+        ],
+        "walls": 10,
+        "enemies": 10,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": true,
+      "segment": "narthex",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 384.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": true,
+      "segment": "ascendingNave",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 239.88,
+            "y": 454.625
+          }
+        ],
+        "walls": 10,
+        "enemies": 10,
+        "powerups": 1
+      },
+      "errors": []
+    },
+    {
+      "level": 7,
+      "mobile": true,
+      "segment": "surfaceApproach",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6224,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 252.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 2,
+        "powerups": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 7,
+      "mobile": true,
+      "segment": "hullField",
+      "asset": [
+        {
+          "key": "salvageBulkhead",
+          "width": 445,
+          "height": 472,
+          "transparent": 54656,
+          "solid": 148139
+        },
+        {
+          "key": "salvageHull",
+          "width": 430,
+          "height": 464,
+          "transparent": 41403,
+          "solid": 150423
+        },
+        {
+          "key": "salvageEngine",
+          "width": 429,
+          "height": 459,
+          "transparent": 35953,
+          "solid": 154108
+        },
+        {
+          "key": "riftStone",
+          "width": 477,
+          "height": 455,
+          "transparent": 55668,
+          "solid": 154739
+        },
+        {
+          "key": "voidMasonry",
+          "width": 474,
+          "height": 481,
+          "transparent": 55759,
+          "solid": 165966
+        },
+        {
+          "key": "salvageGirder",
+          "width": 449,
+          "height": 455,
+          "transparent": 35142,
+          "solid": 161790
+        }
+      ],
+      "state": {
+        "coop": false,
+        "progress": 6240,
+        "bodies": [
+          {
+            "x": 93.48,
+            "y": 432.848
+          }
+        ],
+        "walls": 4,
+        "enemies": 1,
+        "powerups": 0
+      },
+      "errors": []
+    }
+  ]
+}

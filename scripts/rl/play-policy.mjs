@@ -31,7 +31,7 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
 
 function isLevelOrCampaignWin(snap, outcome) {
     if (outcome === 'win' || (snap && snap.victoryPending)) return true;
-    if (START_LEVEL != null && snap && Number(snap.level) > START_LEVEL) return true;
+    if (START_LEVEL != null && snap && (Number(snap.level) > START_LEVEL || snap.awaitingNextLevel)) return true;
     return false;
 }
 
@@ -76,7 +76,7 @@ async function main() {
         process.exit(1);
     }
     const policy = JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8'));
-    if (policy.obsSize !== OBS_SIZE) {
+    if ((policy.obsSize !== OBS_SIZE && !(policy.version === 3 && policy.obsSize === 192))) {
         console.error(`Policy obsSize ${policy.obsSize} != encoder OBS_SIZE ${OBS_SIZE}`);
         process.exit(1);
     }
@@ -86,6 +86,7 @@ async function main() {
         if (process.env.EXPLORE_BOOST_P) policy.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
     }
 
+    policy.tacticalAssist = process.env.POLICY_ASSIST !== '0';
     console.log('NovaWing RL policy pilot');
     console.log(`policy=${POLICY_PATH}`);
     console.log(`hidden=${JSON.stringify(policy.hidden)} obs=${policy.obsSize}`);
@@ -256,7 +257,7 @@ async function main() {
             fs.mkdirSync(path.dirname(boardPath), { recursive: true });
             fs.appendFileSync(boardPath, JSON.stringify({
                 at: new Date().toISOString(),
-                policy: POLICY_PATH,
+                policy: POLICY_PATH, tacticalAssist: policy.tacticalAssist, legacyPolicy: policy.version === 3,
                 ...result
             }) + '\n');
         } catch {

@@ -1,0 +1,575 @@
+{
+  "runtimeHash": "00e6f5ff466716acca1e5c36c8392b865baf6c04054a38cfee54f04dfdd89ad2",
+  "when": "2026-09-30T02:08:42.648Z",
+  "method": "8x structural checks with debug progression, real title launch, asset rendering and lifecycle; not a balance playthrough",
+  "results": [
+    {
+      "level": 4,
+      "mobile": false,
+      "rendered": {
+        "level": 4,
+        "texture": "orbitalFoundry",
+        "expected": "orbitalFoundry",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 1,
+        "orientation": "right",
+        "segment": "outerRing",
+        "mobileProfile": {
+          "mobile": false,
+          "autoFire": false,
+          "perfMode": false,
+          "fxTier": "low",
+          "portrait": false
+        },
+        "touchState": {
+          "hasControls": false,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": false,
+          "domDock": false,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "orbitalFoundry"
+      },
+      "visited": [
+        {
+          "id": "outerRing",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 22000
+        },
+        {
+          "id": "smelter",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 26000
+        },
+        {
+          "id": "cooling",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 9000
+        },
+        {
+          "id": "coreDefense",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 15000
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "right",
+          "scroll": "horizontal"
+        }
+      ],
+      "pressureSample": {
+        "segment": "coreDefense",
+        "medianFrameMs": 83.39999999999964,
+        "p95FrameMs": 133.3000000000011,
+        "enemyTypes": [
+          "regular"
+        ],
+        "enemyBullets": 1,
+        "renderer": "headless software Chromium"
+      },
+      "completion": {
+        "awardedScore": 2800,
+        "awardedKills": 1,
+        "expectedScore": 2800,
+        "next": true,
+        "victory": false
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": false,
+      "rendered": {
+        "level": 5,
+        "texture": "auroraPassage",
+        "expected": "auroraPassage",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 4,
+        "orientation": "up",
+        "segment": "iceApproach",
+        "mobileProfile": {
+          "mobile": false,
+          "autoFire": false,
+          "perfMode": false,
+          "fxTier": "low",
+          "portrait": false
+        },
+        "touchState": {
+          "hasControls": false,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": false,
+          "domDock": false,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "auroraPassage"
+      },
+      "visited": [
+        {
+          "id": "iceApproach",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 22000
+        },
+        {
+          "id": "riftCrossfire",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 25000
+        },
+        {
+          "id": "eyeOfStorm",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 10000
+        },
+        {
+          "id": "auroraCrown",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 21000
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "up",
+          "scroll": "vertical"
+        }
+      ],
+      "pressureSample": {
+        "segment": "auroraCrown",
+        "medianFrameMs": 83.39999999999964,
+        "p95FrameMs": 100,
+        "enemyTypes": [
+          "dart"
+        ],
+        "enemyBullets": 1,
+        "renderer": "headless software Chromium"
+      },
+      "completion": {
+        "awardedScore": 3000,
+        "awardedKills": 1,
+        "expectedScore": 3000,
+        "next": true,
+        "victory": false
+      },
+      "errors": []
+    },
+    {
+      "level": 4,
+      "mobile": true,
+      "rendered": {
+        "level": 4,
+        "texture": "orbitalFoundry",
+        "expected": "orbitalFoundry",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 1,
+        "orientation": "right",
+        "segment": "outerRing",
+        "mobileProfile": {
+          "mobile": true,
+          "autoFire": true,
+          "perfMode": true,
+          "fxTier": "low",
+          "portrait": true
+        },
+        "touchState": {
+          "hasControls": true,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": true,
+          "domDock": true,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "orbitalFoundry"
+      },
+      "visited": [
+        {
+          "id": "outerRing",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 22000
+        },
+        {
+          "id": "smelter",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 26000
+        },
+        {
+          "id": "cooling",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 9000
+        },
+        {
+          "id": "coreDefense",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 15000
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "right",
+          "scroll": "horizontal"
+        }
+      ],
+      "pressureSample": {
+        "segment": "coreDefense",
+        "medianFrameMs": 183.29999999999927,
+        "p95FrameMs": 366.6000000000022,
+        "enemyTypes": [
+          "regular"
+        ],
+        "enemyBullets": 0,
+        "renderer": "headless software Chromium"
+      },
+      "completion": {
+        "awardedScore": 2800,
+        "awardedKills": 1,
+        "expectedScore": 2800,
+        "next": true,
+        "victory": false
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": true,
+      "rendered": {
+        "level": 5,
+        "texture": "auroraPassage",
+        "expected": "auroraPassage",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 2,
+        "orientation": "up",
+        "segment": "iceApproach",
+        "mobileProfile": {
+          "mobile": true,
+          "autoFire": true,
+          "perfMode": true,
+          "fxTier": "low",
+          "portrait": true
+        },
+        "touchState": {
+          "hasControls": true,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": true,
+          "domDock": true,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "auroraPassage"
+      },
+      "visited": [
+        {
+          "id": "iceApproach",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 22000
+        },
+        {
+          "id": "riftCrossfire",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 25000
+        },
+        {
+          "id": "eyeOfStorm",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 10000
+        },
+        {
+          "id": "auroraCrown",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 21000
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "up",
+          "scroll": "vertical"
+        }
+      ],
+      "pressureSample": {
+        "segment": "auroraCrown",
+        "medianFrameMs": 150,
+        "p95FrameMs": 233.29999999999927,
+        "enemyTypes": [
+          "strafer",
+          "dart"
+        ],
+        "enemyBullets": 1,
+        "renderer": "headless software Chromium"
+      },
+      "completion": {
+        "awardedScore": 3000,
+        "awardedKills": 1,
+        "expectedScore": 3000,
+        "next": true,
+        "victory": false
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": true,
+      "rendered": {
+        "level": 6,
+        "texture": "voidCathedral",
+        "expected": "voidCathedral",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 1,
+        "orientation": "right",
+        "segment": "narthex",
+        "mobileProfile": {
+          "mobile": true,
+          "autoFire": true,
+          "perfMode": true,
+          "fxTier": "low",
+          "portrait": true
+        },
+        "touchState": {
+          "hasControls": true,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": true,
+          "domDock": true,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "voidCathedral"
+      },
+      "visited": [
+        {
+          "id": "narthex",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 20000
+        },
+        {
+          "id": "shear",
+          "kind": "transition",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 3500
+        },
+        {
+          "id": "ascendingNave",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 23000
+        },
+        {
+          "id": "sanctuary",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 10000
+        },
+        {
+          "id": "heartGuard",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 28500
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "up",
+          "scroll": "vertical"
+        }
+      ],
+      "pressureSample": {
+        "segment": "heartGuard",
+        "medianFrameMs": 99.89999999999782,
+        "p95FrameMs": 150,
+        "enemyTypes": [
+          "dart"
+        ],
+        "enemyBullets": 0,
+        "renderer": "headless software Chromium"
+      },
+      "completion": {
+        "awardedScore": 3500,
+        "awardedKills": 1,
+        "expectedScore": 3500,
+        "next": false,
+        "victory": true
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": false,
+      "rendered": {
+        "level": 6,
+        "texture": "voidCathedral",
+        "expected": "voidCathedral",
+        "width": 1448,
+        "height": 1086,
+        "displayWidth": 960,
+        "displayHeight": 720,
+        "planetVisible": false,
+        "enemies": 1,
+        "orientation": "right",
+        "segment": "narthex",
+        "mobileProfile": {
+          "mobile": false,
+          "autoFire": false,
+          "perfMode": false,
+          "fxTier": "low",
+          "portrait": false
+        },
+        "touchState": {
+          "hasControls": false,
+          "touchMoveActive": false,
+          "touchFireHeld": false,
+          "touchBoostHeld": false,
+          "touchMoveX": 0,
+          "touchMoveY": 0,
+          "autoFire": false,
+          "domDock": false,
+          "stickPointerId": null,
+          "firePointerId": null,
+          "boostPointerId": null
+        },
+        "art": "voidCathedral"
+      },
+      "visited": [
+        {
+          "id": "narthex",
+          "kind": "waves",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 20000
+        },
+        {
+          "id": "shear",
+          "kind": "transition",
+          "orientation": "right",
+          "scroll": "horizontal",
+          "duration": 3500
+        },
+        {
+          "id": "ascendingNave",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 23000
+        },
+        {
+          "id": "sanctuary",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 10000
+        },
+        {
+          "id": "heartGuard",
+          "kind": "waves",
+          "orientation": "up",
+          "scroll": "vertical",
+          "duration": 28500
+        },
+        {
+          "id": "finalBoss",
+          "kind": "boss",
+          "orientation": "up",
+          "scroll": "vertical"
+        }
+      ],
+      "pressureSample": {
+        "segment": "heartGuard",
+        "medianFrameMs": 99.90000000000146,
+        "p95FrameMs": 133.39999999999782,
+        "enemyTypes": [
+          "strafer"
+        ],
+        "enemyBullets": 1,
+        "renderer": "headless software Chromium",
+        "timeScale": 1
+      },
+      "completion": {
+        "awardedScore": 3500,
+        "awardedKills": 1,
+        "expectedScore": 3500,
+        "next": false,
+        "victory": true
+      },
+      "errors": []
+    }
+  ]
+}

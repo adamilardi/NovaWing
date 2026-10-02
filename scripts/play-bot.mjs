@@ -245,7 +245,8 @@ export function installInPagePilot() {
             const w = walls[i];
             out.push(Object.assign({}, w, {
                 kind: 'wall',
-                vx: w.vx || -128,
+                vx: Number.isFinite(w.vx) ? w.vx : (vertical ? 0 : -128),
+                vy: Number.isFinite(w.vy) ? w.vy : (vertical ? 128 : 0),
                 w: (w.w || 96) + 14,
                 h: (w.h || 40) + 12
             }));

@@ -83,7 +83,9 @@ test('Node completion handler applies shared scope rewards and locks accepted st
     async function start(scope) {
         const response = await request('/api/run', { method: 'POST', body: { scope, version: '1.2.0' } });
         assert.equal(response.status, 201);
-        return { runId: response.json().runId, scope, version: '1.2.0', score: 5500, kills: 3, accuracy: 90 };
+        const rules = require('../shared/run-rules.cjs').rulesForScope(scope);
+        return { runId: response.json().runId, scope, version: '1.2.0',
+            score: rules ? rules.bossScore : 5500, kills: rules ? rules.bossKills : 3, accuracy: 90 };
     }
     const campaign = await start('campaign');
     assert.equal((await request('/api/run', { method: 'PATCH', body: campaign })).status, 400);
@@ -99,13 +101,13 @@ test('Node completion handler applies shared scope rewards and locks accepted st
     assert.equal((await request('/api/run', { method: 'PATCH', body: unknown })).status, 400);
 });
 
-test('five-level campaign duration survives Node completion, leaderboard submission and reload', async t => {
+test('extended campaign duration survives Node completion, leaderboard submission and reload', async t => {
     const Levels = require('../levels.js');
     const Rules = require('../shared/run-rules.cjs');
     const catalog = Levels.getEffectiveLevelDefs();
     const originalLength = catalog.length;
     t.after(() => { catalog.length = originalLength; });
-    catalog.push(Levels.defineLevel({ id: 4 }), Levels.defineLevel({ id: 5 }));
+    catalog.push(Levels.defineLevel({ id: originalLength + 1 }), Levels.defineLevel({ id: originalLength + 2 }));
     const { request, advance } = await serverFixture(t);
     const started = (await request('/api/run', { method: 'POST', body: { scope: 'campaign', version: 'extended' } })).json();
     assert.equal(Date.parse(started.expiresAt) - Date.parse(started.startedAt), Rules.runTokenTtlMs('campaign'));
@@ -212,7 +214,7 @@ test('Pages leaderboard accepts shared extended-campaign duration and run endpoi
     const catalog = Levels.getEffectiveLevelDefs();
     const originalLength = catalog.length;
     t.after(() => { catalog.length = originalLength; });
-    catalog.push(Levels.defineLevel({ id: 4 }), Levels.defineLevel({ id: 5 }));
+    catalog.push(Levels.defineLevel({ id: originalLength + 1 }), Levels.defineLevel({ id: originalLength + 2 }));
     const { onRequest: leaderboard } = await import('../functions/api/leaderboard.js');
     const { onRequest: run } = await import('../functions/api/run.js');
     const now = Date.now();

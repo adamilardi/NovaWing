@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const RUNTIME_PURE_PATH = path.join(__dirname, 'runtime-pure.js');
 
 const require = createRequire(import.meta.url);
+globalThis.NovaWingTactics = require('../../src/pilot-tactics.js');
 
 let cached = null;
 

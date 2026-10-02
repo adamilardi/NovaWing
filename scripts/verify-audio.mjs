@@ -10,12 +10,13 @@ await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch(defaultLaunchOptions(true));
 const reports = [];
 try {
-    for (const scenario of ['waves', 'boss', 'combat', 'mute', 'pause', 'styles']) {
+    for (const scenario of ['waves', 'boss', 'canyon', 'canyonBoss', 'singularity', 'gauntlet', 'finalBoss', 'combat', 'mute', 'pause', 'styles']) {
         const page = await browser.newPage();
         await page.addScriptTag({ path: path.resolve('audio.js') });
         const result = await page.evaluate(async scenario => {
             const sampleRate = 24000;
-            const seconds = ['waves', 'boss'].includes(scenario) ? 19 : 6;
+            const isScore = Object.prototype.hasOwnProperty.call(NovaWingAudio.SCORES, scenario);
+            const seconds = isScore ? 19 : 6;
             const offline = new OfflineAudioContext(2, sampleRate * seconds, sampleRate);
             let now = 0;
             let sources = 0;
@@ -39,7 +40,7 @@ try {
             window.clearInterval = id => timers.delete(id);
             window.setTimeout = (fn, ms) => { timers.set(++timerId, { fn, at: now + ms / 1000 }); return timerId; };
             const sfx = createSfx('genesis');
-            sfx.startMusic(scenario === 'boss' ? 'boss' : 'waves');
+            sfx.startMusic(isScore ? scenario : 'waves');
             let burstSources = 0;
             for (let frame = 0; frame < seconds * 100; frame++) {
                 now = frame / 100;

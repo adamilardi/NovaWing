@@ -32,7 +32,7 @@ function makeLeaderboardScope(base, difficulty) {
 function rulesForScope(scope, catalog = Levels.getEffectiveLevelDefs()) {
     const base = leaderboardScopeBase(scope);
     const match = /^level-([1-9]\d*)$/.exec(base);
-    const selected = base === 'campaign' ? catalog : catalog.filter(level => match && level.id === Number(match[1]));
+    const selected = base === 'campaign' ? catalog.filter(level => !level.bonus) : catalog.filter(level => match && level.id === Number(match[1]));
     if (!selected.length) return null;
     const payout = selected.reduce((sum, level) => {
         const reward = Flow.totals(level);

@@ -67,11 +67,11 @@ function fixtureSnap() {
 describe('OBS contract', () => {
     it('matches Python contract constants', () => {
         const py = fs.readFileSync(path.join(ROOT, 'rl', 'contract.py'), 'utf8');
-        assert.match(py, /OBS_VERSION\s*=\s*3/);
-        assert.match(py, /OBS_SIZE\s*=\s*192/);
+        assert.match(py, /OBS_VERSION\s*=\s*4/);
+        assert.match(py, /OBS_SIZE\s*=\s*320/);
         assert.match(py, /ACTION_SIZE\s*=\s*4/);
-        assert.equal(OBS_VERSION, 3);
-        assert.equal(OBS_SIZE, 192);
+        assert.equal(OBS_VERSION, 4);
+        assert.equal(OBS_SIZE, 320);
         assert.equal(ACTION_SIZE, 4);
         assert.equal(OBS_LAYOUT.canonicalAxes, true);
     });

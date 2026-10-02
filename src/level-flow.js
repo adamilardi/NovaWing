@@ -86,6 +86,7 @@
             }
             if (visited.size !== segments.length) errors.push(label + ': unreachable segments');
             for (const profile of Object.values(level.bossEncounters || {})) {
+                checkKeys(profile.behavior ? [profile.behavior] : [], catalogs.bosses, label);
                 if (profile.outcome && !['escape', 'defeat'].includes(profile.outcome)) errors.push(label + ': invalid boss outcome');
                 for (const field of ['score', 'kills']) {
                     if (profile[field] != null && (!Number.isInteger(profile[field]) || profile[field] < 0)) errors.push(label + ': invalid boss ' + field);

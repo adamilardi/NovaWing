@@ -10,8 +10,8 @@ const require = createRequire(import.meta.url);
 const Levels = require('../../../levels.js');
 
 describe('level authoring surface', () => {
-    it('ships L1–L3 and exposes live campaign length', () => {
-        assert.equal(Levels.getTotalLevels(), 3);
+    it('ships L1–L6 and exposes live campaign length', () => {
+        assert.equal(Levels.getTotalLevels(), 7);
         assert.equal(Levels.getLevelDef(1).name, 'OPEN SPACE');
         assert.equal(Levels.getLevelDef(2).hasPathWalls, true);
         assert.ok(Array.isArray(Levels.getLevelDef(3).segments));
@@ -140,7 +140,9 @@ describe('level authoring surface', () => {
         assert.equal(d.enemyCadenceScale, 1);
     });
 
-    it('campaign boss payouts match L1+L2+L3 awarded bosses', () => {
+    it('campaign rewards exclude the four bonus testing stages', () => {
+        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => !level.bonus).map(level => level.id), [1, 2, 3]);
+        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => level.bonus).map(level => level.id), [4, 5, 6, 7]);
         assert.equal(Levels.getCampaignBossScore(), 1500 + 1500 + 2500);
         assert.equal(Levels.getCampaignBossKills(), 3);
         assert.equal(Levels.getLevelBossScore(3), 2500);

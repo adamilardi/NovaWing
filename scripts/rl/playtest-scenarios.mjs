@@ -70,6 +70,9 @@ export const SCENARIOS = {
         segment: 'finalBoss',
         description: 'Jump to black-hole final boss'
     },
+    'l4-full': {level:4,durationMs:240000,description:'Full Solar Foundry'},
+    'l5-full': {level:5,durationMs:240000,description:'Full Crystal Tempest'},
+    'l6-full': {level:6,durationMs:300000,description:'Full Supernova Core'},
     'l3-full': {
         level: 3,
         durationMs: 300000,
@@ -153,7 +156,7 @@ async function installExpert(page, policy) {
         if (!hasRt) {
             await page.addScriptTag({ path: RUNTIME_PURE_PATH });
         }
-        await page.evaluate(installPolicyPilot, { ...policy, explore: process.env.EXPLORE === '1' });
+        await page.evaluate(installPolicyPilot, { ...policy, tacticalAssist: process.env.POLICY_ASSIST !== '0', explore: process.env.EXPLORE === '1' });
         return 'policy';
     }
     await page.evaluate(installInPagePilot);
@@ -266,7 +269,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
                 });
             }
 
-            const isWin = status.outcome === 'win' || (snap && snap.victoryPending);
+            const isWin = status.outcome === 'win' || (snap && (snap.victoryPending || snap.awaitingNextLevel || snap.level > scenario.level));
             const isLose = status.outcome === 'lose' || (snap && snap.levelEnded);
             if (isWin) {
                 won = true;
@@ -298,7 +301,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
         scenario: scenarioId,
         trial,
         description: scenario.description,
-        expert: EXPERT,
+        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST !== '0', expert: EXPERT,
         won,
         outcome,
         deathClass: won ? null : outcome,
@@ -369,7 +372,7 @@ async function main() {
     const wins = results.filter((r) => r.won).length;
     const report = {
         createdAt: new Date().toISOString(),
-        expert: EXPERT,
+        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST !== '0', expert: EXPERT,
         trialsPerScenario: TRIALS,
         scenarios: ids,
         winRate: results.length ? wins / results.length : 0,

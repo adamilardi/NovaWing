@@ -1,0 +1,541 @@
+{
+  "runtimeHashes": {
+    "game.js": "dd4ed2dd06087bc0fbe662de174e65469038c9bc7e44b4002f939c6cff5991a7",
+    "levels.js": "f57930d642144704490dc70f61a342a89dd19bbc7a48e6879144b9136152bfb9",
+    "src/assets.js": "32189db652319ace5fe5f3fd9ef3130d92926bb5c5852306de3eba080ca8fa0a",
+    "src/boss-director.js": "bdb9ac7cbae2db1ff1d983c3c87863ccb91ebed1385c5081eb2d1a2642d03e4d",
+    "src/pilot-facts.js": "0f484806da19e5753b1e005cc334c6eee2375622cdce8d02fc8a801e31f371f5",
+    "src/pilot-tactics.js": "457ec1b4ea2d54168f11ca6d73cd2b8fed679da899c207f9890ed5af0cf5b446"
+  },
+  "method": "Debug boss entry/health/phase changes and player invulnerability; actual attacks, pause, damage gate, rewards and cleanup; not balance proof",
+  "results": [
+    {
+      "level": 7,
+      "mobile": false,
+      "identity": {
+        "behavior": "graveyardLeviathan",
+        "texture": "graveyardLeviathan",
+        "expected": "graveyardLeviathan",
+        "partCount": 3,
+        "rootAlpha": 0,
+        "width": 365,
+        "bodyWidth": 237.25000000000003,
+        "bodyHeight": 97.2,
+        "vertical": false,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 17944.26666666662,
+              "windupUntil": 18950.26666666662,
+              "activeUntil": 19950.26666666662,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  170,
+                  190
+                ],
+                "batteryOffset": null,
+                "speed": 227,
+                "bursts": 2,
+                "escorts": 0
+              }
+            },
+            "now": 17966.26666666662,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    170,
+                    190
+                  ],
+                  "batteryOffset": null,
+                  "speed": 227,
+                  "bursts": 2,
+                  "escorts": 0
+                },
+                "time": 18958.26666666662,
+                "endsAt": 19950.26666666662
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -219.2651625676185,
+                "vy": 58.75192323827227,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -226.13619646682625,
+                "vy": -19.784353603718355,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 23992.26666666662,
+              "windupUntil": 24998.26666666662,
+              "activeUntil": 25998.26666666662,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  156,
+                  168,
+                  180
+                ],
+                "batteryOffset": 32,
+                "speed": 249,
+                "bursts": 3,
+                "escorts": 0
+              }
+            },
+            "now": 24014.26666666662,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    156,
+                    168,
+                    180
+                  ],
+                  "batteryOffset": 32,
+                  "speed": 249,
+                  "bursts": 3,
+                  "escorts": 0
+                },
+                "time": 25006.26666666662,
+                "endsAt": 25998.26666666662
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -217.78030707770955,
+                "vy": 120.71759544133795,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -238.11988423479582,
+                "vy": 72.80055447596152,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -248.05247982484465,
+                "vy": 21.701779944167,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 30056.26666666662,
+              "windupUntil": 31062.26666666662,
+              "activeUntil": 32062.26666666662,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  180,
+                  192,
+                  204
+                ],
+                "batteryOffset": -32,
+                "speed": 271,
+                "bursts": 3,
+                "escorts": 0
+              }
+            },
+            "now": 30078.26666666662,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    180,
+                    192,
+                    204
+                  ],
+                  "batteryOffset": -32,
+                  "speed": 271,
+                  "bursts": 3,
+                  "escorts": 0
+                },
+                "time": 31070.26666666662,
+                "endsAt": 32062.26666666662
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -269.96876318286303,
+                "vy": 23.61920628461549,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -268.9800070947983,
+                "vy": -33.02659206279504,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -256.23553398741484,
+                "vy": -88.22896985788948,
+                "laser": false
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3800,
+        "kills": 1,
+        "expected": 3800,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 7,
+      "mobile": true,
+      "identity": {
+        "behavior": "graveyardLeviathan",
+        "texture": "graveyardLeviathan",
+        "expected": "graveyardLeviathan",
+        "partCount": 3,
+        "rootAlpha": 0,
+        "width": 365,
+        "bodyWidth": 237.25000000000003,
+        "bodyHeight": 97.2,
+        "vertical": false,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 14117.533333333426,
+              "windupUntil": 15123.533333333426,
+              "activeUntil": 16123.533333333426,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  170,
+                  190
+                ],
+                "batteryOffset": null,
+                "speed": 227,
+                "bursts": 2,
+                "escorts": 0
+              }
+            },
+            "now": 14139.533333333426,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    170,
+                    190
+                  ],
+                  "batteryOffset": null,
+                  "speed": 227,
+                  "bursts": 2,
+                  "escorts": 0
+                },
+                "time": 15131.533333333426,
+                "endsAt": 16123.533333333426
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -219.2651625676185,
+                "vy": 58.75192323827227,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -226.13619646682625,
+                "vy": -19.784353603718355,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 20197.533333333427,
+              "windupUntil": 21203.533333333427,
+              "activeUntil": 22203.533333333427,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  156,
+                  168,
+                  180
+                ],
+                "batteryOffset": 32,
+                "speed": 249,
+                "bursts": 3,
+                "escorts": 0
+              }
+            },
+            "now": 20219.533333333427,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    156,
+                    168,
+                    180
+                  ],
+                  "batteryOffset": 32,
+                  "speed": 249,
+                  "bursts": 3,
+                  "escorts": 0
+                },
+                "time": 21211.533333333427,
+                "endsAt": 22203.533333333427
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -217.78030707770955,
+                "vy": 120.71759544133795,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -238.11988423479582,
+                "vy": 72.80055447596152,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -248.05247982484465,
+                "vy": 21.701779944167,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "graveyardLeviathan",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 26261.533333333427,
+              "windupUntil": 27267.533333333427,
+              "activeUntil": 28267.533333333427,
+              "plan": {
+                "kind": "salvageBurst",
+                "angles": [
+                  180,
+                  192,
+                  204
+                ],
+                "batteryOffset": -32,
+                "speed": 271,
+                "bursts": 3,
+                "escorts": 0
+              }
+            },
+            "now": 26283.533333333427,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "salvageBurst",
+                  "angles": [
+                    180,
+                    192,
+                    204
+                  ],
+                  "batteryOffset": -32,
+                  "speed": 271,
+                  "bursts": 3,
+                  "escorts": 0
+                },
+                "time": 27275.533333333427,
+                "endsAt": 28267.533333333427
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -269.96876318286303,
+                "vy": 23.61920628461549,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -268.9800070947983,
+                "vy": -33.02659206279504,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -256.23553398741484,
+                "vy": -88.22896985788948,
+                "laser": false
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3800,
+        "kills": 1,
+        "expected": 3800,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    }
+  ]
+}

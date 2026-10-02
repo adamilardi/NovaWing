@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "brief_id": "void-cathedral",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "level-void-cathedral-a",
+      "title": "Void Cathedral",
+      "status": "generated",
+      "summary": "Cinematic peripheral environment with low contrast central combat space.",
+      "assets": [
+        {
+          "role": "background-far",
+          "path": "background.png",
+          "width_px": 1448,
+          "height_px": 1086,
+          "alpha": false,
+          "readiness": "verified"
+        }
+      ],
+      "preview_paths": [
+        "background.png"
+      ],
+      "prompt_path": "prompt.md",
+      "reference_paths": [],
+      "generator": {
+        "provider": "built-in image_gen"
+      },
+      "spec": {
+        "camera": "side-view to top-down",
+        "scroll": "horizontal-to-vertical",
+        "tile_axes": [],
+        "layer_order": [
+          "background-far",
+          "existing-parallax-stars"
+        ],
+        "target_display": "800x600 viewport, 960x720 overscan",
+        "palette": [
+          "obsidian",
+          "violet",
+          "magenta"
+        ]
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "pass"
+      },
+      "limitations": []
+    }
+  ]
+}

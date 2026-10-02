@@ -1,0 +1,15 @@
+# Expansion junk atlas v2
+
+## Original generation
+
+Create one production 2D game obstacle sprite ATLAS on a transparent background, exactly 1536 pixels wide and 1024 pixels high, arranged in a precise 3-column by 2-row grid of equal 512x512 cells. Six independent isolated solid obstacle modules, one centered in each cell, no labels or grid lines. Flat side-on orthographic camera, hand-painted arcade space shooter sprite style, crisp light outlines, chunky rock-like shading, weathered industrial textures, muted slate blue-gray and small warm orange or purple/cyan accents. NO perspective scene, NO UI panels, NO outer square frame, NO glow background. Each module should be a dense solid roughly square silhouette filling about 420x420 pixels centered in its cell with generous fully transparent margins, no holes inside its collision area. Row1 col1: battered foundry bulkhead fragment, chipped uneven edge, thick ribs, scorched steel, small orange warning stripes, distinctly irregular silhouette. Row1 col2: torn spacecraft hull chunk, overlapping curved armor and exposed braces, chipped corners, blue-gray steel and copper rust. Row1 col3: broken engine housing with a dark circular vent inside a solid armored casing, warm amber core, dense silhouette. Row2 col1: jagged dense blue-gray ice-coated asteroid with pale cyan crystalline seams, angular rock-like silhouette. Row2 col2: broken ancient alien cathedral masonry buttress fragment, dark violet stone, angular bevels and sparse luminous purple etched runes, dense solid silhouette. Row2 col3: compact smashed cargo girder bundle, bent steel ribs welded around solid dark cargo plating, irregular edge, small orange details. Every cell has only its own isolated module, no overlap between cells. All modules share consistent lighting from upper left and crisp collision-readable edges. Actual alpha transparency, clean edges, no text, no watermark.
+
+## Production edit
+
+Reference: `original-atlas.png`.
+
+Edit this exact six-cell game sprite atlas. Preserve the exact six objects, their grid positions, dimensions, artwork, colors and details. Remove all background and ALL diffuse glows, haze and shadows outside the solid silhouettes so the area between and around the six sprites is completely transparent alpha 0. Keep crisp opaque object bodies and their narrow antialiased edges. Do not regenerate their designs, move, resize or rearrange the objects. Preserve the original 1536x1024 canvas, 3x2 equal grid. No background at all, no glow outside edges.
+
+## Preparation
+
+The production atlas is `../../assets/levels/terrain/junk-atlas-v2.png`. The loader crops six 512×512 cells, preserves alpha without gray color-keying, and trims transparent margins before rendering. Material variants select hull or girder cells where appropriate. Physics uses separate inset rectangular bodies per dense module; large route openings are spaces between bodies, never holes inside one collider. The engine vent and small hull damage holes are surface details at gameplay size, not navigable passages.

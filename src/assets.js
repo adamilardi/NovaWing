@@ -53,6 +53,25 @@ const ENEMY_CYCLE_SHEETS = {
     }
 };
 const BAKED_SPRITE_ASSETS = {
+    foundryWarden: { path: 'assets/bosses/foundry-warden.png', sourceKey: 'foundryWardenSource', hasAlpha: true,
+        body: { w: 0.52, h: 0.42, ox: 0.37, oy: 0.19 } },
+    auroraSentinel: { path: 'assets/bosses/aurora-sentinel.png', sourceKey: 'auroraSentinelSource', hasAlpha: true,
+        body: { w: 0.40, h: 0.65, ox: 0.30, oy: 0.20 } },
+    voidCantor: { path: 'assets/bosses/void-cantor.png', sourceKey: 'voidCantorSource', hasAlpha: true,
+        body: { w: 0.40, h: 0.50, ox: 0.30, oy: 0.26 } },
+    graveyardLeviathan: { path: 'assets/bosses/graveyard-leviathan.png', sourceKey: 'graveyardLeviathanSource', hasAlpha: true,
+        body: { w: 0.65, h: 0.40, ox: 0.15, oy: 0.30 } },
+    ashenSurface: { path: 'assets/levels/terrain/ashen-surface.png', sourceKey: 'ashenSurfaceSource', hasAlpha: true },
+    ashenGraveyard: { path: 'assets/levels/ashen-graveyard.png', sourceKey: 'ashenGraveyardSource', hasAlpha: false },
+    foundryWall: { path: 'assets/levels/terrain/foundry-wall.png', sourceKey: 'foundryWallSource', hasAlpha: true },
+    iceSurface: { path: 'assets/levels/terrain/ice-surface.png', sourceKey: 'iceSurfaceSource', hasAlpha: true },
+    cathedralWall: { path: 'assets/levels/terrain/cathedral-wall.png', sourceKey: 'cathedralWallSource', hasAlpha: true },
+    wreckageHull: { path: 'assets/levels/terrain/wreckage.png', sourceKey: 'wreckageHullSource', hasAlpha: true },
+    mineralRock: { path: 'assets/levels/terrain/mineral-rock.png', sourceKey: 'mineralRockSource', hasAlpha: true },
+    brokenReactor: { path: 'assets/levels/terrain/reactor.png', sourceKey: 'brokenReactorSource', hasAlpha: true },
+    orbitalFoundry: { path: 'assets/levels/orbital-foundry.webp', sourceKey: 'orbitalFoundrySource', hasAlpha: false },
+    auroraPassage: { path: 'assets/levels/aurora-passage.webp', sourceKey: 'auroraPassageSource', hasAlpha: false },
+    voidCathedral: { path: 'assets/levels/void-cathedral.webp', sourceKey: 'voidCathedralSource', hasAlpha: false },
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
     bossVertical: { path: 'assets/boss-vertical.png', sourceKey: 'bossVerticalSource' },
@@ -200,17 +219,45 @@ const SPRITE_FRAMES = PLAYER_FRAMES.concat(ENEMY_FRAMES);
 Object.entries(BAKED_SPRITE_ASSETS).forEach(([key, asset]) => {
     SPRITES[key] = Object.assign({ hasAlpha: true }, SPRITES[key], asset);
 });
+// Generated flat 2D junk atlas. Original source and prompts are retained under
+// art-candidates/expansion-junk-v2; extraction happens in the asset loader.
+const JUNK_CELLS = {
+    salvageBulkhead: [0, 0], salvageHull: [1, 0], salvageEngine: [2, 0],
+    riftStone: [0, 1], voidMasonry: [1, 1], salvageGirder: [2, 1]
+};
+Object.entries(JUNK_CELLS).forEach(([key, [column, row]]) => {
+    const asset = { path: 'assets/levels/terrain/junk-atlas-v2.png',
+        sourceKey: 'expansionJunkAtlasSource', hasAlpha: true, atlas: true,
+        crop: { x: column * 512, y: row * 512, width: 512, height: 512 } };
+    SPRITES[key] = asset;
+    for (let variant = 1; variant <= 3; variant++) {
+        const alternate = key === 'salvageHull' && variant === 3 ? JUNK_CELLS.salvageGirder
+            : key === 'salvageBulkhead' && variant === 2 ? JUNK_CELLS.salvageHull : [column, row];
+        SPRITES[key + '-' + variant] = Object.assign({}, asset, {
+            crop: { x: alternate[0] * 512, y: alternate[1] * 512, width: 512, height: 512 }
+        });
+    }
+});
 const AUDIO_TRACKS = {
     waves: { procedural: 'waves' },
-    boss: { procedural: 'boss' }
+    boss: { procedural: 'boss' },
+    canyon: { procedural: 'canyon' },
+    canyonBoss: { procedural: 'canyonBoss' },
+    singularity: { procedural: 'singularity' },
+    gauntlet: { procedural: 'gauntlet' },
+    finalBoss: { procedural: 'finalBoss' }
 };
 function preload(scene) {
+    const loadedImages = new Set();
     Object.values(SPRITES)
         .concat(Object.values(PLAYER_SHEETS))
         .concat(Object.values(PLAYER_CYCLE_SHEETS))
         .concat(Object.values(ENEMY_CYCLE_SHEETS))
         .forEach(asset => {
-            if (asset.path && asset.sourceKey) scene.load.image(asset.sourceKey, asset.path);
+            if (asset.path && asset.sourceKey && !loadedImages.has(asset.sourceKey)) {
+                scene.load.image(asset.sourceKey, asset.path);
+                loadedImages.add(asset.sourceKey);
+            }
         });
     Object.entries(AUDIO_TRACKS).forEach(([key, track]) => {
         if (track.urls) scene.load.audio(key, track.urls);
@@ -219,8 +266,9 @@ function preload(scene) {
 function install(scene) {
     Object.entries(SPRITES).forEach(([key, sprite]) => {
         if (!sprite.sourceKey) return;
-        if (key === 'wall') installWallTexture(scene, key, sprite.sourceKey);
-        else if (sprite.hasAlpha) installImageTexture(scene, key, sprite.sourceKey);
+        if (sprite.atlas) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop, { keyGray: false });
+        else if (key === 'wall') installWallTexture(scene, key, sprite.sourceKey);
+        else if (sprite.hasAlpha || !sprite.crop) installImageTexture(scene, key, sprite.sourceKey);
         else if (sprite.crop) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
     });
     SPRITE_FRAMES.forEach(frame => {

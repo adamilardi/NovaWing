@@ -80,7 +80,7 @@ export async function caseContent(browser, base, evidenceDir) {
             check(Math.abs(player.displayWidth - 110) < 0.01, 'custom player width');
             check(Math.abs(player.body.sourceWidth - player.width * 0.3) < 0.01, 'custom player hitbox');
 
-            const level = NovaWingLevels.defineLevel({ id: 4, name: 'REGRESSION', wavePatternKeys: [],
+            const level = NovaWingLevels.defineLevel({ id: totalLevels() + 1, name: 'REGRESSION', wavePatternKeys: [],
                 bossEncounters: { mini: { health: 10, score: 300, kills: 1 } },
                 segments: [
                     { id: 'mini', kind: 'boss', bossEncounter: 'mini', next: 'more',
@@ -92,7 +92,7 @@ export async function caseContent(browser, base, evidenceDir) {
                 ]
             });
             NovaWingLevels.getEffectiveLevelDefs().push(level);
-            startLevel.call(scene, 4, { debugSkip: true });
+            startLevel.call(scene, level.id, { debugSkip: true });
             advanceLevelSegment(scene, 'mini', 'regression');
             check(player.texture.key === 'testPilot' && Math.abs(player.displayWidth - 110) < 0.01, 'segment art override');
             const scoreBefore = score;
@@ -151,13 +151,16 @@ export async function caseContent(browser, base, evidenceDir) {
             const recording = getActiveScene().sound.get('testRecording');
             if (recording !== window.__pausedRecording || recording.seek !== window.__pausedSeek) throw new Error('paused recording advanced');
             musicDirector.setPaused(false);
-            if (!recording.isPlaying || recording.seek < window.__pausedSeek) throw new Error('recorded music did not resume in place');
+            if (!recording.isPlaying || recording.seek < window.__pausedSeek) throw new Error(
+                'recorded music did not resume in place: ' + JSON.stringify({
+                    playing: recording.isPlaying, before: window.__pausedSeek, after: recording.seek
+                }));
         });
         await page.evaluate(() => {
             const scene = getActiveScene();
             musicDirector.stop();
             getLevelDef(currentLevel).music.boss = 'boss';
-            NovaWingLevels.getEffectiveLevelDefs().pop(); // Remove the temporary fourth level.
+            NovaWingLevels.getEffectiveLevelDefs().pop(); // Remove the temporary regression level.
             delete NovaWingAssets.tracks.testRecording;
         });
         await page.waitForFunction(() => !getActiveScene().sound.get('testRecording'));
@@ -175,11 +178,11 @@ export async function caseContent(browser, base, evidenceDir) {
             updateBossPhase.call(scene);
             if (bossPhase !== 3) throw new Error('L3 final boss failed to enter phase 3');
             defeatBoss.call(scene, boss);
-            if (!victoryPending || score !== before.score + 2500 || enemiesKilled !== before.kills + 1) {
+            if (!levelTransitioning || victoryPending || score !== before.score + 2500 || enemiesKilled !== before.kills + 1) {
                 throw new Error('L3 final completion or reward failed');
             }
         });
-        await page.waitForFunction(() => window.__novawingDebug.getBotSnapshot().levelEnded);
+        await page.waitForFunction(() => window.__novawingDebug.getBotSnapshot().awaitingNextLevel);
         assert.deepEqual(errors, []);
         await page.screenshot({ path: path.join(evidenceDir, 'content.png') });
         return { name: 'content', ok: true, detail: 'boss progression, timer cancellation, custom art, silent transitions, recorded audio, restart, L3 final completion', details };

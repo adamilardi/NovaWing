@@ -11,7 +11,7 @@ const Rules = require('../shared/run-rules.cjs');
 const { build } = require('../scripts/build.cjs');
 
 test('multi-boss levels award each defeated encounter and follow authored successors', () => {
-    const level = Levels.defineLevel({ id: 4, bossScore: 10000, bossKills: 2,
+    const level = Levels.defineLevel({ id: Levels.getTotalLevels() + 1, bossScore: 10000, bossKills: 2,
         bossEncounters: { scout: { outcome: 'escape' }, mini: { score: 300, kills: 1 } },
         segments: [
             { id: 'scout', kind: 'boss', bossEncounter: 'scout', next: 'mini' },
@@ -25,15 +25,18 @@ test('multi-boss levels award each defeated encounter and follow authored succes
     assert.deepEqual(Flow.afterSegment(level, 'mini'), { next: 'secondWaves', complete: false });
     assert.deepEqual(Flow.afterSegment(level, 'final'), { next: null, complete: true });
     assert.deepEqual(Flow.totals(level), { score: 10300, kills: 3 });
-    assert.equal(Rules.rulesForScope('campaign', catalog).bossScore, 15800);
+    const totalScore = Levels.getCampaignBossScore() + 10300;
+    const totalKills = Levels.getCampaignBossKills() + 3;
+    const scope = 'level-' + level.id;
+    assert.equal(Rules.rulesForScope('campaign', catalog).bossScore, totalScore);
     assert.equal(Rules.sanitizeLeaderboardScope('campaign-easy'), 'campaign-easy');
     assert.equal(Rules.sanitizeLeaderboardScope('campaign-normal'), 'campaign');
     assert.equal(Rules.makeLeaderboardScope('level-1', 'hard'), 'level-1-hard');
     assert.equal(Rules.rulesForScope('campaign-easy', catalog).bossScore, Rules.rulesForScope('campaign', catalog).bossScore);
-    assert.equal(Rules.isPlausibleCompletedRun({ scope: 'level-4', score: 10300, kills: 3, timeMs: 60000 }, catalog), true);
-    assert.equal(Rules.isPlausibleCompletedRun({ scope: 'level-4', score: 10300, kills: 1, timeMs: 60000 }, catalog), false);
+    assert.equal(Rules.isPlausibleCompletedRun({ scope, score: 10300, kills: 3, timeMs: 60000 }, catalog), true);
+    assert.equal(Rules.isPlausibleCompletedRun({ scope, score: 10300, kills: 1, timeMs: 60000 }, catalog), false);
     assert.equal(Rules.rulesForScope('level-99', catalog), null);
-    assert.equal(Rules.isPlausibleCompletedRun({ scope: 'campaign', score: 15800, kills: 6, timeMs: 200000 }, catalog), true);
+    assert.equal(Rules.isPlausibleCompletedRun({ scope: 'campaign', score: totalScore, kills: totalKills, timeMs: 200000 }, catalog), true);
 });
 
 test('authoring validation rejects missing links, cycles, unreachable segments and content keys', () => {

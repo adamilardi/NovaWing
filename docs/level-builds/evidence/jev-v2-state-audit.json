@@ -1,0 +1,235 @@
+{
+  "when": "2026-09-30T02:54:24.023Z",
+  "runtimeHashes": {
+    "game.js": "f016e220ffab1c1cf829a6f8c41387fe506ca11734456ef118f8d568c9abcc33",
+    "levels.js": "0d8a8840c2117f6c006a40535d775ec440c3c6950ca2d4dba2a5c7bfb20fba90",
+    "src/assets.js": "28fd44b16bfb90b7c655d519528a6c52eb0e21bd753eed65ffd51967ba1d18b5",
+    "src/pilot-facts.js": "011b35032cc43cdaf906a4d67130ab6fec14a43d21a656c1ae3a968c07955edd"
+  },
+  "results": [
+    {
+      "level": 5,
+      "playerRules": true,
+      "completeObjectCounts": true,
+      "transmittedStateMatches": true,
+      "movement": [
+        {
+          "stick": "hold",
+          "boost": false,
+          "errorPx": 0.0049999999999954525,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up",
+          "boost": false,
+          "errorPx": 0.004999999999824922,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up",
+          "boost": true,
+          "errorPx": 0.004333333333306655,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down",
+          "boost": false,
+          "errorPx": 0.004999999999768079,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down",
+          "boost": true,
+          "errorPx": 0.00033333333328755543,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "left",
+          "boost": false,
+          "errorPx": 0.0049999999999954525,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "left",
+          "boost": true,
+          "errorPx": 0.0049999999999954525,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "right",
+          "boost": false,
+          "errorPx": 0.0049999999999954525,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "right",
+          "boost": true,
+          "errorPx": 0.0068394281762525376,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_left",
+          "boost": false,
+          "errorPx": 0.0037999606342466433,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_left",
+          "boost": true,
+          "errorPx": 0.004868213873914107,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_right",
+          "boost": false,
+          "errorPx": 0.0037999606342466433,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_right",
+          "boost": true,
+          "errorPx": 0.0036076333148572113,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_left",
+          "boost": false,
+          "errorPx": 0.0037999606342466433,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_left",
+          "boost": true,
+          "errorPx": 0.0041262625797347545,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_right",
+          "boost": false,
+          "errorPx": 0.0037999606342466433,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_right",
+          "boost": true,
+          "errorPx": 0.004126262579789918,
+          "simulatedMs": 160
+        }
+      ],
+      "laserWarningActivationExpiry": true,
+      "ringChecked": false
+    },
+    {
+      "level": 6,
+      "playerRules": true,
+      "completeObjectCounts": true,
+      "transmittedStateMatches": true,
+      "movement": [
+        {
+          "stick": "hold",
+          "boost": false,
+          "errorPx": 0.0020000000000095497,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up",
+          "boost": false,
+          "errorPx": 0.00200000000018008,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up",
+          "boost": true,
+          "errorPx": 0.0033333333333303017,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down",
+          "boost": false,
+          "errorPx": 0.0013333333333775954,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down",
+          "boost": true,
+          "errorPx": 0.002666666666527817,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "left",
+          "boost": false,
+          "errorPx": 0.0038873012633299994,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "left",
+          "boost": true,
+          "errorPx": 0.00507718207056535,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "right",
+          "boost": false,
+          "errorPx": 0.003887301263378742,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "right",
+          "boost": true,
+          "errorPx": 0.00507718207056535,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_left",
+          "boost": false,
+          "errorPx": 0.0014968600498581964,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_left",
+          "boost": true,
+          "errorPx": 0.004477951337840553,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_right",
+          "boost": false,
+          "errorPx": 0.0014968600498070502,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "up_right",
+          "boost": true,
+          "errorPx": 0.004477951337789722,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_left",
+          "boost": false,
+          "errorPx": 0.0036076690019611855,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_left",
+          "boost": true,
+          "errorPx": 0.005656857570306886,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_right",
+          "boost": false,
+          "errorPx": 0.0036076690019399642,
+          "simulatedMs": 160
+        },
+        {
+          "stick": "down_right",
+          "boost": true,
+          "errorPx": 0.005656857570266649,
+          "simulatedMs": 160
+        }
+      ],
+      "laserWarningActivationExpiry": true,
+      "ringChecked": true
+    }
+  ]
+}

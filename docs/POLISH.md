@@ -24,6 +24,8 @@ Do not re-spend effort here.
 - Combat juice: directional hits, debris, tint flashes, restrained shake,
   distinct shot silhouettes, 2× HUD text.
 - Mobile touch dock, FX quality auto-downgrade, audio mute persistence.
+- Distinct procedural scores for open space, canyon waves/boss, L3 intro,
+  vertical gauntlet, and final boss; transition stays stinger-only.
 - Phaser 3.55.2 on jsDelivr with SRI. Leaderboard Slice A locks stats at
   complete. Ranked mode is Hotshot.
 
@@ -81,8 +83,9 @@ the canvas.
   SRI is already on 3.55.2; remaining risk is availability.
 - Automate `?v=` cache busting for changed scripts. `GAME_VERSION` is the
   leaderboard schema version and should only change when score compatibility changes.
-- Recorded music. Authoring already supports files. Distinct L3 top-down vs
-  boss recordings sell the finale more than another particle.
+- Recorded music remains an optional upgrade. Stage and encounter identity
+  now comes from separate procedural scores; listen to the offline renders
+  from `npm run verify:audio` before deciding which recordings to commission.
 - Share fallback: replace the `window.prompt` clipboard last resort with an
   on-canvas copy field.
 

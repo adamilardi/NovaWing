@@ -1,0 +1,1839 @@
+{
+  "runtimeHashes": {
+    "game.js": "de10f150a633edd40661accdcd52169ff15543c76cfd5bff06dc85b80953dba9",
+    "levels.js": "f57930d642144704490dc70f61a342a89dd19bbc7a48e6879144b9136152bfb9",
+    "src/assets.js": "32189db652319ace5fe5f3fd9ef3130d92926bb5c5852306de3eba080ca8fa0a",
+    "src/boss-director.js": "e970eb02ea8e464755598bffb345afcfe09451cdcf18edd2532ae3539d1e6d5f",
+    "src/pilot-facts.js": "0f484806da19e5753b1e005cc334c6eee2375622cdce8d02fc8a801e31f371f5",
+    "src/pilot-tactics.js": "457ec1b4ea2d54168f11ca6d73cd2b8fed679da899c207f9890ed5af0cf5b446"
+  },
+  "method": "Debug boss entry/health/phase changes and player invulnerability; actual attacks, pause, damage gate, rewards and cleanup; not balance proof",
+  "results": [
+    {
+      "level": 4,
+      "mobile": false,
+      "identity": {
+        "behavior": "foundryWarden",
+        "texture": "foundryWarden",
+        "expected": "foundryWarden",
+        "partCount": 8,
+        "rootAlpha": 0,
+        "width": 340,
+        "bodyWidth": 176.8,
+        "bodyHeight": 95.34,
+        "vertical": false,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 13163.933333333334,
+              "windupUntil": 14269.933333333334,
+              "activeUntil": 14769.933333333334,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  300
+                ],
+                "thickness": 24
+              }
+            },
+            "now": 13185.933333333334,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 300,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 14269.933333333334,
+                "endsAt": 14769.933333333334
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    300
+                  ],
+                  "thickness": 24
+                },
+                "time": 14273.933333333334,
+                "endsAt": 14769.933333333334
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 14769.933333333334
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 19339.933333333334,
+              "windupUntil": 20445.933333333334,
+              "activeUntil": 20945.933333333334,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  230,
+                  370
+                ],
+                "thickness": 24
+              }
+            },
+            "now": 19361.933333333334,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 230,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 20445.933333333334,
+                "endsAt": 20945.933333333334
+              },
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 370,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 20445.933333333334,
+                "endsAt": 20945.933333333334
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    230,
+                    370
+                  ],
+                  "thickness": 24
+                },
+                "time": 20449.933333333334,
+                "endsAt": 20945.933333333334
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 20945.933333333334
+              },
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 20945.933333333334
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 25483.933333333334,
+              "windupUntil": 26589.933333333334,
+              "activeUntil": 27089.933333333334,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  230,
+                  370
+                ],
+                "thickness": 30
+              }
+            },
+            "now": 25505.933333333334,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 230,
+                "w": 800,
+                "h": 30,
+                "activatesAt": 26589.933333333334,
+                "endsAt": 27089.933333333334
+              },
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 370,
+                "w": 800,
+                "h": 30,
+                "activatesAt": 26589.933333333334,
+                "endsAt": 27089.933333333334
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    230,
+                    370
+                  ],
+                  "thickness": 30
+                },
+                "time": 26593.933333333334,
+                "endsAt": 27089.933333333334
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 30,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27089.933333333334
+              },
+              {
+                "w": 800,
+                "h": 30,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27089.933333333334
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 2800,
+        "kills": 1,
+        "expected": 2800,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": false,
+      "identity": {
+        "behavior": "auroraSentinel",
+        "texture": "auroraSentinel",
+        "expected": "auroraSentinel",
+        "partCount": 3,
+        "rootAlpha": 0,
+        "width": 245,
+        "bodyWidth": 98,
+        "bodyHeight": 159.25,
+        "vertical": true,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 12964.666666666526,
+              "windupUntil": 14020.666666666526,
+              "activeUntil": 14470.666666666526,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  53.33333333333333,
+                  71.66666666666666,
+                  90,
+                  145
+                ],
+                "speed": 187,
+                "gap": 4
+              }
+            },
+            "now": 12986.666666666526,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    53.33333333333333,
+                    71.66666666666666,
+                    90,
+                    145
+                  ],
+                  "speed": 187,
+                  "gap": 4
+                },
+                "time": 14026.666666666526,
+                "endsAt": 14470.666666666526
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 153.18143228204147,
+                "vy": 107.2587935976456,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 111.66865664842103,
+                "vy": 149.99703704519317,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 58.81986940035179,
+                "vy": 177.50837434815733,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 1.1450447572027752e-14,
+                "vy": 187,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -153.1814322820414,
+                "vy": 107.25879359764568,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 4,
+              "nextAt": 19092.666666666526,
+              "windupUntil": 20148.666666666526,
+              "activeUntil": 20598.666666666526,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  48.75,
+                  62.5,
+                  103.75,
+                  117.5,
+                  131.25,
+                  145
+                ],
+                "speed": 209,
+                "gap": 3
+              }
+            },
+            "now": 19114.666666666526,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    48.75,
+                    62.5,
+                    103.75,
+                    117.5,
+                    131.25,
+                    145
+                  ],
+                  "speed": 209,
+                  "gap": 3
+                },
+                "time": 20154.666666666526,
+                "endsAt": 20598.666666666526
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 171.2027772563993,
+                "vy": 119.87747519736863,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 137.80327535591442,
+                "vy": 157.13451976310625,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 96.50546016612212,
+                "vy": 185.3852641342483,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -49.676351496170156,
+                "vy": 203.01049259097164,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -96.50546016612205,
+                "vy": 185.38526413424836,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -137.8032753559144,
+                "vy": 157.13451976310628,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -171.20277725639923,
+                "vy": 119.8774751973687,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 6,
+              "nextAt": 25204.666666666526,
+              "windupUntil": 26260.666666666526,
+              "activeUntil": 26710.666666666526,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  68,
+                  79,
+                  90,
+                  101,
+                  112,
+                  123,
+                  134,
+                  145
+                ],
+                "speed": 231,
+                "gap": 1
+              }
+            },
+            "now": 25226.666666666526,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    68,
+                    79,
+                    90,
+                    101,
+                    112,
+                    123,
+                    134,
+                    145
+                  ],
+                  "speed": 231,
+                  "gap": 1
+                },
+                "time": 26266.666666666526,
+                "endsAt": 26710.666666666526
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 189.2241222307571,
+                "vy": 132.49615679709163,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 86.53412307907567,
+                "vy": 214.17947040492788,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 44.076877931981876,
+                "vy": 226.75587937641038,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 1.414467053015193e-14,
+                "vy": 231,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -44.07687793198185,
+                "vy": 226.75587937641038,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -86.53412307907568,
+                "vy": 214.17947040492788,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -125.81161708847125,
+                "vy": 193.73290119539294,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -160.46608357602832,
+                "vy": 166.16749387822847,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -189.22412223075705,
+                "vy": 132.49615679709171,
+                "laser": false
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3000,
+        "kills": 1,
+        "expected": 3000,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": false,
+      "identity": {
+        "behavior": "voidCantor",
+        "texture": "voidCantor",
+        "expected": "voidCantor",
+        "partCount": 5,
+        "rootAlpha": 0,
+        "width": 250,
+        "bodyWidth": 100,
+        "bodyHeight": 125,
+        "vertical": true,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 13028.133333333426,
+              "windupUntil": 14234.133333333426,
+              "activeUntil": 14784.133333333426,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  280
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 13050.133333333426,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 280,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 14234.133333333426,
+                "endsAt": 14784.133333333426
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    280
+                  ],
+                  "thickness": 26
+                },
+                "time": 14234.133333333426,
+                "endsAt": 14784.133333333426
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 14784.133333333426
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 19300.133333333426,
+              "windupUntil": 20506.133333333426,
+              "activeUntil": 21056.133333333426,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  280,
+                  520
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 19322.133333333426,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 280,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 20506.133333333426,
+                "endsAt": 21056.133333333426
+              },
+              {
+                "kind": "laser",
+                "x": 520,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 20506.133333333426,
+                "endsAt": 21056.133333333426
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    280,
+                    520
+                  ],
+                  "thickness": 26
+                },
+                "time": 20506.133333333426,
+                "endsAt": 21056.133333333426
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21056.133333333426
+              },
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21056.133333333426
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 25572.133333333426,
+              "windupUntil": 26778.133333333426,
+              "activeUntil": 27328.133333333426,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  250,
+                  550
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 25594.133333333426,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 250,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 26778.133333333426,
+                "endsAt": 27328.133333333426
+              },
+              {
+                "kind": "laser",
+                "x": 550,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 26778.133333333426,
+                "endsAt": 27328.133333333426
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    250,
+                    550
+                  ],
+                  "thickness": 26
+                },
+                "time": 26778.133333333426,
+                "endsAt": 27328.133333333426
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27328.133333333426
+              },
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27328.133333333426
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3500,
+        "kills": 1,
+        "expected": 3500,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 4,
+      "mobile": true,
+      "identity": {
+        "behavior": "foundryWarden",
+        "texture": "foundryWarden",
+        "expected": "foundryWarden",
+        "partCount": 8,
+        "rootAlpha": 0,
+        "width": 340,
+        "bodyWidth": 176.8,
+        "bodyHeight": 95.34,
+        "vertical": false,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 13517.666666666712,
+              "windupUntil": 14623.666666666712,
+              "activeUntil": 15123.666666666712,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  300
+                ],
+                "thickness": 24
+              }
+            },
+            "now": 13539.666666666712,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 300,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 14623.666666666712,
+                "endsAt": 15123.666666666712
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    300
+                  ],
+                  "thickness": 24
+                },
+                "time": 14627.666666666712,
+                "endsAt": 15123.666666666712
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 15123.666666666712
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 19693.66666666671,
+              "windupUntil": 20799.66666666671,
+              "activeUntil": 21299.66666666671,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  230,
+                  370
+                ],
+                "thickness": 24
+              }
+            },
+            "now": 19715.66666666671,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 230,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 20799.66666666671,
+                "endsAt": 21299.66666666671
+              },
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 370,
+                "w": 800,
+                "h": 24,
+                "activatesAt": 20799.66666666671,
+                "endsAt": 21299.66666666671
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    230,
+                    370
+                  ],
+                  "thickness": 24
+                },
+                "time": 20803.66666666671,
+                "endsAt": 21299.66666666671
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21299.66666666671
+              },
+              {
+                "w": 800,
+                "h": 24,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21299.66666666671
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "foundryWarden",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 25853.66666666671,
+              "windupUntil": 26959.66666666671,
+              "activeUntil": 27459.66666666671,
+              "plan": {
+                "kind": "furnaceSweep",
+                "lanes": [
+                  230,
+                  370
+                ],
+                "thickness": 30
+              }
+            },
+            "now": 25875.66666666671,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 230,
+                "w": 800,
+                "h": 30,
+                "activatesAt": 26959.66666666671,
+                "endsAt": 27459.66666666671
+              },
+              {
+                "kind": "laser",
+                "x": 400,
+                "y": 370,
+                "w": 800,
+                "h": 30,
+                "activatesAt": 26959.66666666671,
+                "endsAt": 27459.66666666671
+              }
+            ]
+          },
+          "gate": {
+            "delta": 0,
+            "vulnerable": false
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "furnaceSweep",
+                  "lanes": [
+                    230,
+                    370
+                  ],
+                  "thickness": 30
+                },
+                "time": 26963.66666666671,
+                "endsAt": 27459.66666666671
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 800,
+                "h": 30,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27459.66666666671
+              },
+              {
+                "w": 800,
+                "h": 30,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27459.66666666671
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 2800,
+        "kills": 1,
+        "expected": 2800,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 5,
+      "mobile": true,
+      "identity": {
+        "behavior": "auroraSentinel",
+        "texture": "auroraSentinel",
+        "expected": "auroraSentinel",
+        "partCount": 3,
+        "rootAlpha": 0,
+        "width": 245,
+        "bodyWidth": 98,
+        "bodyHeight": 159.25,
+        "vertical": true,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 12991.83333333338,
+              "windupUntil": 14047.83333333338,
+              "activeUntil": 14497.83333333338,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  53.33333333333333,
+                  71.66666666666666,
+                  90,
+                  145
+                ],
+                "speed": 187,
+                "gap": 4
+              }
+            },
+            "now": 13013.83333333338,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    53.33333333333333,
+                    71.66666666666666,
+                    90,
+                    145
+                  ],
+                  "speed": 187,
+                  "gap": 4
+                },
+                "time": 14053.83333333338,
+                "endsAt": 14497.83333333338
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 153.18143228204147,
+                "vy": 107.2587935976456,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 111.66865664842103,
+                "vy": 149.99703704519317,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 58.81986940035179,
+                "vy": 177.50837434815733,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 1.1450447572027752e-14,
+                "vy": 187,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -153.1814322820414,
+                "vy": 107.25879359764568,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 4,
+              "nextAt": 19103.83333333338,
+              "windupUntil": 20159.83333333338,
+              "activeUntil": 20609.83333333338,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  48.75,
+                  62.5,
+                  103.75,
+                  117.5,
+                  131.25,
+                  145
+                ],
+                "speed": 209,
+                "gap": 3
+              }
+            },
+            "now": 19125.83333333338,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    48.75,
+                    62.5,
+                    103.75,
+                    117.5,
+                    131.25,
+                    145
+                  ],
+                  "speed": 209,
+                  "gap": 3
+                },
+                "time": 20165.83333333338,
+                "endsAt": 20609.83333333338
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 171.2027772563993,
+                "vy": 119.87747519736863,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 137.80327535591442,
+                "vy": 157.13451976310625,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 96.50546016612212,
+                "vy": 185.3852641342483,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -49.676351496170156,
+                "vy": 203.01049259097164,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -96.50546016612205,
+                "vy": 185.38526413424836,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -137.8032753559144,
+                "vy": 157.13451976310628,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -171.20277725639923,
+                "vy": 119.8774751973687,
+                "laser": false
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "auroraSentinel",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 6,
+              "nextAt": 25231.83333333338,
+              "windupUntil": 26287.83333333338,
+              "activeUntil": 26737.83333333338,
+              "plan": {
+                "kind": "iceFan",
+                "angles": [
+                  35,
+                  68,
+                  79,
+                  90,
+                  101,
+                  112,
+                  123,
+                  134,
+                  145
+                ],
+                "speed": 231,
+                "gap": 1
+              }
+            },
+            "now": 25253.83333333338,
+            "attacks": 0,
+            "tells": []
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "iceFan",
+                  "angles": [
+                    35,
+                    68,
+                    79,
+                    90,
+                    101,
+                    112,
+                    123,
+                    134,
+                    145
+                  ],
+                  "speed": 231,
+                  "gap": 1
+                },
+                "time": 26293.83333333338,
+                "endsAt": 26737.83333333338
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 189.2241222307571,
+                "vy": 132.49615679709163,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 86.53412307907567,
+                "vy": 214.17947040492788,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 44.076877931981876,
+                "vy": 226.75587937641038,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": 1.414467053015193e-14,
+                "vy": 231,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -44.07687793198185,
+                "vy": 226.75587937641038,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -86.53412307907568,
+                "vy": 214.17947040492788,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -125.81161708847125,
+                "vy": 193.73290119539294,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -160.46608357602832,
+                "vy": 166.16749387822847,
+                "laser": false
+              },
+              {
+                "w": 44.8,
+                "h": 8,
+                "vx": -189.22412223075705,
+                "vy": 132.49615679709171,
+                "laser": false
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3000,
+        "kills": 1,
+        "expected": 3000,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    },
+    {
+      "level": 6,
+      "mobile": true,
+      "identity": {
+        "behavior": "voidCantor",
+        "texture": "voidCantor",
+        "expected": "voidCantor",
+        "partCount": 5,
+        "rootAlpha": 0,
+        "width": 250,
+        "bodyWidth": 100,
+        "bodyHeight": 125,
+        "vertical": true,
+        "effects": true
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "warning": {
+            "phase": 1,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 1,
+              "cycle": 2,
+              "nextAt": 13001.133333333379,
+              "windupUntil": 14207.133333333379,
+              "activeUntil": 14757.133333333379,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  280
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 13023.133333333379,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 280,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 14207.133333333379,
+                "endsAt": 14757.133333333379
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 1,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    280
+                  ],
+                  "thickness": 26
+                },
+                "time": 14207.133333333379,
+                "endsAt": 14757.133333333379
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 14757.133333333379
+              }
+            ]
+          }
+        },
+        {
+          "phase": 2,
+          "warning": {
+            "phase": 2,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 2,
+              "cycle": 3,
+              "nextAt": 19273.13333333338,
+              "windupUntil": 20479.13333333338,
+              "activeUntil": 21029.13333333338,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  280,
+                  520
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 19295.13333333338,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 280,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 20479.13333333338,
+                "endsAt": 21029.13333333338
+              },
+              {
+                "kind": "laser",
+                "x": 520,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 20479.13333333338,
+                "endsAt": 21029.13333333338
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 2,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    280,
+                    520
+                  ],
+                  "thickness": 26
+                },
+                "time": 20479.13333333338,
+                "endsAt": 21029.13333333338
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21029.13333333338
+              },
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 21029.13333333338
+              }
+            ]
+          }
+        },
+        {
+          "phase": 3,
+          "warning": {
+            "phase": 3,
+            "mode": "windup",
+            "state": {
+              "id": "voidCantor",
+              "mode": "windup",
+              "phase": 3,
+              "cycle": 4,
+              "nextAt": 25529.13333333338,
+              "windupUntil": 26735.13333333338,
+              "activeUntil": 27285.13333333338,
+              "plan": {
+                "kind": "sigilLanes",
+                "lanes": [
+                  250,
+                  550
+                ],
+                "thickness": 26
+              }
+            },
+            "now": 25551.13333333338,
+            "attacks": 0,
+            "tells": [
+              {
+                "kind": "laser",
+                "x": 250,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 26735.13333333338,
+                "endsAt": 27285.13333333338
+              },
+              {
+                "kind": "laser",
+                "x": 550,
+                "y": 300,
+                "w": 26,
+                "h": 580,
+                "activatesAt": 26735.13333333338,
+                "endsAt": 27285.13333333338
+              }
+            ]
+          },
+          "gate": {
+            "delta": 1,
+            "vulnerable": true
+          },
+          "attack": {
+            "mode": "attack",
+            "attacks": [
+              {
+                "phase": 3,
+                "plan": {
+                  "kind": "sigilLanes",
+                  "lanes": [
+                    250,
+                    550
+                  ],
+                  "thickness": 26
+                },
+                "time": 26735.13333333338,
+                "endsAt": 27285.13333333338
+              }
+            ],
+            "projectiles": [
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27285.13333333338
+              },
+              {
+                "w": 26,
+                "h": 580,
+                "vx": 0,
+                "vy": 0,
+                "laser": true,
+                "expires": 27285.13333333338
+              }
+            ]
+          }
+        }
+      ],
+      "reward": {
+        "score": 3500,
+        "kills": 1,
+        "expected": 3500,
+        "effectsAlive": false,
+        "bullets": 0
+      },
+      "clear": {
+        "next": false,
+        "victory": false,
+        "effects": 0,
+        "parts": 0,
+        "bullets": 0
+      },
+      "errors": []
+    }
+  ]
+}

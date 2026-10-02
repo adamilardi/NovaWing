@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "brief_id": "expansion-terrain-v1",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "expansion-terrain-v1",
+      "title": "NovaWing 4\u20137 solid environment kit",
+      "status": "generated",
+      "summary": "Themed dense terrain crops and moving distant props with a new ashen graveyard environment.",
+      "assets": [
+        {
+          "role": "terrain-wall",
+          "path": "../../assets/levels/terrain/foundry-wall.png",
+          "runtime_key": "foundryWall",
+          "width_px": 448,
+          "height_px": 390,
+          "alpha": true,
+          "alpha_range": [
+            211,
+            253
+          ],
+          "solid_fraction_above_alpha_240": 0.9987,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            40,
+            65,
+            448,
+            390
+          ],
+          "sha256": "39255e66e8ff85b37ede9119a82207b1128f6cf7f1de0f408155b958b555265d",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "terrain-surface",
+          "path": "../../assets/levels/terrain/ice-surface.png",
+          "runtime_key": "iceSurface",
+          "width_px": 430,
+          "height_px": 365,
+          "alpha": true,
+          "alpha_range": [
+            249,
+            254
+          ],
+          "solid_fraction_above_alpha_240": 1.0,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            560,
+            90,
+            430,
+            365
+          ],
+          "sha256": "e21b72923b5e7be04ae397b7143c533170047053a9f0b31e1af97a5498356e25",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "terrain-wall",
+          "path": "../../assets/levels/terrain/cathedral-wall.png",
+          "runtime_key": "cathedralWall",
+          "width_px": 444,
+          "height_px": 365,
+          "alpha": true,
+          "alpha_range": [
+            249,
+            254
+          ],
+          "solid_fraction_above_alpha_240": 1.0,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            1060,
+            85,
+            444,
+            365
+          ],
+          "sha256": "397b0d56cd8ad1e785bb7a66db3d6732ace83f91084ca3099ff63f46ba65eac2",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "obstacle",
+          "path": "../../assets/levels/terrain/wreckage.png",
+          "runtime_key": "wreckageHull",
+          "width_px": 440,
+          "height_px": 345,
+          "alpha": true,
+          "alpha_range": [
+            0,
+            254
+          ],
+          "solid_fraction_above_alpha_240": 0.9128,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            45,
+            575,
+            440,
+            345
+          ],
+          "sha256": "551b63305031233d3119aafeca82d5dd1085801df6fc3cc4ad967e8ecf6731e1",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "obstacle",
+          "path": "../../assets/levels/terrain/mineral-rock.png",
+          "runtime_key": "mineralRock",
+          "width_px": 370,
+          "height_px": 320,
+          "alpha": true,
+          "alpha_range": [
+            0,
+            253
+          ],
+          "solid_fraction_above_alpha_240": 0.9339,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            600,
+            600,
+            370,
+            320
+          ],
+          "sha256": "a310dea5198019b44c45787ef95c8bc5bc03df493972f4293f2081882d80d481",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "obstacle",
+          "path": "../../assets/levels/terrain/reactor.png",
+          "runtime_key": "brokenReactor",
+          "width_px": 395,
+          "height_px": 275,
+          "alpha": true,
+          "alpha_range": [
+            0,
+            253
+          ],
+          "solid_fraction_above_alpha_240": 0.994,
+          "readiness": "concept",
+          "source_path": "source-atlas.png",
+          "crop_xywh": [
+            1090,
+            625,
+            395,
+            275
+          ],
+          "sha256": "c81b8362eba256bcb18e6200f77374ec78018903135c7aaf07ddcb4f78d207b5",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "terrain-surface",
+          "path": "../../assets/levels/terrain/ashen-surface.png",
+          "runtime_key": "ashenSurface",
+          "width_px": 1320,
+          "height_px": 385,
+          "alpha": true,
+          "alpha_range": [
+            249,
+            254
+          ],
+          "solid_fraction_above_alpha_240": 1.0,
+          "readiness": "concept",
+          "source_path": "ashen-surface-source.png",
+          "crop_xywh": [
+            110,
+            410,
+            1320,
+            385
+          ],
+          "sha256": "c6ed0507afbf3b74d524967815482f8dc8693f36e6de147e5dd5da7aefb4c293",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "gameplay_readability": "unverified",
+            "seams": "not-applicable"
+          },
+          "spec": {
+            "collision": "Rectangular body inset by 6 percent x and 4 percent y; dense crop with modest transparent corners.",
+            "tile_axes": [],
+            "motion": "Solid: boost-aware active-axis scroll. Decorative wreckage/rocks: independent slow scroll and rotation without physics."
+          }
+        },
+        {
+          "role": "background-far",
+          "path": "../../assets/levels/ashen-graveyard.png",
+          "runtime_key": "ashenGraveyard",
+          "width_px": 1536,
+          "height_px": 1024,
+          "alpha": false,
+          "readiness": "concept",
+          "source_path": "ashen-graveyard-source.png",
+          "sha256": "38f1dccfd1a997a738d953ae605eb4a307db75756925a929bd96091e3a605fce",
+          "checks": {
+            "dimensions": "pass",
+            "alpha": "pass",
+            "seams": "not-applicable",
+            "gameplay_readability": "unverified"
+          },
+          "spec": {
+            "motion": "Crop-safe sinusoidal drift; image is not tiled."
+          }
+        }
+      ],
+      "preview_paths": [
+        "source-atlas.png",
+        "ashen-surface-source.png",
+        "ashen-graveyard-source.png"
+      ],
+      "prompt_path": "prompts.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view / top-down placements",
+        "scroll": "horizontal / vertical",
+        "tile_axes": [],
+        "target_display": "800\u00d7600 viewport; walls 235px travel length, props 85\u2013115px transverse breadth.",
+        "layer_order": [
+          "background-far",
+          "decorative-props",
+          "solid-terrain",
+          "combat"
+        ]
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "unverified"
+      },
+      "limitations": [
+        "Sources are not seamless tiles.",
+        "Runtime motion, not generated animation frames.",
+        "Chromium sandbox restrictions prevented browser compositing and full playthrough."
+      ]
+    }
+  ]
+}

@@ -75,11 +75,19 @@
         return dx * dx + dy * dy <= kill * kill;
     }
 
-    function firstHit(ship, threats, hole, svx, svy) {
+    function firstHit(ship, threats, hole, svx, svy, ring) {
         var best = null;
         for (var i = 0; i < threats.length; i++) {
-            var t = overlapSeconds(ship, threats[i], svx, svy);
+            var threat = threats[i];
+            var t = overlapSeconds(ship, threat, svx, svy);
             if (t == null) continue;
+            if (Number.isFinite(threat.activeInS)) {
+                t = Math.max(t, threat.activeInS, 0);
+                const futureShip = {...ship,x:ship.x+svx*t,y:ship.y+svy*t};
+                const futureThreat = {...threat,x:threat.x+(threat.vx||0)*t,y:threat.y+(threat.vy||0)*t};
+                if (t > HORIZON_S || (Number.isFinite(threat.endsInS) && t > threat.endsInS) ||
+                    overlapSeconds(futureShip,futureThreat,svx,svy) !== 0) continue;
+            }
             if (best == null || t < best) best = t;
         }
         if (hole) {
@@ -94,11 +102,21 @@
                 }
             }
         }
+        if (ring && ['telegraph','lethal'].includes(ring.phase)) {
+            for(let t=0;t<=HORIZON_S;t+=.016) {
+                if(t<ring.activeInS || t>ring.endsInS) continue;
+                const radius=ring.phase==='telegraph'?ring.targetRadius:ring.radius;
+                if(Math.abs(Math.hypot(ship.x+svx*t-ring.x,ship.y+svy*t-ring.y)-radius)<ring.lethalWidth/2+4) {
+                    if(best==null || t<best) best=t;
+                    break;
+                }
+            }
+        }
         return best;
     }
 
-    function evaluateMove(ship, threats, hole, bounds, svx, svy) {
-        var t = firstHit(ship, threats, hole, svx, svy);
+    function evaluateMove(ship, threats, hole, bounds, svx, svy, ring) {
+        var t = firstHit(ship, threats, hole, svx, svy, ring);
         var aheadX = ship.x + svx * EDGE_CHECK_S;
         var aheadY = ship.y + svy * EDGE_CHECK_S;
         var hitsEdge = !inside(aheadX, aheadY, bounds);
@@ -116,7 +134,8 @@
         var worldH = input.worldH || 600;
         var hw = ship.w * 0.5;
         var hh = ship.h * 0.5;
-        var bounds = {
+        var bounds = input.bounds ? {minX:input.bounds.x+hw,maxX:input.bounds.x+input.bounds.width-hw,
+            minY:input.bounds.y+hh,maxY:input.bounds.y+input.bounds.height-hh} : {
             minX: 24 + hw,
             maxX: worldW - 24 - hw,
             minY: 36 + hh,
@@ -125,12 +144,14 @@
         var threats = []
             .concat(input.bullets || [])
             .concat(input.enemies || [])
-            .concat(input.obstacles || []);
+            .concat(input.obstacles || [])
+            .concat(input.walls || [])
+            .concat(input.telegraphs || []);
         if (input.boss) threats.push(input.boss);
         var hole = input.blackHole || null;
         var speed = Number.isFinite(input.speed) ? input.speed : 280;
 
-        var holdHit = firstHit(ship, threats, hole, 0, 0);
+        var holdHit = firstHit(ship, threats, hole, 0, 0, input.ring);
         var listed = threats.map(function (threat) {
             var t = overlapSeconds(ship, threat, 0, 0);
             var dx = threat.x - ship.x;
@@ -165,7 +186,7 @@
                 var key = MOVE_ORDER[i];
                 var axis = MOVE_AXES[key];
                 var dir = unit(axis[0], axis[1]);
-                out[key] = evaluateMove(ship, threats, hole, bounds, dir.x * moveSpeed, dir.y * moveSpeed);
+                out[key] = evaluateMove(ship, threats, hole, bounds, dir.x * moveSpeed, dir.y * moveSpeed, input.ring);
             }
             return out;
         }

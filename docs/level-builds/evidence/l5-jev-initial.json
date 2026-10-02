@@ -1,0 +1,2375 @@
+{
+  "when": "2026-09-29T15:42:41.275Z",
+  "level": 5,
+  "segmentEvidence": [
+    {
+      "level": 5,
+      "segment": "iceApproach",
+      "elapsedMs": 1195,
+      "lives": 5
+    },
+    {
+      "level": 5,
+      "segment": "riftCrossfire",
+      "elapsedMs": 22395,
+      "lives": 5
+    },
+    {
+      "level": 5,
+      "segment": "eyeOfStorm",
+      "elapsedMs": 47195,
+      "lives": 5
+    },
+    {
+      "level": 5,
+      "segment": "auroraCrown",
+      "elapsedMs": 57195,
+      "lives": 5
+    },
+    {
+      "level": 5,
+      "segment": "finalBoss",
+      "elapsedMs": 77995,
+      "lives": 5
+    }
+  ],
+  "holdMs": 400,
+  "difficulty": "hotshot",
+  "beaten": false,
+  "continuesUsed": 0,
+  "jevDecisions": 244,
+  "jevErrors": 0,
+  "pageErrors": [],
+  "usage": {
+    "input_tokens": 475589,
+    "output_tokens": 24648
+  },
+  "wallMs": 1200777,
+  "actions": [
+    {
+      "atMs": 6404,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 12375,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 18875,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 25388,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 32181,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 38784,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 44651,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 51990,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 58292,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 64510,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 70715,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 76948,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 83026,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 89059,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 95640,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 101578,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 108376,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 114450,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 120569,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 126691,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 132931,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 139123,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 145185,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 151457,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 157795,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 163846,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 170080,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 176155,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 182490,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 188906,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 194707,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 200805,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 206602,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 212618,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 218818,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 224493,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 230595,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 236554,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 242502,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 248596,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 254482,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 260624,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 266361,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 272362,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 278754,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 284754,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 290544,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 296752,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 302893,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 308872,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 314802,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 320659,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 326360,
+      "segment": "iceApproach",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 332439,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 337874,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 343545,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 349021,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 354579,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 359984,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 365613,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 371244,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 376579,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 382327,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 387988,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 393649,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 399479,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 405286,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 411102,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 416720,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 422460,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 427836,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 433561,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 439253,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 444862,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 450694,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 456414,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 462306,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.94
+    },
+    {
+      "atMs": 468391,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "up_right",
+      "boost": true,
+      "source": "jev",
+      "confidence": 0.81
+    },
+    {
+      "atMs": 474324,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 480020,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 485908,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 491895,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 497981,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 503890,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 509820,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 515544,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 521206,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 526019,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 530465,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 535159,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 539727,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 544041,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 548405,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 552711,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 556958,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 561367,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 565574,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 570336,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 574773,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 579297,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 583740,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 588577,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 593406,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 597906,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 602589,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 607286,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 611899,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 616491,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 620697,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 624381,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 628791,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 633386,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 637813,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 642572,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.92
+    },
+    {
+      "atMs": 647801,
+      "segment": "riftCrossfire",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 652372,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 656339,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 660409,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 664486,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 668673,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 672571,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 676831,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 681207,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 685492,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 689688,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 694005,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 698250,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 702328,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 706825,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 711375,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 715760,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 719942,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 724238,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 728646,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 733227,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 737470,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 741767,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 746061,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 750244,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 754261,
+      "segment": "eyeOfStorm",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 758591,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 762436,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 766600,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 771008,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 775341,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 779911,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 784634,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 789094,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 793491,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 797952,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 802777,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 807200,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.37
+    },
+    {
+      "atMs": 811530,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "up_left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 816926,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 821594,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 826109,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.91
+    },
+    {
+      "atMs": 830626,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 835123,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 839644,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 844565,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 849173,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 853837,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 858336,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 863057,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 867401,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 871735,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 876100,
+      "segment": "auroraCrown",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 880553,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 885027,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 889482,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 894103,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 898460,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 902895,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 907036,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 911631,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 916760,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 922118,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 927399,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 932331,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 937122,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 941534,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 945828,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 950186,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 954450,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 958872,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 963303,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 967738,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 972605,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 977002,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 981389,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 985813,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 990154,
+      "segment": "auroraCrown",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 995427,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 999449,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1003532,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1007691,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1012226,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1016578,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.65
+    },
+    {
+      "atMs": 1021494,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "up_right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.54
+    },
+    {
+      "atMs": 1025900,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1030004,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1034262,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1038569,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 1042721,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1047043,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1051201,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1055307,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1059327,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1063639,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1068610,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1073077,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.9
+    },
+    {
+      "atMs": 1077378,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1081778,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1086236,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1090678,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1094759,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1098900,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1103042,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1107256,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.91
+    },
+    {
+      "atMs": 1111314,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1115647,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1120021,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1124725,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "down_right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1129240,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.93
+    },
+    {
+      "atMs": 1133586,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1137731,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1141765,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1145911,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1150248,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1154604,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1158947,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.92
+    },
+    {
+      "atMs": 1163009,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1167168,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1170578,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1173615,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1176451,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1179452,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1182740,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1185626,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1188520,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1191206,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1194325,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1197356,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1200340,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    }
+  ],
+  "final": {
+    "level": 5,
+    "score": 7970,
+    "enemiesKilled": 42,
+    "elapsedMs": 98795,
+    "phase": "boss",
+    "segment": "finalBoss",
+    "lives": 4,
+    "safest": "hold"
+  },
+  "flags": {
+    "opening": false,
+    "transitioning": false,
+    "victory": false,
+    "ended": false,
+    "continuePending": false,
+    "awaitingNext": false
+  },
+  "lastActions": [
+    {
+      "atMs": 1167168,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1170578,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1173615,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1176451,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1179452,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1182740,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1185626,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1188520,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1191206,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1194325,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1197356,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1200340,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    }
+  ],
+  "errorSamples": []
+}

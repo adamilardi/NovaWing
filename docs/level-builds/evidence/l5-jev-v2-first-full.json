@@ -1,0 +1,7238 @@
+{
+  "when": "2026-09-30T03:02:25.749Z",
+  "level": 5,
+  "segmentEvidence": [
+    {
+      "level": 5,
+      "segment": "iceApproach",
+      "elapsedMs": 284,
+      "lives": 3
+    },
+    {
+      "level": 5,
+      "segment": "riftCrossfire",
+      "elapsedMs": 22044,
+      "lives": 3
+    },
+    {
+      "level": 5,
+      "segment": "eyeOfStorm",
+      "elapsedMs": 46700,
+      "lives": 3
+    },
+    {
+      "level": 5,
+      "segment": "auroraCrown",
+      "elapsedMs": 56300,
+      "lives": 2
+    }
+  ],
+  "adapterVersion": 2,
+  "runtimeHashes": {
+    "game.js": "f016e220ffab1c1cf829a6f8c41387fe506ca11734456ef118f8d568c9abcc33",
+    "levels.js": "0d8a8840c2117f6c006a40535d775ec440c3c6950ca2d4dba2a5c7bfb20fba90",
+    "src/assets.js": "28fd44b16bfb90b7c655d519528a6c52eb0e21bd753eed65ffd51967ba1d18b5",
+    "src/pilot-facts.js": "011b35032cc43cdaf906a4d67130ab6fec14a43d21a656c1ae3a968c07955edd"
+  },
+  "ordinaryPlayerRules": true,
+  "effectiveRules": {
+    "baseSpeed": 280,
+    "boostSpeed": 470,
+    "boostRampPerSecond": 7,
+    "boostFadePerSecond": 3.2,
+    "boostDrainPerSecond": 34,
+    "boostReengageThreshold": 35,
+    "boostIntensity": 0,
+    "damageCooldownMs": 900
+  },
+  "playtestBot": false,
+  "holdMs": 320,
+  "bossHoldMs": 160,
+  "bossOnly": false,
+  "difficulty": "hotshot",
+  "beaten": false,
+  "continuesUsed": 1,
+  "jevDecisions": 210,
+  "jevErrors": 0,
+  "pageErrors": [],
+  "usage": {
+    "input_tokens": 1403829,
+    "output_tokens": 33616
+  },
+  "wallMs": 401178,
+  "actions": [
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666670062114,
+      "livesChange": 0,
+      "atMs": 2418,
+      "stateTimeMs": 1434.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 365.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 455,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.6
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666660398732,
+      "livesChange": 0,
+      "atMs": 4488,
+      "stateTimeMs": 1754.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 277.29
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 366,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.83
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004999999999711235,
+      "livesChange": 0,
+      "atMs": 6494,
+      "stateTimeMs": 2074.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 188.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 277,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.84
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666670630548,
+      "livesChange": 0,
+      "atMs": 8534,
+      "stateTimeMs": 2394.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 99.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 189,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.85
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 10930,
+      "stateTimeMs": 2714.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 240
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 100,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 13005,
+      "stateTimeMs": 3034.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.57
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 15252,
+      "stateTimeMs": 3354.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.77
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 17852,
+      "stateTimeMs": 3674.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 19998,
+      "stateTimeMs": 3994.2333333337056,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.61
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 22643,
+      "stateTimeMs": 4314.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.65
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 24716,
+      "stateTimeMs": 4634.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 26718,
+      "stateTimeMs": 4954.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 28666,
+      "stateTimeMs": 5274.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 30626,
+      "stateTimeMs": 5594.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333445125,
+      "livesChange": 0,
+      "atMs": 32655,
+      "stateTimeMs": 5914.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 122.67
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.53
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 34669,
+      "stateTimeMs": 6234.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 320
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 123,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.65
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 37284,
+      "stateTimeMs": 6554.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.65
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 39677,
+      "stateTimeMs": 6874.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 41998,
+      "stateTimeMs": 7194.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.59
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 44141,
+      "stateTimeMs": 7514.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 46279,
+      "stateTimeMs": 7834.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 319.9999999999991,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 48373,
+      "stateTimeMs": 8154.233333333706,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 50450,
+      "stateTimeMs": 8474.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.61
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 52502,
+      "stateTimeMs": 8794.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.62
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 55143,
+      "stateTimeMs": 9114.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 57178,
+      "stateTimeMs": 9434.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.55
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 59200,
+      "stateTimeMs": 9754.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 61319,
+      "stateTimeMs": 10074.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 63356,
+      "stateTimeMs": 10394.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 65337,
+      "stateTimeMs": 10714.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.76
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 67378,
+      "stateTimeMs": 11034.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.65
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 69494,
+      "stateTimeMs": 11354.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 71486,
+      "stateTimeMs": 11674.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 73515,
+      "stateTimeMs": 11994.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.74
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 1,
+      "atMs": 75510,
+      "stateTimeMs": 12314.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.78
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 77451,
+      "stateTimeMs": 12634.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.62
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 79418,
+      "stateTimeMs": 12954.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 81371,
+      "stateTimeMs": 13274.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 83427,
+      "stateTimeMs": 13594.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.78
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 85491,
+      "stateTimeMs": 13914.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 88130,
+      "stateTimeMs": 14234.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.61
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.002000000000066393,
+      "livesChange": 0,
+      "atMs": 90208,
+      "stateTimeMs": 14554.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 163.83
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "down",
+      "boost": true,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.3
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0013333333334912822,
+      "livesChange": 0,
+      "atMs": 92408,
+      "stateTimeMs": 14874.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 312.66
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 164,
+      "stick": "down",
+      "boost": true,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.33
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001999999999782176,
+      "livesChange": 0,
+      "atMs": 94434,
+      "stateTimeMs": 15194.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 207.87
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 313,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.54
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004666666666821584,
+      "livesChange": 0,
+      "atMs": 96485,
+      "stateTimeMs": 15514.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 114.53
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 208,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 98411,
+      "stateTimeMs": 15834.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 304
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 115,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.53
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 100971,
+      "stateTimeMs": 16154.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.62
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 103415,
+      "stateTimeMs": 16474.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.82
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 1.4210854715202004e-14,
+      "livesChange": 0,
+      "atMs": 105377,
+      "stateTimeMs": 16794.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 118
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.59
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 107376,
+      "stateTimeMs": 17114.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 320
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 118,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.63
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 109447,
+      "stateTimeMs": 17434.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.36
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 111490,
+      "stateTimeMs": 17754.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 113488,
+      "stateTimeMs": 18074.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.54
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 115460,
+      "stateTimeMs": 18394.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.62
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 117455,
+      "stateTimeMs": 18714.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 119511,
+      "stateTimeMs": 19034.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 122055,
+      "stateTimeMs": 19354.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.79
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 124134,
+      "stateTimeMs": 19674.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.55
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 126159,
+      "stateTimeMs": 19994.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.54
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003198734792988489,
+      "livesChange": 0,
+      "atMs": 128395,
+      "stateTimeMs": 20314.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 462.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up_right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.55
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": -1,
+      "atMs": 130874,
+      "stateTimeMs": 20634.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 112
+        },
+        "damage": {
+          "kind": "enemy",
+          "atMs": 112
+        },
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 4,
+      "bossHealth": null,
+      "playerX": 463,
+      "playerY": 34,
+      "stick": "up_left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.3
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 132764,
+      "stateTimeMs": 20954.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.59
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 135076,
+      "stateTimeMs": 21274.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.62
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 136640,
+      "stateTimeMs": 21594.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.55
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 138240,
+      "stateTimeMs": 21914.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 139810,
+      "stateTimeMs": 22234.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.57
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00016835446280083488,
+      "livesChange": 0,
+      "atMs": 141416,
+      "stateTimeMs": 22554.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 118
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 34,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 364.6365996478927,
+      "livesChange": 0,
+      "atMs": 143042,
+      "stateTimeMs": 22874.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 396.58,
+          "y": 38.67
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "iceApproach",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 397,
+      "playerY": 118,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004999999999427018,
+      "livesChange": 0,
+      "atMs": 144818,
+      "stateTimeMs": 23194.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 314.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 403,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666663240903,
+      "livesChange": 0,
+      "atMs": 146359,
+      "stateTimeMs": 23514.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 221.29
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 315,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004999999999654392,
+      "livesChange": 0,
+      "atMs": 147931,
+      "stateTimeMs": 23834.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 132.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 221,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666670417385,
+      "livesChange": 0,
+      "atMs": 151624,
+      "stateTimeMs": 24154.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 43.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 133,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.84
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 154604,
+      "stateTimeMs": 24474.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 48
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 44,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 156570,
+      "stateTimeMs": 24794.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.85
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 158293,
+      "stateTimeMs": 25114.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.84
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 160199,
+      "stateTimeMs": 25434.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.61
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 161799,
+      "stateTimeMs": 25754.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 163695,
+      "stateTimeMs": 26074.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 3.410605131648481e-13,
+      "livesChange": 0,
+      "atMs": 166051,
+      "stateTimeMs": 26394.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 483.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.65
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 167874,
+      "stateTimeMs": 26714.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 488.55,
+          "y": 34
+        },
+        "collision": {
+          "kind": "bullet",
+          "atMs": 16
+        },
+        "damage": {
+          "kind": "bullet",
+          "atMs": 16
+        },
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 484,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.34
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 169511,
+      "stateTimeMs": 27034.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 488.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 489,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.21
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 171290,
+      "stateTimeMs": 27354.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 488.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 489,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 172854,
+      "stateTimeMs": 27674.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 488.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 489,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.37
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003636286336700323,
+      "livesChange": -1,
+      "atMs": 174678,
+      "stateTimeMs": 27994.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 547.94,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 489,
+      "playerY": 34,
+      "stick": "up_right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.5
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004003317559544103,
+      "livesChange": 0,
+      "atMs": 176733,
+      "stateTimeMs": 28314.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 551.24,
+          "y": 170.27
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 548,
+      "playerY": 34,
+      "stick": "down",
+      "boost": true,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.82
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001909294524035065,
+      "livesChange": 0,
+      "atMs": 178404,
+      "stateTimeMs": 28634.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 634.7,
+          "y": 86.81
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 551,
+      "playerY": 170,
+      "stick": "up_right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.15
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 180029,
+      "stateTimeMs": 28954.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 208
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 635,
+      "playerY": 87,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.36
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 181703,
+      "stateTimeMs": 29274.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.25
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 183314,
+      "stateTimeMs": 29594.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.46
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 184853,
+      "stateTimeMs": 29914.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.55
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 186887,
+      "stateTimeMs": 30234.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 188528,
+      "stateTimeMs": 30554.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.77
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": 0,
+      "atMs": 190234,
+      "stateTimeMs": 30874.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.74
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472971550233,
+      "livesChange": -1,
+      "atMs": 192375,
+      "stateTimeMs": 31194.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 638,
+          "y": 34
+        },
+        "collision": {
+          "kind": "bullet",
+          "atMs": 64
+        },
+        "damage": {
+          "kind": "bullet",
+          "atMs": 64
+        },
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.32
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0036987472969940427,
+      "livesChange": 0,
+      "atMs": 194119,
+      "stateTimeMs": 31514.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 501.73,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 638,
+      "playerY": 34,
+      "stick": "left",
+      "boost": true,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.27
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 195964,
+      "stateTimeMs": 31834.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 502,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.14
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 197568,
+      "stateTimeMs": 32154.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.31
+    },
+    {
+      "actualDurationMs": 319.99999999999636,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 199251,
+      "stateTimeMs": 32474.233333333705,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.33
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 200950,
+      "stateTimeMs": 32794.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.39
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 202592,
+      "stateTimeMs": 33114.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.38
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 204188,
+      "stateTimeMs": 33434.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.49
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 205869,
+      "stateTimeMs": 33754.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.54
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 207457,
+      "stateTimeMs": 34074.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.38
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 209432,
+      "stateTimeMs": 34394.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.43
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004967919370756135,
+      "livesChange": 0,
+      "atMs": 211511,
+      "stateTimeMs": 34714.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 713.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.4
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860366300258,
+      "livesChange": 0,
+      "atMs": 213160,
+      "stateTimeMs": 35034.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 624.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 713,
+      "playerY": 34,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.4
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 215217,
+      "stateTimeMs": 35354.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 624,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.36
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 216814,
+      "stateTimeMs": 35674.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.4
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 218406,
+      "stateTimeMs": 35994.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.33
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 220827,
+      "stateTimeMs": 36314.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.32
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 222500,
+      "stateTimeMs": 36634.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.47
+    },
+    {
+      "actualDurationMs": 16,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": -1,
+      "atMs": 225284,
+      "stateTimeMs": 36954.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": {
+          "kind": "bullet",
+          "atMs": 16
+        },
+        "damage": {
+          "kind": "bullet",
+          "atMs": 16
+        },
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.3
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 227696,
+      "stateTimeMs": 36970.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.43
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 230019,
+      "stateTimeMs": 37290.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.52
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 231911,
+      "stateTimeMs": 37610.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.5
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 233770,
+      "stateTimeMs": 37930.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.38
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 235491,
+      "stateTimeMs": 38250.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.48
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 237248,
+      "stateTimeMs": 38570.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.44
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472960181549,
+      "livesChange": 0,
+      "atMs": 238968,
+      "stateTimeMs": 38890.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 703.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 240778,
+      "stateTimeMs": 39210.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 704,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.49
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 242440,
+      "stateTimeMs": 39530.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 244599,
+      "stateTimeMs": 39850.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.53
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 246811,
+      "stateTimeMs": 40170.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.6
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 249033,
+      "stateTimeMs": 40490.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.43
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 250701,
+      "stateTimeMs": 40810.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.46
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 252939,
+      "stateTimeMs": 41130.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.45
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001698747296700276,
+      "livesChange": 0,
+      "atMs": 254585,
+      "stateTimeMs": 41450.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 619.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.4
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 256118,
+      "stateTimeMs": 41770.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 620,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.45
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 257796,
+      "stateTimeMs": 42090.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.42
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 259380,
+      "stateTimeMs": 42410.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.57
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004967919369278206,
+      "livesChange": 0,
+      "atMs": 260981,
+      "stateTimeMs": 42730.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 531.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.39
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001634586035834218,
+      "livesChange": 0,
+      "atMs": 263243,
+      "stateTimeMs": 43050.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 526.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 531,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.41
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001634586035834218,
+      "livesChange": 0,
+      "atMs": 264821,
+      "stateTimeMs": 43370.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 526.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 526,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001634586035834218,
+      "livesChange": 0,
+      "atMs": 266389,
+      "stateTimeMs": 43690.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 526.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 526,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.36
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.001634586036516339,
+      "livesChange": 0,
+      "atMs": 268052,
+      "stateTimeMs": 44010.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 610.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 526,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.48
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 269885,
+      "stateTimeMs": 44330.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 610,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.41
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 271420,
+      "stateTimeMs": 44650.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.87
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 273120,
+      "stateTimeMs": 44970.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.48
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 274740,
+      "stateTimeMs": 45290.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.38
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 276407,
+      "stateTimeMs": 45610.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.5
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0049679193699603275,
+      "livesChange": 0,
+      "atMs": 277949,
+      "stateTimeMs": 45930.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 615.1,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.49
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016987472960181549,
+      "livesChange": 0,
+      "atMs": 279577,
+      "stateTimeMs": 46250.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 703.76,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 615,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.41
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 281223,
+      "stateTimeMs": 46570.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 704,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.41
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 282965,
+      "stateTimeMs": 46890.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.43
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016345860373121468,
+      "livesChange": 0,
+      "atMs": 285314,
+      "stateTimeMs": 47210.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.36
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 521.6593650314351,
+      "livesChange": 0,
+      "atMs": 286826,
+      "stateTimeMs": 47530.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 708.43,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "riftCrossfire",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 708,
+      "playerY": 34,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.51
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666670062114,
+      "livesChange": 0,
+      "atMs": 288599,
+      "stateTimeMs": 47850.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 365.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 455,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.39
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666660398732,
+      "livesChange": 0,
+      "atMs": 290054,
+      "stateTimeMs": 48170.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 277.29
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 366,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004999999999711235,
+      "livesChange": 0,
+      "atMs": 291920,
+      "stateTimeMs": 48490.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 188.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 277,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666670630548,
+      "livesChange": 0,
+      "atMs": 293968,
+      "stateTimeMs": 48810.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 99.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 189,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.74
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 295758,
+      "stateTimeMs": 49130.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 240
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 100,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.51
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 297295,
+      "stateTimeMs": 49450.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 311.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": -1,
+      "atMs": 299388,
+      "stateTimeMs": 49770.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "damage": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 311,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.21
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": 0,
+      "atMs": 300910,
+      "stateTimeMs": 50090.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.42
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": 0,
+      "atMs": 302508,
+      "stateTimeMs": 50410.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.59
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": 0,
+      "atMs": 304347,
+      "stateTimeMs": 50730.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.39
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": 0,
+      "atMs": 305865,
+      "stateTimeMs": 51050.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333337282056,
+      "livesChange": 0,
+      "atMs": 307445,
+      "stateTimeMs": 51370.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 306.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333333387145,
+      "livesChange": 0,
+      "atMs": 309563,
+      "stateTimeMs": 51690.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 390.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 307,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.53
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 311374,
+      "stateTimeMs": 52010.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 32
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 391,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.27
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 1,
+      "atMs": 312795,
+      "stateTimeMs": 52330.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 314400,
+      "stateTimeMs": 52650.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 315959,
+      "stateTimeMs": 52970.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 318067,
+      "stateTimeMs": 53290.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 319738,
+      "stateTimeMs": 53610.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.64
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0033333333333303017,
+      "livesChange": 0,
+      "atMs": 321350,
+      "stateTimeMs": 53930.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 395.21,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0034679318736721143,
+      "livesChange": -1,
+      "atMs": 323373,
+      "stateTimeMs": 54250.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 332.52,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 96
+        },
+        "damage": {
+          "kind": "enemy",
+          "atMs": 96
+        },
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 3,
+      "bossHealth": null,
+      "playerX": 395,
+      "playerY": 34,
+      "stick": "up_left",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.31
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0005340205981383406,
+      "livesChange": 0,
+      "atMs": 325059,
+      "stateTimeMs": 54570.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 421.52,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 333,
+      "playerY": 34,
+      "stick": "up_right",
+      "boost": true,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.39
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 326665,
+      "stateTimeMs": 54890.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": {
+          "kind": "enemy",
+          "atMs": 16
+        },
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 422,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.4
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 329191,
+      "stateTimeMs": 55210.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 331235,
+      "stateTimeMs": 55530.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 332847,
+      "stateTimeMs": 55850.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.56
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 334307,
+      "stateTimeMs": 56170.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.76
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 335978,
+      "stateTimeMs": 56490.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00046286010723406434,
+      "livesChange": 0,
+      "atMs": 337502,
+      "stateTimeMs": 56810.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.81
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 402.87622681924415,
+      "livesChange": 0,
+      "atMs": 339357,
+      "stateTimeMs": 57130.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 427.06,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "eyeOfStorm",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 427,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.004999999999540705,
+      "livesChange": 0,
+      "atMs": 341463,
+      "stateTimeMs": 57450.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 342.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 436,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.77
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666671198982,
+      "livesChange": 0,
+      "atMs": 343363,
+      "stateTimeMs": 57770.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 253.96
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 343,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.81
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.0016666666664377772,
+      "livesChange": 0,
+      "atMs": 344989,
+      "stateTimeMs": 58090.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 165.29
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 254,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.81
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00499999999962597,
+      "livesChange": 0,
+      "atMs": 346498,
+      "stateTimeMs": 58410.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 76.62
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 165,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.8
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 348330,
+      "stateTimeMs": 58730.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 160
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 77,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": -1,
+      "atMs": 351447,
+      "stateTimeMs": 59050.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 2,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.77
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 353035,
+      "stateTimeMs": 59370.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0,
+      "livesChange": 0,
+      "atMs": 354739,
+      "stateTimeMs": 59690.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 399.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 3.410605131648481e-13,
+      "livesChange": 0,
+      "atMs": 356940,
+      "stateTimeMs": 60010.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 483.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 400,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.58
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.003333333332989241,
+      "livesChange": 0,
+      "atMs": 358967,
+      "stateTimeMs": 60330.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 572.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 484,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 4.547473508864641e-13,
+      "livesChange": 0,
+      "atMs": 360553,
+      "stateTimeMs": 60650.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 665.88,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 573,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.41
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.00333333333446717,
+      "livesChange": 0,
+      "atMs": 362433,
+      "stateTimeMs": 60970.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 754.55,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": null
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 666,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.43
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 364011,
+      "stateTimeMs": 61290.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 112
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 755,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.53
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 365569,
+      "stateTimeMs": 61610.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.77
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 367260,
+      "stateTimeMs": 61930.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 368997,
+      "stateTimeMs": 62250.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 370658,
+      "stateTimeMs": 62570.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 372456,
+      "stateTimeMs": 62890.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.66
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 374143,
+      "stateTimeMs": 63210.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.72
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 375954,
+      "stateTimeMs": 63530.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 377596,
+      "stateTimeMs": 63850.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 379301,
+      "stateTimeMs": 64170.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 381133,
+      "stateTimeMs": 64490.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 383455,
+      "stateTimeMs": 64810.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 385235,
+      "stateTimeMs": 65130.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 387030,
+      "stateTimeMs": 65450.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.63
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 388881,
+      "stateTimeMs": 65770.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 390559,
+      "stateTimeMs": 66090.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 392211,
+      "stateTimeMs": 66410.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 393953,
+      "stateTimeMs": 66730.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 395587,
+      "stateTimeMs": 67050.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 397405,
+      "stateTimeMs": 67370.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 399048,
+      "stateTimeMs": 67690.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 304,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": -1,
+      "atMs": 400936,
+      "stateTimeMs": 68010.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.63
+    }
+  ],
+  "final": {
+    "level": 5,
+    "score": 2980,
+    "enemiesKilled": 18,
+    "elapsedMs": 67164,
+    "phase": "waves",
+    "segment": "auroraCrown",
+    "lives": 0,
+    "safest": "down"
+  },
+  "flags": {
+    "opening": false,
+    "transitioning": false,
+    "victory": false,
+    "ended": true,
+    "continuePending": false,
+    "awaitingNext": false
+  },
+  "lastActions": [
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 381133,
+      "stateTimeMs": 64490.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 383455,
+      "stateTimeMs": 64810.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.7
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 385235,
+      "stateTimeMs": 65130.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 387030,
+      "stateTimeMs": 65450.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.63
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 388881,
+      "stateTimeMs": 65770.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.68
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 390559,
+      "stateTimeMs": 66090.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.75
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 392211,
+      "stateTimeMs": 66410.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 393953,
+      "stateTimeMs": 66730.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.71
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 395587,
+      "stateTimeMs": 67050.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.67
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 397405,
+      "stateTimeMs": 67370.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.69
+    },
+    {
+      "actualDurationMs": 320,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": 0,
+      "atMs": 399048,
+      "stateTimeMs": 67690.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.73
+    },
+    {
+      "actualDurationMs": 304,
+      "endpointErrorPx": 0.2400000000000091,
+      "livesChange": -1,
+      "atMs": 400936,
+      "stateTimeMs": 68010.2333333337,
+      "durationMs": 320,
+      "prediction": {
+        "end": {
+          "x": 785,
+          "y": 34
+        },
+        "collision": null,
+        "damage": null,
+        "edgeAtMs": 16
+      },
+      "hazards": {
+        "telegraphs": [],
+        "ring": null,
+        "attackTimers": null
+      },
+      "segment": "auroraCrown",
+      "lives": 1,
+      "bossHealth": null,
+      "playerX": 785,
+      "playerY": 34,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "model": "jev-1.13.0",
+      "confidence": 0.63
+    }
+  ],
+  "errorSamples": []
+}

@@ -64,7 +64,7 @@ const START_SEGMENT = (process.env.SEGMENT || '').trim() || null;
 /** Level-scoped or campaign victory. */
 function isEpisodeWin(snap, outcome) {
     if (outcome === 'win' || (snap && snap.victoryPending)) return true;
-    if (START_LEVEL != null && snap && Number(snap.level) > START_LEVEL) return true;
+    if (START_LEVEL != null && snap && (Number(snap.level) > START_LEVEL || snap.awaitingNextLevel)) return true;
     return false;
 }
 function stamp() {
@@ -95,7 +95,7 @@ async function installExpert(page, policy) {
         if (!hasRt) {
             await page.addScriptTag({ path: RUNTIME_PURE_PATH });
         }
-        const p = { ...policy, explore: EXPLORE };
+        const p = { ...policy, tacticalAssist: process.env.POLICY_ASSIST === '1', explore: EXPLORE };
         if (process.env.EXPLORE_MOVE_STD) p.exploreMoveStd = Number(process.env.EXPLORE_MOVE_STD);
         if (process.env.EXPLORE_BOOST_P) p.exploreBoostP = Number(process.env.EXPLORE_BOOST_P);
         await page.evaluate(installPolicyPilot, p);
@@ -199,6 +199,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
         }
         await page.waitForTimeout(200);
     }
+    if (policy) policy.tacticalAssist = process.env.POLICY_ASSIST === '1';
     const mode = await installExpert(page, policy);
 
     const steps = [];
@@ -248,7 +249,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
                         progress: progNorm(snap),
                         levelProgressMs: snap.levelProgressMs || 0,
                         levelDurationMs: dur,
-                        expert: EXPERT
+                        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST === '1', expert: EXPERT
                     }
                 });
                 prevSnap = {
@@ -311,7 +312,7 @@ async function main() {
             throw new Error(`Policy not found: ${POLICY_PATH}. Train first or use EXPERT=heuristic`);
         }
         policy = JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8'));
-        if (policy.obsSize !== OBS_SIZE) {
+        if ((policy.obsSize !== OBS_SIZE && !(policy.version === 3 && policy.obsSize === 192))) {
             throw new Error(`Policy obsSize ${policy.obsSize} != ${OBS_SIZE}`);
         }
         console.log(`policy=${POLICY_PATH} hidden=${JSON.stringify(policy.hidden)}`);
@@ -358,7 +359,7 @@ async function main() {
             elapsedMs: clearMs,
             episodeReturn: ep.episodeReturn,
             level: process.env.LEVEL || null,
-            expert: EXPERT,
+            tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST === '1', expert: EXPERT,
             explore: EXPLORE,
             workers: WORKERS,
             workerId: WORKER_ID,
@@ -406,7 +407,7 @@ async function main() {
         obsVersion: OBS_VERSION,
         obsSize: OBS_SIZE,
         actionSize: ACTION_SIZE,
-        expert: EXPERT,
+        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST === '1', expert: EXPERT,
         episodes: EPISODES,
         wins,
         totalSteps,

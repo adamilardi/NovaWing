@@ -31,9 +31,21 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
         await page.waitForFunction(() => levelSegment === 'finalBoss' && boss && boss.active);
         assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
         await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
-        await page.waitForFunction(() => levelEnded);
+        await page.waitForFunction(() => awaitingNextLevel && getLocalLeaderboard('level-3').length > 0);
+        for (const level of [4, 5, 6]) {
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(next => currentLevel === next && !levelTransitioning, level);
+            await page.evaluate(() => {
+                const finalSegment = getLevelDef(currentLevel).segments.at(-1);
+                advanceLevelSegment(getActiveScene(), finalSegment.id, 'campaignRankingCheck');
+            });
+            await page.waitForFunction(() => levelSegment === 'finalBoss' && boss && boss.active);
+            await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
+            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 6);
+        }
         assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
-        await page.waitForFunction(() => getLocalLeaderboard('campaign').length > 0 && getLocalLeaderboard('level-3').length > 0);
+        await page.waitForFunction(() => getLocalLeaderboard('campaign').length > 0 &&
+            getLocalLeaderboard('level-' + totalLevels()).length > 0);
         assert.equal(await page.evaluate(() => getActiveScene().children.list.some(node =>
             node.active && typeof node.text === 'string' && node.text.includes('Debug run'))), false);
         await page.screenshot({ path: path.join(evidenceDir, 'campaign-ranked.png') });
@@ -64,9 +76,16 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
             if (!tryArcadeContinue(scene) || !acceptArcadeContinue(scene)) throw new Error('Level 3 continue failed');
             completeLevel.call(scene);
         });
-        await page.waitForFunction(() => levelEnded && getLocalLeaderboard('campaign-easy').some(entry => entry.continues === 2));
+        await page.waitForFunction(() => awaitingNextLevel && getLocalLeaderboard('level-3-easy').some(entry => entry.continues === 1));
         assert.equal(await page.evaluate(() => getLocalLeaderboard('level-3-easy').some(entry => entry.continues === 1)), true);
         assert.equal(await page.evaluate(() => getLocalLeaderboard('level-2-easy').every(entry => entry.continues === 0)), true);
+        for (const level of [4, 5, 6]) {
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(next => currentLevel === next && !levelTransitioning, level);
+            await page.evaluate(() => completeLevel.call(getActiveScene()));
+            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 6);
+        }
+        await page.waitForFunction(() => getLocalLeaderboard('campaign-easy').some(entry => entry.continues === 2));
         await launch();
         await page.evaluate(() => {
             setDifficultyMode(getDifficultyMode() === 'hard' ? 'normal' : 'hard');
@@ -297,10 +316,10 @@ export async function casePolish(browser, base, evidenceDir) {
             node.active && node.text === 'CAMPAIGN COMPLETE'
         ));
         await page.waitForFunction(() => getLocalLeaderboard('campaign').some(entry => entry.name === 'FinalPilot'));
-        await page.waitForFunction(() => getLocalLeaderboard('level-3').some(entry => entry.name === 'FinalPilot'));
+        await page.waitForFunction(() => getLocalLeaderboard('level-' + totalLevels()).some(entry => entry.name === 'FinalPilot'));
         assert.deepEqual(await page.evaluate(() => ({
             campaign: getLocalLeaderboard('campaign').find(entry => entry.name === 'FinalPilot').score,
-            level: getLocalLeaderboard('level-3').find(entry => entry.name === 'FinalPilot').score
+            level: getLocalLeaderboard('level-' + totalLevels()).find(entry => entry.name === 'FinalPilot').score
         })), { campaign: 4321, level: 3321 }, 'final clear mixed level and campaign scores');
         assert.equal(await page.evaluate(() => levelEnded), true, 'name-entry Enter restarted the game');
         await page.reload();

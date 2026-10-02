@@ -1,0 +1,54 @@
+[
+  {
+    "id": "foundry-warden",
+    "path": "foundry-warden.png",
+    "production_path": "../../assets/bosses/foundry-warden.png",
+    "width_px": 1536,
+    "height_px": 1024,
+    "alpha": true,
+    "alpha_range": [
+      0,
+      254
+    ],
+    "sha256": "dbdf9508228ed0f3c177f03aefcd7d28e083ab6173f5aa9ddc8e62310f2b4b58"
+  },
+  {
+    "id": "aurora-sentinel",
+    "path": "aurora-sentinel.png",
+    "production_path": "../../assets/bosses/aurora-sentinel.png",
+    "width_px": 1254,
+    "height_px": 1254,
+    "alpha": true,
+    "alpha_range": [
+      0,
+      255
+    ],
+    "sha256": "811647c7085b2f88a15a1e10e6496408a1f4253f01e0fe3dafd5e91f05eb858f"
+  },
+  {
+    "id": "void-cantor",
+    "path": "void-cantor.png",
+    "production_path": "../../assets/bosses/void-cantor.png",
+    "width_px": 1254,
+    "height_px": 1254,
+    "alpha": true,
+    "alpha_range": [
+      0,
+      255
+    ],
+    "sha256": "2a85e94b34eb10327f0ac1fc6d86ccf228bbac5be7fc73300a16c779733bf506"
+  },
+  {
+    "id": "graveyard-leviathan",
+    "path": "graveyard-leviathan.png",
+    "production_path": "../../assets/bosses/graveyard-leviathan.png",
+    "width_px": 1536,
+    "height_px": 1024,
+    "alpha": true,
+    "alpha_range": [
+      0,
+      254
+    ],
+    "sha256": "64b99a1f51355bc7a3c20d3dd4c193499bbb2f9804f5200a2276bbc785a63534"
+  }
+]

@@ -1,0 +1,183 @@
+{
+  "runtimeHashes": {
+    "game.js": "dd4ed2dd06087bc0fbe662de174e65469038c9bc7e44b4002f939c6cff5991a7",
+    "levels.js": "a7e457d99eaca46ea1f8b92b7c3bd21e42ec2672321c135e8e02a6e40ba456e3",
+    "src/assets.js": "32189db652319ace5fe5f3fd9ef3130d92926bb5c5852306de3eba080ca8fa0a",
+    "src/boss-director.js": "bdb9ac7cbae2db1ff1d983c3c87863ccb91ebed1385c5081eb2d1a2642d03e4d",
+    "src/pilot-facts.js": "0f484806da19e5753b1e005cc334c6eee2375622cdce8d02fc8a801e31f371f5",
+    "src/pilot-tactics.js": "457ec1b4ea2d54168f11ca6d73cd2b8fed679da899c207f9890ed5af0cf5b446"
+  },
+  "method": "Uninterrupted automated-pilot flight under ordinary player rules using controlled 1x simulation clock; GPU rendering suppressed between captures, update and physics retained; outcomes are pilot-specific, not human balance proof",
+  "results": [
+    {
+      "level": 7,
+      "pilot": "local predictive collision planner with visible-terrain lookahead",
+      "lookaheadMs": 640,
+      "outcome": "clear",
+      "simulatedMs": 160320,
+      "entry": "full level",
+      "ordinaryRules": {
+        "lives": 3,
+        "mode": "normal",
+        "timeScale": 1,
+        "playtestBot": false,
+        "invulnerabilityOverride": false,
+        "continuesAccepted": 0
+      },
+      "changes": [
+        {
+          "simulatedMs": 160,
+          "level": 7,
+          "segment": "surfaceApproach",
+          "phase": "waves",
+          "lives": 3,
+          "shield": false,
+          "score": 0,
+          "elapsedMs": 526.9999999999991,
+          "progressMs": 288,
+          "player": {
+            "x": 120,
+            "y": 300
+          },
+          "walls": 3,
+          "enemies": 0,
+          "bossHealth": 0,
+          "continuesUsed": 0,
+          "continuePending": false,
+          "levelEnded": false,
+          "awaitingNextLevel": false,
+          "victoryPending": false,
+          "timeScale": 1,
+          "playtestBot": false
+        },
+        {
+          "simulatedMs": 21920,
+          "level": 7,
+          "segment": "hullField",
+          "phase": "waves",
+          "lives": 3,
+          "shield": false,
+          "score": 0,
+          "elapsedMs": 22319,
+          "progressMs": 80,
+          "player": {
+            "x": 152.99831645537216,
+            "y": 201.00505063388368
+          },
+          "walls": 1,
+          "enemies": 0,
+          "bossHealth": 0,
+          "continuesUsed": 0,
+          "continuePending": false,
+          "levelEnded": false,
+          "awaitingNextLevel": false,
+          "victoryPending": false,
+          "timeScale": 1,
+          "playtestBot": false
+        },
+        {
+          "simulatedMs": 47840,
+          "level": 7,
+          "segment": "ashShelter",
+          "phase": "waves",
+          "lives": 3,
+          "shield": false,
+          "score": 750,
+          "elapsedMs": 48271,
+          "progressMs": 32,
+          "player": {
+            "x": 239.26296286848526,
+            "y": 293.4003367089256
+          },
+          "walls": 3,
+          "enemies": 0,
+          "bossHealth": 0,
+          "continuesUsed": 0,
+          "continuePending": false,
+          "levelEnded": false,
+          "awaitingNextLevel": false,
+          "victoryPending": false,
+          "timeScale": 1,
+          "playtestBot": false
+        },
+        {
+          "simulatedMs": 58880,
+          "level": 7,
+          "segment": "reactorTrench",
+          "phase": "waves",
+          "lives": 3,
+          "shield": false,
+          "score": 750,
+          "elapsedMs": 59343,
+          "progressMs": 96,
+          "player": {
+            "x": 239.26296286848526,
+            "y": 293.4003367089256
+          },
+          "walls": 3,
+          "enemies": 0,
+          "bossHealth": 0,
+          "continuesUsed": 0,
+          "continuePending": false,
+          "levelEnded": false,
+          "awaitingNextLevel": false,
+          "victoryPending": false,
+          "timeScale": 1,
+          "playtestBot": false
+        },
+        {
+          "simulatedMs": 81760,
+          "level": 7,
+          "segment": "finalBoss",
+          "phase": "boss",
+          "lives": 3,
+          "shield": false,
+          "score": 1050,
+          "elapsedMs": 82255,
+          "progressMs": 23000,
+          "player": {
+            "x": 120,
+            "y": 300
+          },
+          "walls": 0,
+          "enemies": 0,
+          "bossHealth": 300,
+          "continuesUsed": 0,
+          "continuePending": false,
+          "levelEnded": false,
+          "awaitingNextLevel": false,
+          "victoryPending": false,
+          "timeScale": 1,
+          "playtestBot": false
+        }
+      ],
+      "final": {
+        "simulatedMs": 160320,
+        "level": 7,
+        "segment": "finalBoss",
+        "phase": "boss",
+        "lives": 3,
+        "shield": false,
+        "score": 4850,
+        "elapsedMs": 160735,
+        "progressMs": 23000,
+        "player": {
+          "x": 172.3685185657576,
+          "y": 337.1091514765017
+        },
+        "walls": 0,
+        "enemies": 0,
+        "bossHealth": 0,
+        "continuesUsed": 0,
+        "continuePending": false,
+        "levelEnded": true,
+        "awaitingNextLevel": false,
+        "victoryPending": false,
+        "timeScale": 1,
+        "playtestBot": false
+      },
+      "damageEvents": [],
+      "errors": []
+    }
+  ]
+}

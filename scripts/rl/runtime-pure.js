@@ -10,7 +10,7 @@
 (function (global) {
     'use strict';
 
-    var OBS_VERSION = 3;
+    var OBS_VERSION = 4;
     var K_ENEMIES = 6;
     var K_OBSTACLES = 4;
     var K_BULLETS = 8;
@@ -37,7 +37,7 @@
         K_BANDS * BAND_DIM +
         BOSS_DIM +
         BH_DIM +
-        PILOT_DIM;
+        PILOT_DIM + 128;
     var ACTION_SIZE = 4;
 
     var ENEMY_TYPE_ID = {
@@ -402,6 +402,48 @@
         });
     }
 
+    function writeTactical(out, o, snap, vertical) {
+        var p=snap.player, r=snap.movementRules||{}, b=snap.world?.bounds||{};
+        var fields=[p.w,p.h,r.baseSpeed,r.boostSpeed,r.boostIntensity,r.boostReengageThreshold,
+            r.boostDrainPerSecond,snap.boostEnergy,snap.boostLocked?1:0,snap.isBoosting?1:0,
+            snap.boss?.vulnerable?1:0,snap.level,snap.totalLevels,
+            snap.enemies?.length,snap.enemyBullets?.length,snap.walls?.length];
+        var scales=[100,100,500,500,1,100,100,100,1,1,1,6,6,30,100,30];
+        fields.forEach(function(v,i){out[o++]=nrm(v,scales[i]);});
+        var lanes=(snap.combatHazards?.telegraphs||[]).slice().sort(function(a,b){return a.activatesAt-b.activatesAt;});
+        for(var i=0;i<4;i++) {
+            var lane=lanes[i];
+            if(!lane){for(var j=0;j<8;j++)out[o++]=0;continue;}
+            var d=toCanonicalDelta(lane.x-p.x,lane.y-p.y,0,0,vertical);
+            out[o++]=1;out[o++]=nrm(d.dx,800);out[o++]=nrm(d.dy,600);
+            out[o++]=nrm(vertical?lane.h:lane.w,800);out[o++]=nrm(vertical?lane.w:lane.h,600);
+            out[o++]=nrm(lane.activatesAt-snap.time,2000);out[o++]=nrm(lane.endsAt-snap.time,2000);
+            out[o++]=lane.activatesAt<=snap.time?1:0;
+        }
+        var ring=snap.combatHazards?.ring;
+        var rd=ring?toCanonicalDelta(ring.x-p.x,ring.y-p.y,0,0,vertical):{dx:0,dy:0};
+        [ring?1:0,ring?.phase==='lethal'?1:0,nrm(rd.dx,800),nrm(rd.dy,600),
+            nrm(ring?.radius,600),nrm(ring?.targetRadius,600),nrm(ring?.telegraphEndsAt-snap.time,2000),
+            nrm(ring?.lethalEndsAt-snap.time,2000)].forEach(function(v){out[o++]=v;});
+        // Full-state predictions compress every observed threat, including objects beyond top-K slots.
+        var tactics=global.NovaWingTactics;
+        var plan=tactics && r.baseSpeed && snap.world?.bounds ? tactics.plan(snap,160) : null;
+        var keys=['hold','up','down','left','right','up_left','up_right','down_left','down_right'];
+        function writeMove(key,boost){
+            var axis={hold:[0,0],up:[0,-1],down:[0,1],left:[-1,0],right:[1,0],
+                up_left:[-1,-1],up_right:[1,-1],down_left:[-1,1],down_right:[1,1]}[key];
+            var a=fromCanonicalAction({x:axis[0],y:axis[1],boost:boost},snap);
+            var worldKey=Object.keys(tactics?.AXES||{}).find(function(k){return tactics.AXES[k][0]===a.x&&tactics.AXES[k][1]===a.y;});
+            var option=plan?.options[worldKey+(boost?'_boost':'')];
+            out[o++]=option?1:0;out[o++]=option?.predictedDamage?1:0;
+            out[o++]=option?.postActionDamage?1:0;out[o++]=option?.edgeAtMs!=null?1:0;
+        }
+        keys.forEach(function(k){writeMove(k,false);});
+        keys.slice(1).forEach(function(k){writeMove(k,true);});
+        [b.x,b.y,b.width,b.height].forEach(function(v){out[o++]=nrm(v,1000);});
+        return o;
+    }
+
     function encodeObservation(snap, buffer) {
         var out = buffer && buffer.length >= OBS_SIZE
             ? buffer
@@ -424,6 +466,7 @@
         o = writeBoss(out, o, snap);
         o = writeBlackHole(out, o, snap);
         o = writePilot(out, o, snap, vertical);
+        o = writeTactical(out, o, snap, vertical);
         if (o !== OBS_SIZE) {
             throw new Error('obs encode size mismatch: wrote ' + o + ', expected ' + OBS_SIZE);
         }
@@ -475,6 +518,8 @@
 
     function forwardPolicy(policy, obs) {
         var h = obs instanceof Float32Array ? obs : Float32Array.from(obs);
+        // v3 weights remain usable for comparison; trainers only accept v4 demonstrations.
+        if (policy.obsSize === 192 && policy.version === 3 && h.length === OBS_SIZE) h=h.subarray(0,192);
         if (h.length !== policy.obsSize) {
             throw new Error('obs size ' + h.length + ' != policy.obsSize ' + policy.obsSize);
         }
@@ -506,6 +551,9 @@
      * @param {object} policy JSON weights (+ optional explore flags)
      */
     function installPolicyPilot(policy) {
+        var assisted = policy.tacticalAssist !== false;
+        if(assisted && !global.NovaWingTactics) throw new Error('Tactical runtime is required for assisted policy');
+        var lastDecisionAt=-Infinity;
         var explore = Boolean(policy && policy.explore);
         var exploreMove = Number.isFinite(policy && policy.exploreMoveStd)
             ? policy.exploreMoveStd
@@ -546,9 +594,14 @@
                     global.__novawingDebug.setBotInput({ x: 0, y: 0, fire: true, boost: false });
                     return;
                 }
+                if(snap.time-lastDecisionAt<64) return;
+                lastDecisionAt=snap.time;
                 var obs = encodeObservation(snap);
                 var canonical = actionFromObs(obs);
                 var action = fromCanonicalAction(canonical, snap);
+                global.__novawingPolicyRawAction = action;
+                if(assisted) action=global.NovaWingTactics.plan(snap,160,action).input;
+                global.__novawingPolicyAssisted = assisted;
                 global.__novawingPolicyLastAction = action;
                 global.__novawingPolicyLastCanonical = canonical;
                 global.__novawingDebug.setBotInput(action);
@@ -600,7 +653,7 @@
                 powerups: K_POWERUPS,
                 bands: K_BANDS
             },
-            notes: 'v3: pilot dodge block (hold-hit, edges, 9 move safes, next boss shot). Bullets are ordered by hold-hit time.',
+            notes: 'v4: v3 prefix plus 128 tactical features: movement/boost, telegraphs, ring, full-state move predictions and bounds.',
             canonicalAxes: true
         },
         isVerticalSnap: isVerticalSnap,

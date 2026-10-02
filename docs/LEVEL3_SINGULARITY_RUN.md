@@ -1,6 +1,6 @@
 # Level 3 — SINGULARITY RUN
 
-Shipped campaign finale. Authoring lives in `levels.js` (`LEVEL_3`). Remaining
+Shipped perspective-flip level, now followed by Orbital Foundry. Authoring lives in `levels.js` (`LEVEL_3`). Remaining
 feel work is in [POLISH.md](POLISH.md). How to extend segments, art, and
 music: [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md).
 
@@ -16,7 +16,7 @@ introBoss (escape) → transition (REALITY SHEAR, 3.5s)
 | `introBoss` | Horizontal skirmish. Escape on HP threshold, timeout, or overkill. No kill/score payout. |
 | `transition` | Perspective flip cinematic. Nose-up, fire toward the top of the screen. |
 | `topdown` | Vertical waves (`verticalRegular`, `verticalV`, risers, strafers, mines, orbiters). Black-hole **preview** pull starts at `blackHole.previewAtMs` (60000). |
-| `finalBoss` | Same boss archetype, full phases, `arena: 'blackHole'`. Swallow at `killRadius` is a life loss. Campaign victory on defeat. |
+| `finalBoss` | Same boss archetype, full phases, `arena: 'blackHole'`. Swallow at `killRadius` is a life loss. Clearing it advances to level 4. |
 
 Lives, weapon, boost, and shield persist across segments. Intro damage does
 not carry into the final fight.

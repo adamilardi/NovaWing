@@ -1,0 +1,2240 @@
+{
+  "when": "2026-09-29T15:42:09.394Z",
+  "level": 4,
+  "segmentEvidence": [
+    {
+      "level": 4,
+      "segment": "outerRing",
+      "elapsedMs": 1187,
+      "lives": 5
+    },
+    {
+      "level": 4,
+      "segment": "smelter",
+      "elapsedMs": 22387,
+      "lives": 5
+    },
+    {
+      "level": 4,
+      "segment": "cooling",
+      "elapsedMs": 48387,
+      "lives": 5
+    },
+    {
+      "level": 4,
+      "segment": "coreDefense",
+      "elapsedMs": 57587,
+      "lives": 5
+    },
+    {
+      "level": 4,
+      "segment": "finalBoss",
+      "elapsedMs": 72387,
+      "lives": 5
+    }
+  ],
+  "holdMs": 400,
+  "difficulty": "hotshot",
+  "beaten": false,
+  "continuesUsed": 0,
+  "jevDecisions": 229,
+  "jevErrors": 0,
+  "pageErrors": [],
+  "usage": {
+    "input_tokens": 387278,
+    "output_tokens": 23129
+  },
+  "wallMs": 1204408,
+  "actions": [
+    {
+      "atMs": 2710,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 5282,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 7770,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 10079,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 12681,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 15374,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 19207,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 24539,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 30995,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 37274,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 43440,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 49887,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 56792,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 63408,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 69977,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 76096,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 81016,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 87503,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 93880,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 100177,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 106124,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 112114,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 118072,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 124175,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 130162,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 136200,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 142837,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 148904,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 155024,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 161310,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 167565,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 173984,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 180179,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 186303,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 192519,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 198518,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 204722,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 210727,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 216783,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 223187,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 229253,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 235175,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 240984,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 246728,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 252446,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 258297,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 264166,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 270093,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 275963,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 282459,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 288445,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 294233,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 300440,
+      "segment": "outerRing",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 306369,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 312029,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 318205,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 323922,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 329445,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 335143,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 340776,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 346377,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 351890,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 357553,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 363151,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 368533,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 374095,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 379590,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 385311,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 390800,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 396041,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 401574,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 407124,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 412839,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 418424,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 423979,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 429355,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 434749,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 440145,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 445364,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 450887,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 456732,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 462342,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 468063,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 473562,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 478894,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.84
+    },
+    {
+      "atMs": 484331,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 489809,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 495216,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 500693,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 506207,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 511895,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 517217,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 522697,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 528141,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 533611,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 539149,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 544208,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 549683,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 554962,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 560501,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 565785,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 570887,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 576316,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 581527,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 586676,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 591794,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 597041,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.88
+    },
+    {
+      "atMs": 602833,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 608373,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 613788,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 619067,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 624280,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 629560,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 634755,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 639835,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 645044,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 650274,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 655640,
+      "segment": "smelter",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 663206,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 668356,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 673491,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 678885,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 683940,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 689053,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 694438,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 699689,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 704967,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 710428,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 715689,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 720773,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 726433,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 731552,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 736871,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 742247,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 747624,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 752932,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 758166,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 763389,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 768577,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 773998,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 779078,
+      "segment": "cooling",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 784380,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 789547,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 794433,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 799548,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 804686,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 810101,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 815412,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 820435,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 825651,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 831001,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 836067,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 841333,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 846555,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 852001,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 857214,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 862147,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 867368,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 872556,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 877545,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 883015,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 888271,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 893488,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 898813,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 904041,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 909219,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 914690,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 920294,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 925747,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 931321,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 936897,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 941993,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 947345,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 953597,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 960148,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.97
+    },
+    {
+      "atMs": 966436,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 972594,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 977995,
+      "segment": "coreDefense",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 982791,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 986926,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 991175,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 995258,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 999454,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1003633,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1007994,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1012347,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1016613,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1020980,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1025265,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1029729,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1033921,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.96
+    },
+    {
+      "atMs": 1038056,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1042279,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1046324,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1050637,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1056327,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.94
+    },
+    {
+      "atMs": 1060702,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1065014,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1069409,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1073774,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1078140,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.94
+    },
+    {
+      "atMs": 1082667,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.82
+    },
+    {
+      "atMs": 1087031,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1091425,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1096077,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1101281,
+      "segment": "finalBoss",
+      "lives": 5,
+      "stick": "right",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1105707,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1110177,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1115581,
+      "segment": "finalBoss",
+      "lives": 4,
+      "stick": "left",
+      "boost": true,
+      "source": "jev",
+      "confidence": 0.76
+    },
+    {
+      "atMs": 1120378,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1124505,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1128881,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1133220,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 1137545,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1141856,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1146313,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1151163,
+      "segment": "finalBoss",
+      "lives": 3,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.91
+    },
+    {
+      "atMs": 1155935,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1160590,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1164996,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1169423,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 1173891,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1178274,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1182424,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1186573,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 1190580,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1195078,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1199378,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.89
+    },
+    {
+      "atMs": 1203854,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    }
+  ],
+  "final": {
+    "level": 4,
+    "score": 2500,
+    "enemiesKilled": 12,
+    "elapsedMs": 92787,
+    "phase": "boss",
+    "segment": "finalBoss",
+    "lives": 2,
+    "safest": "hold"
+  },
+  "flags": {
+    "opening": false,
+    "transitioning": false,
+    "victory": false,
+    "ended": false,
+    "continuePending": false,
+    "awaitingNext": false
+  },
+  "lastActions": [
+    {
+      "atMs": 1155935,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1160590,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1164996,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1169423,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 1173891,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.98
+    },
+    {
+      "atMs": 1178274,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1182424,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 1
+    },
+    {
+      "atMs": 1186573,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "up",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.95
+    },
+    {
+      "atMs": 1190580,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1195078,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    },
+    {
+      "atMs": 1199378,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "down",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.89
+    },
+    {
+      "atMs": 1203854,
+      "segment": "finalBoss",
+      "lives": 2,
+      "stick": "hold",
+      "boost": false,
+      "source": "jev",
+      "confidence": 0.99
+    }
+  ],
+  "errorSamples": []
+}

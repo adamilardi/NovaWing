@@ -65,6 +65,67 @@
         }
     };
 
+    // Eight-bar scores: harmony, rhythm and lead phrasing change with the scene.
+    // null lead notes are intentional rests; roots are MIDI notes.
+    const SCORES = {
+        waves: {
+            bpm: 112, boss: false, roots: [45, 41, 48, 43, 45, 41, 48, 43],
+            minor: [true, false, false, false, true, false, false, false],
+            bass: [0, 3, 6, 8, 10, 14], kick: [0, 8], hats: 2,
+            arp: [12, 19, 24, 15, 19, 24, 15, 26], arpEvery: 2,
+            lead: [27, null, 26, 24, null, 19, 24, null], leadType: 'sine',
+            color: 1, pad: 0.022, leadVolume: 0.035
+        },
+        boss: {
+            bpm: 136, boss: true, roots: [45, 45, 41, 43, 45, 48, 41, 40],
+            minor: [true, true, false, false, true, false, false, true],
+            bass: [0, 3, 6, 8, 10, 14], kick: [0, 8, 11], hats: 2,
+            arp: [12, 19, 24, 15, 19, 24, 15, 26], arpEvery: 2,
+            lead: [27, null, 26, 24, null, 19, 24, null], leadType: 'sine',
+            color: 1, pad: 0.022, leadVolume: 0.035
+        },
+        canyon: {
+            bpm: 120, boss: false, roots: [38, 38, 34, 36, 38, 41, 36, 33],
+            minor: [true, true, false, false, true, false, false, false],
+            bass: [0, 3, 7, 8, 11, 14], kick: [0, 7, 10], hats: 2,
+            arp: [12, 19, 15, 24, 19, 12, 22, 19], arpEvery: 2,
+            lead: [24, null, 27, 26, null, 22, 19, null], leadType: 'triangle',
+            color: 0.72, pad: 0.018, leadVolume: 0.032
+        },
+        canyonBoss: {
+            bpm: 140, boss: true, roots: [38, 38, 34, 33, 38, 41, 36, 33],
+            minor: [true, true, false, false, true, false, false, false],
+            bass: [0, 2, 5, 7, 8, 11, 14], kick: [0, 6, 8, 11], hats: 2,
+            arp: [12, 15, 19, 24, 22, 19, 15, 19], arpEvery: 2,
+            lead: [24, 27, null, 26, 22, null, 19, 24], leadType: 'triangle',
+            color: 0.9, pad: 0.018, leadVolume: 0.032
+        },
+        singularity: {
+            bpm: 128, boss: true, roots: [40, 40, 41, 40, 36, 36, 41, 35],
+            minor: [true, true, false, true, false, false, false, true],
+            bass: [0, 6, 8, 14], kick: [0, 8, 14], hats: 4,
+            arp: [12, 19, 13, 24, 19, 13, 24, 25], arpEvery: 4,
+            lead: [24, null, 25, null, 31, 27, null, 25], leadType: 'sine',
+            color: 0.58, pad: 0.024, leadVolume: 0.032
+        },
+        gauntlet: {
+            bpm: 148, boss: false, roots: [40, 36, 43, 38, 40, 36, 41, 35],
+            minor: [true, false, false, false, true, false, false, true],
+            bass: [0, 2, 4, 6, 8, 10, 12, 14], kick: [0, 4, 8, 12], hats: 2,
+            arp: [24, 19, 15, 12, 24, 26, 19, 15], arpEvery: 2,
+            lead: [31, 27, null, 26, 24, null, 27, 26], leadType: 'triangle',
+            color: 1.2, pad: 0.016, leadVolume: 0.032
+        },
+        finalBoss: {
+            bpm: 156, boss: true, roots: [28, 28, 29, 28, 24, 24, 29, 23],
+            minor: [true, true, false, true, false, false, false, true],
+            bass: [0, 3, 6, 8, 11, 14], kick: [0, 3, 8, 10, 14], hats: 2,
+            arp: [24, 31, 25, 36, 31, 25, 36, 37], arpEvery: 2,
+            lead: [36, null, 37, 36, 43, null, 39, 37], leadType: 'triangle',
+            color: 0.8, pad: 0.022, leadVolume: 0.035
+        }
+    };
+
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
     }
@@ -495,47 +556,48 @@
         }
 
         function playMusicStep(when) {
-            const isBoss = musicMode === 'boss';
-            const sixteenth = 60 / (isBoss ? 136 : 112) / 4;
+            const score = SCORES[musicMode];
+            const isBoss = score.boss;
+            const sixteenth = 60 / score.bpm / 4;
             const step = musicStep % 16;
             const bar = Math.floor(musicStep / 16) % 8;
-            // A minor / F / C / G, with a darker pedal progression for bosses.
-            const roots = isBoss ? [45, 45, 41, 43, 45, 48, 41, 40] : [45, 41, 48, 43, 45, 41, 48, 43];
-            const rootNote = roots[bar];
+            const rootNote = score.roots[bar];
             const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
-            const minor = rootNote === 45 || (isBoss && rootNote === 40);
-            const third = minor ? 3 : 4;
+            const third = score.minor[bar] ? 3 : 4;
+            // Motifs use minor thirds as placeholders; follow the current chord.
+            const chordInterval = interval => interval % 12 === 3 ? interval + third - 3 : interval;
             const common = { bus: musicBus, when };
             const warm = styleId === 'n64' || styleId === 'snes';
 
             if (step === 0) {
                 [12, 12 + third, 19].forEach((interval, i) => tone({
                     ...common, frequency: hz(rootNote + interval), duration: sixteenth * 15,
-                    type: 'triangle', volume: 0.022, filterFreq: warm ? 1400 : 2200,
+                    type: 'triangle', volume: score.pad, filterFreq: (warm ? 1400 : 2200) * score.color,
                     attack: 0.08, sustain: true, pan: (i - 1) * 0.65
                 }));
             }
-            if ([0, 3, 6, 8, 10, 14].includes(step)) {
+            if (score.bass.includes(step)) {
                 tone({ ...common, frequency: hz(rootNote + (step === 14 ? 12 : 0)),
                     duration: sixteenth * 1.7, type: 'triangle', volume: 0.095,
                     filterFreq: 650 });
             }
             // Plucked arpeggio opens up in the second half of the phrase.
-            if (step % 2 === 0 && (bar >= 2 || step % 4 === 0 || isBoss)) {
-                const intervals = [12, 19, 24, 12 + third, 19, 24, 12 + third, 26];
-                const note = hz(rootNote + intervals[step / 2]);
+            if (step % score.arpEvery === 0 && (bar >= 2 || step % 4 === 0 || isBoss)) {
+                const intervals = score.arp;
+                const note = hz(rootNote + chordInterval(intervals[step / 2]));
                 fmTone({ ...common, carrier: note, modulator: note * 2,
-                    index: note * (warm ? 0.18 : 0.45), endIndex: 4,
+                    index: note * (warm ? 0.18 : 0.45) * score.color, endIndex: 4,
                     duration: sixteenth * 2.6, volume: 0.034,
-                    filterFreq: warm ? 2400 : 3600, pan: step % 4 ? 0.4 : -0.4 });
+                    filterFreq: (warm ? 2400 : 3600) * score.color, pan: step % 4 ? 0.4 : -0.4 });
             }
-            // A sparse answering melody keeps the eight-bar phrase from being a treadmill.
-            if (bar >= 4 && [0, 6, 10].includes(step)) {
-                const melody = [24 + third, 26, 24, 19];
-                tone({ ...common, frequency: hz(rootNote + melody[(bar + Math.floor(step / 4)) % 4]),
-                    type: 'sine', duration: sixteenth * 3.5, volume: 0.035, pan: 0.15 });
+            // The second four bars answer the arpeggio with the stage's own motif.
+            const leadNote = score.lead[step / 2];
+            if (bar >= 4 && step % 2 === 0 && leadNote != null) {
+                tone({ ...common, frequency: hz(rootNote + chordInterval(leadNote)),
+                    type: score.leadType, duration: sixteenth * 2.8,
+                    volume: score.leadVolume, filterFreq: 2800 * score.color, pan: 0.15 });
             }
-            if ([0, 8].includes(step) || (isBoss && step === 11)) {
+            if (score.kick.includes(step)) {
                 tone({ ...common, frequency: 145, endFrequency: 48, duration: 0.18,
                     type: 'sine', volume: 0.15 });
             }
@@ -545,7 +607,7 @@
                 tone({ ...common, frequency: 185, endFrequency: 115, duration: 0.09,
                     type: 'triangle', volume: 0.035 });
             }
-            if (step % 2 === 0 || (isBoss && bar % 4 === 3)) {
+            if (step % score.hats === 0 || (isBoss && bar % 4 === 3)) {
                 noiseBurst({ ...common, duration: step === 14 ? 0.085 : 0.035,
                     volume: step % 4 === 2 ? 0.025 : 0.014, type: 'highpass',
                     filterFreq: 6500, endFilter: 5200, pan: -0.3 });
@@ -562,7 +624,7 @@
                 if (!musicStarted || context.state === 'suspended') return;
                 // Schedule against the audio clock so frame stalls don't wobble the beat.
                 if (nextMusicTime < context.currentTime) nextMusicTime = context.currentTime + 0.01;
-                const stepSeconds = 60 / (musicMode === 'boss' ? 136 : 112) / 4;
+                const stepSeconds = 60 / SCORES[musicMode].bpm / 4;
                 while (nextMusicTime < context.currentTime + 0.12) {
                     playMusicStep(nextMusicTime);
                     nextMusicTime += stepSeconds;
@@ -593,7 +655,7 @@
             rebuildMixChain();
             if (musicBus) {
                 musicBus.gain.setTargetAtTime(
-                    musicMode === 'boss' ? style().musicBoss : style().musicWaves,
+                    SCORES[musicMode].boss ? style().musicBoss : style().musicWaves,
                     context.currentTime,
                     0.05
                 );
@@ -636,7 +698,7 @@
             },
             startMusic: function (mode) {
                 getContext();
-                const nextMode = mode === 'boss' ? 'boss' : 'waves';
+                const nextMode = Object.prototype.hasOwnProperty.call(SCORES, mode) ? mode : 'waves';
                 if (musicStarted && musicMode === nextMode) return;
                 cancelMusicVoices();
                 musicMode = nextMode;
@@ -644,7 +706,7 @@
                 musicStep = 0;
                 if (musicBus && context) {
                     musicBus.gain.setTargetAtTime(
-                        musicMode === 'boss' ? style().musicBoss : style().musicWaves,
+                        SCORES[musicMode].boss ? style().musicBoss : style().musicWaves,
                         context.currentTime,
                         0.05
                     );
@@ -917,6 +979,7 @@
 
     const api = {
         createSfx: createSfx,
+        SCORES: SCORES,
         STYLE_IDS: STYLE_ORDER.slice(),
         resolveStyleId: resolveStyleId,
         styleLabel: function (id) {

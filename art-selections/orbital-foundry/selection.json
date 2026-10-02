@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "level_id": "orbital-foundry",
+  "decision_status": "confirmed",
+  "decision_by": "agent-delegated",
+  "brief_path": "../../art-candidates/orbital-foundry/brief.md",
+  "choices": [
+    {
+      "role": "background-far",
+      "source_manifest": "../../art-candidates/orbital-foundry/manifest.json",
+      "candidate_id": "level-orbital-foundry-a",
+      "asset_path": "../../art-candidates/orbital-foundry/background.png",
+      "reason": "Distinct environment identity and quiet center support bright enemy and projectile silhouettes.",
+      "production_status": "ready",
+      "remaining_work": [],
+      "animation_handoff_path": null
+    }
+  ],
+  "unfilled_roles": [],
+  "requested_revisions": [],
+  "alternates": [],
+  "notes": "Existing enemy implementations and animations are reused. No new enemy concepts are required."
+}
