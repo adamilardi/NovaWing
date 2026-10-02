@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { appendPlaytestTimeScale } from './rl/chrome.mjs';
+import { isRunWin, advanceCampaign } from './rl/run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
@@ -2040,12 +2041,13 @@ async function runOnce(browser, trialIndex) {
                 await page.evaluate(() => __novawingDebug.acceptContinue());
                 continue;
             }
-            if (status.outcome === 'win' || (snap && (snap.victoryPending || snap.levelCompleted))) {
+            if (isRunWin(snap, process.env.LEVEL ? Number(process.env.LEVEL) : null)) {
                 won = true;
                 await page.waitForTimeout(2000);
                 break;
             }
-            if (status.outcome === 'lose' || (snap && snap.levelEnded)) {
+            if (await advanceCampaign(page, snap, process.env.LEVEL ? Number(process.env.LEVEL) : null)) continue;
+            if (snap && snap.levelEnded && !snap.levelTransitioning) {
                 won = false;
                 await page.waitForTimeout(400);
                 break;

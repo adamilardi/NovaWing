@@ -7,6 +7,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { bootControlledGame } from './rl/controlled-play.mjs';
+import { isRunWin } from './rl/run-outcome.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HOLD_MS = Number(process.env.JEV_HOLD_MS || 140);
@@ -110,6 +112,7 @@ async function main() {
     const client = new TypeSafeClient({ logLevel: 'off' });
     const browser = await chromium.launch(defaultLaunchOptions(true));
     const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
+    await page.clock.install();
     const pageErrors = [];
     page.on('pageerror', (error) => {
         const message = String(error.message || error);
@@ -120,27 +123,11 @@ async function main() {
     const url = new URL(BASE);
     url.searchParams.set('level', '3');
     url.searchParams.set('diff', 'normal');
+    url.searchParams.delete('bot');
+    url.searchParams.set('timescale', '1');
     console.log('Jev Hotshot Level 3', url.toString());
     await page.goto(url.toString(), { waitUntil: 'load', timeout: 30000 });
-    await page.waitForFunction(() => window.__novawingDebug && window.__novawingDebug.ready(), null, { timeout: 30000 });
-    await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
-    await page.clock.install();
-    const boot = await page.evaluate(() => {
-        window.__novawingDebug.setDifficultyMode('normal');
-        if (!window.__novawingDebug.startGame() && currentLevel !== 3) {
-            startLevel.call(getActiveScene(), 3, { fromClear: false, debugSkip: true });
-        } else if (currentLevel !== 3) {
-            startLevel.call(getActiveScene(), 3, { fromClear: false, debugSkip: true });
-        }
-        window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: true, boost: false });
-        return {
-            level: currentLevel,
-            mode: getDifficultyMode(),
-            lives,
-            continues: continuesRemaining,
-            probe: window.__novawingDebug.probeRuntime()
-        };
-    });
+    const boot = await bootControlledGame(page, 3);
     console.log('booted', JSON.stringify(boot));
     await page.clock.runFor(900);
 
@@ -156,6 +143,7 @@ async function main() {
         const snap = window.__novawingDebug.getBotSnapshot();
         const player = snap.player || { x: 400, y: 300 };
         return {
+            snapshot: snap,
             phase: snap.phase,
             segment: snap.segment,
             orientation: snap.combatOrientation,
@@ -197,7 +185,7 @@ async function main() {
                 console.log(where);
                 lastLog = where;
             }
-            if (flags.victory) break;
+            if (isRunWin(observation.snapshot, 3)) break;
             if (flags.ended && !flags.awaitingNext) break;
             if (flags.continuePending) {
                 continuesUsed += 1;
@@ -205,7 +193,7 @@ async function main() {
                 console.log('accepted continue', continuesUsed);
                 continue;
             }
-            if (flags.transitioning || flags.awaitingNext) {
+            if (flags.transitioning) {
                 await stepGame(200);
                 continue;
             }
@@ -256,7 +244,7 @@ async function main() {
         const finalSnap = await observe().catch(() => null);
         await page.screenshot({ path: path.join(OUT, 'final.png') }).catch(() => {});
         await browser.close();
-        const beaten = Boolean(finalSnap && (finalSnap.flags.victory || (finalSnap.flags.ended && finalSnap.segment === 'finalBoss' && finalSnap.lives > 0)));
+        const beaten = isRunWin(finalSnap?.snapshot, 3);
         const report = {
             when: new Date().toISOString(),
             level: 3,

@@ -4,6 +4,8 @@ import { chromium } from 'playwright';
 import { defaultLaunchOptions } from './chrome.mjs';
 import { bootControlledGame, jumpControlledSegment, endpointError, suppressRendering } from './controlled-play.mjs';
 import { verifyServedRuntime } from '../jev-runtime.mjs';
+import { settleLevelStart } from '../jev-runtime.mjs';
+import { isRunWin, advanceCampaign } from './run-outcome.mjs';
 
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 await verifyServedRuntime(base);
@@ -21,6 +23,25 @@ try {
     await suppressRendering(page);
     assert.equal(boot.lives, 3);
     assert.equal(boot.playtestBot, false);
+    // Simulate API latency while the game is frozen: neither RAF nor physics
+    // may advance until the runner explicitly holds its chosen action.
+    const frozenTime = boot.time;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal((await page.evaluate(() => __novawingDebug.getBotSnapshot())).time, frozenTime);
+    await page.evaluate(() => startLevel.call(getActiveScene(), 1, { fromClear: false, debugSkip: true }));
+    await settleLevelStart(page, 1);
+    await page.evaluate(() => completeLevel.call(getActiveScene()));
+    await page.clock.runFor(32);
+    const cleared = await page.evaluate(() => __novawingDebug.getBotSnapshot());
+    assert.equal(isRunWin(cleared, 1), true);
+    assert.equal(isRunWin(cleared), false);
+    assert.equal(await advanceCampaign(page, cleared), true);
+    const nextLevel = await settleLevelStart(page, 2);
+    assert.equal(nextLevel.level, 2);
+    assert.equal(nextLevel.awaitingNextLevel, false);
+    assert.equal(nextLevel.levelCompleted, false);
+    await page.evaluate(() => startLevel.call(getActiveScene(), 3, { fromClear: false, debugSkip: true }));
+    await settleLevelStart(page, 3);
     for (const segment of ['topdown', 'finalBoss']) {
         await jumpControlledSegment(page, segment);
         const before = await page.evaluate(() => __novawingDebug.getBotSnapshot());

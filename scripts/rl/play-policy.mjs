@@ -15,6 +15,7 @@ import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
 import { defaultLaunchOptions } from './chrome.mjs';
+import { isRunWin, advanceCampaign } from './run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -32,10 +33,8 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
     ? BOSS_RAW
     : (process.env.BOSS_ENCOUNTER || '1');
 
-function isLevelOrCampaignWin(snap, outcome) {
-    if (outcome === 'win' || (snap && (snap.victoryPending || snap.levelCompleted))) return true;
-    if (START_LEVEL != null && snap && (Number(snap.level) > START_LEVEL || snap.awaitingNextLevel)) return true;
-    return false;
+function isLevelOrCampaignWin(snap) {
+    return isRunWin(snap, START_LEVEL);
 }
 
 /**
@@ -164,12 +163,12 @@ async function main() {
             }
             if (status.snap && status.snap.level > peakLevel) peakLevel = status.snap.level;
 
-            if (isLevelOrCampaignWin(status.snap, status.outcome)) {
+            if (isLevelOrCampaignWin(status.snap)) {
                 won = true;
                 break;
             }
+            if (await advanceCampaign(page, status.snap, START_LEVEL)) continue;
             if (
-                status.outcome === 'lose' ||
                 (status.snap && status.snap.levelEnded && !status.snap.victoryPending &&
                     !status.snap.levelTransitioning)
             ) {

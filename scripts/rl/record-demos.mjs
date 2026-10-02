@@ -19,6 +19,8 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
 import { defaultLaunchOptions } from './chrome.mjs';
+import { isRunWin, advanceCampaign } from './run-outcome.mjs';
+import { settleLevelStart } from '../jev-runtime.mjs';
 import {
     OBS_VERSION,
     OBS_SIZE,
@@ -65,10 +67,8 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
 const START_SEGMENT = (process.env.SEGMENT || '').trim() || null;
 
 /** Level-scoped or campaign victory. */
-function isEpisodeWin(snap, outcome) {
-    if (outcome === 'win' || (snap && (snap.victoryPending || snap.levelCompleted))) return true;
-    if (START_LEVEL != null && snap && (Number(snap.level) > START_LEVEL || snap.awaitingNextLevel)) return true;
-    return false;
+function isEpisodeWin(snap) {
+    return isRunWin(snap, START_LEVEL);
 }
 function stamp() {
     const d = new Date();
@@ -159,6 +159,10 @@ async function recordEpisode(browser, episodeIndex, policy) {
                 continue;
             }
             if (isEpisodeWin(before)) { won = true; terminal = true; break; }
+            if (await advanceCampaign(page, before, START_LEVEL)) {
+                pendingObs = null;
+                continue;
+            }
             if (before.levelEnded && !before.levelTransitioning) { terminal = true; break; }
             if (!before.ready || !before.player || before.levelTransitioning) {
                 await page.clock.runFor(16);
@@ -195,12 +199,18 @@ async function recordEpisode(browser, episodeIndex, policy) {
             maxLevel = Math.max(maxLevel, after.level || 1);
             const isWin = isEpisodeWin(after);
             const isLose = !isWin && after.levelEnded && !after.levelTransitioning;
-            const reward = stepReward(before, after);
+            let reward = stepReward(before, after);
             let next = after;
             if (after.continuePending) {
                 await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
                 next = await page.evaluate(() => __novawingDebug.getBotSnapshot());
             }
+            if (await advanceCampaign(page, next, START_LEVEL)) {
+                next = await settleLevelStart(page, after.level + 1);
+                simulatedMs += Math.max(0, next.time - after.time);
+                reward += stepReward(after, next);
+            }
+            maxLevel = Math.max(maxLevel, next.level || 1);
             finalSnap = next;
             pendingObs = Array.from(encodeObservation(next));
             episodeReturn += reward;
