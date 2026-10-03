@@ -71,10 +71,6 @@ Write `docs/boss-builds/<boss-id>.md` (or the established project location) with
 
 Finish with what was implemented, how to reach the fight, verification and any specific remaining dependency. A source image and a new label alone are incomplete when a playable boss was requested.
 
-## NovaWing playtesting and difficulty requirements
+## NovaWing playtesting and difficulty
 
-For NovaWing level creation, default to **VERY hard Hotshot (`diff=normal`)** unless the user specifies otherwise. Build difficulty from sustained enemy pressure, demanding movement and distinct boss patterns, while preserving readable tells and physically traversable escape routes. Verify the actual Hotshot difficulty overlay; do not substitute Supernova or make an encounter difficult solely by increasing health.
-
-Every level must contain reachable weapon powerups, including recurring replenishment through long combat sections and a weapon opportunity in recovery sections. Keep pickups aligned with safe terrain routes and verify their runtime scheduling and collection.
-
-Bonus Testing Grounds offers unlimited continues. Automated playtests must use `playtestContinues=unlimited`, retain ordinary movement, damage and collision rules, and explicitly accept pending continues. Report continues used and distinguish a continued clear from a death-free clear. Pausing simulation to compute actions is allowed; prefer controlled 1x simulation, suppress rendering between captures, and record simulated duration separately from wall time. Unlimited continues are a playtest setting, not a change to ranked campaign continue budgets.
+Follow [the level authoring reference](../level-creator/references/novawing.md#required-default-balance-and-playtest-rules). That section owns the default difficulty, weapon placement, and playtest entry rules. Verify the boss inside that session.

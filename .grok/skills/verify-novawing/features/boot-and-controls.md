@@ -15,7 +15,7 @@ The game loads in a browser, shows the NovaWing canvas, and a desktop player can
 - Open the local URL in a desktop browser (default `http://127.0.0.1:4000/`).
 - Choose a flight mode and press Launch (click LAUNCH, Space, Enter, A, RT, or Start).
 - Hold Arrow Down / S, or the left stick / D-pad down, to move. A first click or pad button also unlocks audio.
-- Hold RT / A to fire, LT / B to boost, Start to pause. A second pad is player 2 in local co-op.
+- Hold RT / A to fire, LT / B to boost, Start to pause. Y switches the top-tier weapon during play. On the title screen Y still toggles co-op, and while paused Y still mutes. A second pad is player 2 in local co-op.
 
 ## Driving it with verify-novawing
 

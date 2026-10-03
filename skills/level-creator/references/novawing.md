@@ -42,4 +42,10 @@ The procedural `obstacle`, `mine`, and `debris` sprites and `OBSTACLE_VARIANTS` 
 
 ### Required default balance and playtest rules
 
-Author VERY hard Hotshot encounters (`diff=normal`), with recurring reachable weapon drops. Preserve readable boss tells and viable gate traversal at ordinary movement speed. Bonus levels have unlimited continues; for direct automated entry use `?level=N&diff=normal&timescale=1&playtestContinues=unlimited`. Accept `continuePending` using `acceptArcadeContinue(getActiveScene())` and report `unlimitedContinues` and `continuesUsed` from the snapshot. A continued clear verifies progression but is not evidence of death-free balance. Do not enable `bot` to obtain unlimited continues: it changes combat rules.
+Author and playtest a new level on **Supernova** (`diff=hard`) unless the user names another mode. Supernova is the `hard` preset in `levels.js`: the wave catalog is available immediately, weapon ranks expire during waves, and fire is faster and denser. Enemy and boss health stay at the authored values. The overlay numbers live in `docs/DIFFICULTY_TUNING.md`. Confirm the running session is Supernova. A `bot` URL forces Hotshot, so it cannot verify this mode.
+
+Place recurring reachable weapon drops through long combat and in recovery sections. Keep them on safe terrain routes, and verify that they spawn and can be collected. Rank expiry pauses during a boss fight.
+
+Direct automated entry is `?level=N&diff=hard&timescale=1&playtestContinues=unlimited`. Accept `continuePending` with `acceptArcadeContinue(getActiveScene())`. Report `unlimitedContinues` and `continuesUsed`. A continued clear shows that the route can be finished; it is not a death-free clear. Unlimited continues are a playtest opt-in. Ranked Supernova grants none. Prefer controlled 1× simulation, suppress rendering between captures, and record simulated duration separately from wall time.
+
+Keep boss tells readable and gates traversable at ordinary movement speed. Build pressure from the Supernova overlay, movement, and patterns.

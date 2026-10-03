@@ -1,5 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const Bosses = require('../src/boss-director.js');
 const Levels = require('../levels.js');
 const Assets = require('../src/assets.js');
@@ -26,10 +27,33 @@ test('articulated parts preserve the canonical image at rest and animate attack 
     }
 });
 
+test('prism battery animation manifest matches the caster and stays off the level number', () => {
+    const manifest = JSON.parse(fs.readFileSync('assets/levels/prism-battery/animation-manifest.json', 'utf8'));
+    assert.equal(manifest.version, 1);
+    assert.ok(manifest.states.some(state => state.id === 'prismLens' && state.method === 'code' && state.enemyType === 'regular'));
+    assert.ok(manifest.states.some(state => state.id === 'enemyDart' && state.select === 'texture'));
+    assert.equal(manifest.boss.windupMs, Bosses.catalog.prismCaster.windupMs);
+    assert.deepEqual(manifest.boss.parts, Bosses.parts('prismCaster'));
+    const source = fs.readFileSync('game.js', 'utf8');
+    const start = source.indexOf('function updateRosterEnemyAnimation');
+    const body = source.slice(start, source.indexOf('\nfunction ', start + 1));
+    assert.equal(body.includes('currentLevel'), false);
+    const level = Levels.getLevelDef(8);
+    assert.equal(level.enemyMotions.regular, 'prismLens');
+    for (const segment of level.segments.filter(item => item.kind === 'waves')) {
+        const lasers = segment.powerups.filter(drop => drop.type === 'laser');
+        if (segment.id === 'chargeBay') assert.equal(lasers.length, 0);
+        else assert.ok(lasers.length >= 1);
+    }
+    const state = Bosses.create('prismCaster', 0);
+    const warning = Bosses.tick(state, 1600, 2, 0.65, 300);
+    assert.equal(warning.activatesAt - 1600, Bosses.catalog.prismCaster.windupMs);
+});
+
 test('each expansion level binds its own production boss and behavior', () => {
     const levels = Levels.getEffectiveLevelDefs().slice(3);
     const behaviors = levels.map(l => l.bossEncounters.final.behavior);
-    assert.equal(new Set(behaviors).size, 4);
+    assert.equal(new Set(behaviors).size, levels.length);
     for (const level of levels) {
         const id = level.bossEncounters.final.behavior;
         assert.ok(Bosses.catalog[id]);

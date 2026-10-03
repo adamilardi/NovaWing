@@ -20,6 +20,16 @@ For NovaWing, inspect these current integration points rather than assuming they
 
 ## Connect states to behavior
 
+## NovaWing playback
+
+Select motion by enemy type or by an animation id stored on that enemy. Do not branch on the current level number.
+
+Idle flight sheets and baked thrust stay on regular and interceptor. Vertical scroll does not start those sheets.
+
+Enemies and the boss share the one versioned `animation-manifest.json` from enemy-animation-creator. A boss is one sprite, `art.boss` or `art.bossVertical`, plus parts. Drive the parts from encounter state on the simulation clock. Do not add a frame player for the boss. Changing parts and pose is enough for a boss animation request; do not add a fight to animate one.
+
+Preview at the display size in the sprite catalog. Authored boss windup stays the same length after Supernova `bossTempoScale`; tempo shortens recovery only. Pause uses the simulation clock. Root collision stays on the body and does not follow part motion.
+
 Map animation states to actual enemy types, texture families, and orientations. Do not use the current frame texture as the sole enemy identity; animation changes it. Keep static fallback art available for enemies without the new assets.
 
 Define state precedence and transitions appropriate to the supplied actions. Idle should not restart every update or overwrite an attack. One-shot states should return to a valid state, and death must prevent recovery callbacks from restarting a destroyed enemy. Use the game's simulation clock so pause and controlled play freeze animation and its events together.

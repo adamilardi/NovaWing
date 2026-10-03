@@ -90,6 +90,9 @@ const ENEMY_SHOT_SPEED = -430;
 const INTERCEPTOR_SHOT_SPEED = -545;
 const BOSS_MISSILE_SPEED = -380;
 const MAX_WEAPON_LEVEL = 3;
+const LASER_MELT_MS = 3000;
+const LASER_RECHARGE_MS = 3000;
+const TOP_TIER_WEAPONS = ['spread', 'laser'];
 const BOSS_MAX_HEALTH = 240;
 const BOSS_PHASE_2_HEALTH_RATIO = 0.67;
 const BOSS_PHASE_3_HEALTH_RATIO = 0.34;
@@ -181,7 +184,9 @@ const GAMEPLAY_KEY_CODES = [
     Phaser.Input.Keyboard.KeyCodes.Z,
     Phaser.Input.Keyboard.KeyCodes.M,
     Phaser.Input.Keyboard.KeyCodes.P,
-    Phaser.Input.Keyboard.KeyCodes.ESC
+    Phaser.Input.Keyboard.KeyCodes.ESC,
+    Phaser.Input.Keyboard.KeyCodes.Q,
+    Phaser.Input.Keyboard.KeyCodes.PERIOD
 ];
 // W3C Standard Gamepad: Xbox / DualShock / DualSense / most USB pads.
 const GAMEPAD_DEADZONE = 0.22;
@@ -351,6 +356,13 @@ const POWERUP_TYPES = {
         label: 'BOMB',
         color: '#ffcc55',
         weight: 18
+    },
+    laser: {
+        key: 'laser',
+        texture: 'powerupWeapon',
+        label: 'LASER',
+        color: '#66f6ff',
+        weight: 0
     }
 };
 
@@ -535,6 +547,9 @@ let lastFired = 0;
 let score = 0;
 let lives = 3;
 let weaponLevel = 1;
+let topTierWeapon = 'spread';
+const laserState = { activeUntil: 0, readyAt: 0 };
+let laserGraphics = null;
 // Remaining milliseconds for each Supernova weapon rank above Single. Empty on other modes.
 let weaponCharges = [];
 let supernovaBriefShown = false;
@@ -1093,7 +1108,7 @@ function create() {
         bosses: new Set(Object.keys(NovaWingBosses.catalog)),
         assets: new Set(Object.keys(SPRITES)),
         tracks: new Set(Object.keys(window.NovaWingAssets.tracks)),
-        powerups: new Set(['weapon', 'shield', 'repair', 'boost', 'bomb'])
+        powerups: new Set(['weapon', 'shield', 'repair', 'boost', 'bomb', 'laser'])
     });
     window.NovaWingAssets.install(this);
     createPlayerAnimations(this);
@@ -1164,6 +1179,10 @@ function create() {
     // pilot can clear the campaign without changing normal player balance.
     lives = isPlaytestBotSession() ? 5 : 3;
     weaponLevel = 1;
+    topTierWeapon = 'spread';
+    laserState.activeUntil = 0;
+    laserState.readyAt = 0;
+    laserGraphics = null;
     weaponCharges.length = 0;
     supernovaBriefShown = false;
     hasShield = false;
@@ -1722,6 +1741,7 @@ function update(time, delta) {
     if (coopEnabled && playerTwo && playerTwo.active && isCoopFireHeld() && simTime > (coopState.p2.lastFired || 0)) {
         fireBullet.call(this, simTime, playerTwo, coopState.p2);
     }
+    updateLaserBursts(this, simTime);
 
     // Parallax starfield + drifting nebula
     drawBackgroundLayers(this, frameDelta, simTime);
@@ -2133,6 +2153,9 @@ function collectPowerup(playerSprite, powerup) {
         case 'bomb':
             applyBombPowerup(this, x, y);
             break;
+        case 'laser':
+            applyLaserPowerup(this, x, y);
+            break;
         case 'weapon':
         default:
             applyWeaponPowerup(this, x, y);
@@ -2142,6 +2165,7 @@ function collectPowerup(playerSprite, powerup) {
 
 function applyCoopPowerup(scene, ship, state, type, x, y) {
     if (type.key === 'weapon') grantWeaponRank(state);
+    else if (type.key === 'laser') grantLaserWeapon(state);
     else if (type.key === 'shield') state.hasShield = true;
     else if (type.key === 'repair') state.lives = Math.min(MAX_LIVES, state.lives + 1);
     else if (type.key === 'boost') { state.boostEnergy = BOOST_MAX; state.boostLocked = false; }
@@ -2247,6 +2271,30 @@ function grantWeaponRank(state) {
     if (personal) state.weaponLevel = weaponLevelFromCharges(charges);
     else weaponLevel = weaponLevelFromCharges(weaponCharges);
     return grant;
+}
+
+function grantLaserWeapon(personalState) {
+    const personal = Boolean(personalState && personalState !== coopState);
+    if (personal) {
+        personalState.weaponLevel = MAX_WEAPON_LEVEL;
+        if (!personalState.weaponCharges) personalState.weaponCharges = [];
+        syncWeaponChargesToLevel(personalState.weaponCharges, MAX_WEAPON_LEVEL);
+        personalState.topTierWeapon = 'laser';
+        return;
+    }
+    weaponLevel = MAX_WEAPON_LEVEL;
+    syncWeaponChargesToLevel(weaponCharges, MAX_WEAPON_LEVEL);
+    topTierWeapon = 'laser';
+    if (coopState) {
+        coopState.weaponLevel = weaponLevel;
+        coopState.topTierWeapon = 'laser';
+    }
+}
+
+function applyLaserPowerup(scene, x, y) {
+    grantLaserWeapon(null);
+    updateWeaponText();
+    showFloatingText(scene, x, y - 24, 'LASER', POWERUP_TYPES.laser.color);
 }
 
 function applyWeaponPowerup(scene, x, y) {
@@ -2510,6 +2558,7 @@ function resolveCoopEnabledAtBoot() {
 
 function createCoopPilotState(ship, id, pilotLives) {
     return { id, ship, lives: pilotLives, weaponLevel: 1, weaponCharges: [], hasShield: false,
+        topTierWeapon: 'spread', activeUntil: 0, readyAt: 0,
         boostEnergy: BOOST_MAX, boostLocked: false, boostIntensity: 0,
         invulnerableUntil: 0, lastFired: 0, shots: 0 };
 }
@@ -2565,8 +2614,123 @@ function updateCoopPilotAnimation(ship, state) {
     applyPlayerShipSize(ship);
 }
 
+function weaponRank(pilotState) {
+    if (pilotState && pilotState !== coopState) return pilotState.weaponLevel || 1;
+    return weaponLevel;
+}
+
+function topTierSelected(pilotState) {
+    const id = (pilotState && pilotState !== coopState) ? pilotState.topTierWeapon : topTierWeapon;
+    return id === 'laser' ? 'laser' : 'spread';
+}
+
+function activeWeaponId(pilotState) {
+    const rank = weaponRank(pilotState);
+    if (rank >= MAX_WEAPON_LEVEL) return topTierSelected(pilotState);
+    return rank >= 2 ? 'twin' : 'single';
+}
+
+function laserSlot(pilotState) {
+    if (pilotState && pilotState !== coopState) return pilotState;
+    return laserState;
+}
+
+function laserRechargeRemainingMs(slot) {
+    const state = slot || laserState;
+    const now = playtestClockMs;
+    if (now < state.activeUntil) return 0;
+    return Math.max(0, state.readyAt - now);
+}
+
+function laserHudMs(pilotState, slot) {
+    if (activeWeaponId(pilotState) !== 'laser') return 0;
+    return laserRechargeRemainingMs(slot);
+}
+
+function cycleTopTierWeapon(pilotState) {
+    const scene = getActiveScene();
+    if (weaponRank(pilotState) < MAX_WEAPON_LEVEL) {
+        if (scene) showFloatingText(scene, 400, 150, 'REACH SPREAD TO SWITCH', '#ffcc55', { screenSpace: true });
+        return false;
+    }
+    const current = topTierSelected(pilotState);
+    const index = Math.max(0, TOP_TIER_WEAPONS.indexOf(current));
+    const next = TOP_TIER_WEAPONS[(index + 1) % TOP_TIER_WEAPONS.length];
+    if (pilotState && pilotState !== coopState) pilotState.topTierWeapon = next;
+    else {
+        topTierWeapon = next;
+        if (coopState) coopState.topTierWeapon = next;
+    }
+    if (scene) {
+        const ship = pilotState && pilotState.ship ? pilotState.ship : player;
+        const x = ship && ship.active ? ship.x : 400;
+        const y = ship && ship.active ? ship.y - 28 : 160;
+        showFloatingText(scene, x, y, next === 'laser' ? 'LASER' : 'SPREAD', '#66f6ff');
+    }
+    if (typeof updateWeaponText === 'function') updateWeaponText();
+    if (coopEnabled && typeof updateCoopText === 'function') updateCoopText();
+    return true;
+}
+
+function startLaserBurst(time, shooter, pilotState) {
+    if (!shooter || !shooter.active) return;
+    const slot = laserSlot(pilotState);
+    if (time < slot.activeUntil || time < slot.readyAt) return;
+    slot.activeUntil = time + LASER_MELT_MS;
+    slot.readyAt = slot.activeUntil + LASER_RECHARGE_MS;
+    if (sfx && sfx.bomb) sfx.bomb(shooter.x);
+    updateWeaponText();
+    if (coopEnabled) updateCoopText();
+}
+
+function meltOnScreenEnemies(scene) {
+    if (!enemies || !enemies.getChildren) return;
+    const live = enemies.getChildren().filter(enemy => (
+        enemy.active && !enemy.dying && !isOffscreen(enemy, 0)
+    ));
+    live.forEach(enemy => {
+        destroyEnemy.call(scene, enemy, { allowSplit: false, boostAmount: 0 });
+    });
+}
+
+function updateLaserBursts(scene, simTime) {
+    const now = Number.isFinite(simTime) ? simTime : playtestClockMs;
+    const bursts = [];
+    if (laserState.activeUntil > now && player && player.active) bursts.push(player);
+    const partner = coopEnabled && coopState && coopState.p2;
+    if (partner && partner.activeUntil > now && playerTwo && playerTwo.active) bursts.push(playerTwo);
+    if (!bursts.length) {
+        if (laserGraphics) laserGraphics.clear();
+        return;
+    }
+    if (!laserGraphics || laserGraphics.scene !== scene) {
+        laserGraphics = scene.add.graphics().setDepth(8).setScrollFactor(0);
+    }
+    const gfx = laserGraphics;
+    gfx.clear();
+    gfx.fillStyle(0x66f6ff, 0.08);
+    gfx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    const cam = scene.cameras && scene.cameras.main;
+    const scrollX = cam ? cam.scrollX : 0;
+    const scrollY = cam ? cam.scrollY : 0;
+    bursts.forEach(ship => {
+        const x = ship.x - scrollX;
+        const y = ship.y - scrollY;
+        const vertical = isVerticalScroll();
+        gfx.lineStyle(14, 0x7ef6ff, 0.28);
+        gfx.lineBetween(x, y, vertical ? x : GAME_WIDTH, vertical ? 0 : y);
+        gfx.lineStyle(3, 0xffffff, 0.92);
+        gfx.lineBetween(x, y, vertical ? x : GAME_WIDTH, vertical ? 0 : y);
+    });
+    meltOnScreenEnemies(scene);
+}
+
 function fireBullet(time, shooter = player, pilotState = null) {
     if (!shooter || !shooter.active) return;
+    if (activeWeaponId(pilotState) === 'laser') {
+        startLaserBurst.call(this, time, shooter, pilotState);
+        return;
+    }
     const muzzle = getPlayerMuzzleAnchor(shooter);
     const currentWeapon = pilotState ? pilotState.weaponLevel : weaponLevel;
     const fired = [];
@@ -2698,7 +2862,7 @@ function scheduleSupernovaWeaponDrop(scene, delayMs) {
         let live = 0;
         if (powerups && powerups.getChildren) {
             powerups.getChildren().forEach(pod => {
-                if (pod && pod.active && pod.powerupType === 'weapon') live += 1;
+                if (pod && pod.active && (pod.powerupType === 'weapon' || pod.powerupType === 'laser')) live += 1;
             });
         }
         if (live < 1) spawnPowerup.call(scene, { type: 'weapon' });
@@ -3566,6 +3730,8 @@ function spawnEnemy(options = {}) {
         spriteDef.body
     );
     applyEnemyTypeProfile.call(this, enemy, type, typeDef, options, x);
+    const levelMotions = getLevelDef(currentLevel).enemyMotions;
+    enemy.animationId = levelMotions && levelMotions[type] ? levelMotions[type] : null;
     applyDifficultyToEnemy(enemy);
     applyEnemyOrientation(enemy);
     playEnemyIdleAnimation(enemy);
@@ -4455,6 +4621,8 @@ function spawnPowerup(plan = {}) {
 
     powerup.setTexture(type.texture);
     powerup.powerupType = type.key;
+    if (type.key === 'laser') powerup.setTint(0x66f6ff);
+    else if (powerup.clearTint) powerup.clearTint();
     activateSprite(powerup, x, y);
     // Slightly slower than enemies so pickups stay readable.
     applyApproachSpeed(powerup, plan.terrainSpeed ? WALL_SCROLL_SPEED : (vertical ? -70 : -95));
@@ -4861,6 +5029,16 @@ function updateExpansionBoss(time, frameDelta) {
             const angle = time * 0.001 + i * Math.PI / 2;
             gfx.lineBetween(Math.cos(angle) * radius * 0.85, Math.sin(angle) * radius * 0.85,
                 Math.cos(angle) * radius * 1.15, Math.sin(angle) * radius * 1.15);
+        }
+    } else if (state.id === 'prismCaster') {
+        const open = state.mode === 'windup' ? 1 : state.mode === 'attack' ? 0.45 : 0.12;
+        gfx.lineStyle(2, spec.color, 0.3 + open * 0.55);
+        gfx.strokeCircle(-target.displayWidth * 0.05, 0, 8 + open * 14);
+        if (state.mode === 'windup' && state.plan && state.plan.lanes) {
+            gfx.lineStyle(1, spec.color, 0.45);
+            state.plan.lanes.forEach(laneY => {
+                gfx.lineBetween(-target.displayWidth * 0.28, 0, -360, laneY - target.y);
+            });
         }
     } else if (state.id === 'auroraSentinel') {
         // Charging rays preview the fan's actual angles; effects stay separate
@@ -6543,9 +6721,15 @@ function updateCoopText() {
         const energy = Phaser.Math.Clamp(index === 0 ? boostEnergy : state.boostEnergy, 0, 100);
         hud.life.setText(alive ? 'LIVES ' + state.lives : 'DOWN');
         hud.life.setColor(alive ? '#e8f0ff' : '#ff8d9e');
-        const weaponName = ['SINGLE', 'TRIPLE', 'SPREAD'][Math.min(2, Math.max(0, state.weaponLevel - 1))];
+        const topId = index === 0 ? topTierWeapon : (state.topTierWeapon || 'spread');
+        const weaponName = getWeaponName(state.weaponLevel, topId).toUpperCase();
         const charges = index === 0 ? weaponCharges : state.weaponCharges;
-        const left = soonestWeaponChargeMs(charges);
+        const slot = index === 0 ? laserState : state;
+        const owner = index === 0 ? null : state;
+        const laserLeft = laserHudMs(owner, slot);
+        const rankLeft = soonestWeaponChargeMs(charges);
+        const melting = activeWeaponId(owner) === 'laser' && playtestClockMs < slot.activeUntil;
+        const left = laserLeft > 0 ? laserLeft : (melting ? 0 : rankLeft);
         const timer = left > 0 ? '  ' + Math.max(1, Math.ceil(left / 1000)) + 's' : '';
         hud.weapon.setText(alive ? weaponName + timer + (state.hasShield ? '  • SHIELD' : '') : 'PARTNER CONTINUES');
         hud.weapon.setColor(alive && left > 0 && left < 3000 ? '#ff8877' : '#e8f0ff');
@@ -6579,8 +6763,10 @@ function updateProjectileTrails() {
 
 function updateWeaponText() {
     if (!weaponText) return;
-    let label = 'WEAPON  ' + getWeaponName().toUpperCase();
-    const left = soonestWeaponChargeMs(weaponCharges);
+    let label = 'WEAPON  ' + getWeaponName(weaponLevel, topTierWeapon).toUpperCase();
+    const laserLeft = laserHudMs(null, laserState);
+    const rankLeft = soonestWeaponChargeMs(weaponCharges);
+    const left = laserLeft > 0 ? laserLeft : (activeWeaponId(null) === 'laser' && playtestClockMs < laserState.activeUntil ? 0 : rankLeft);
     if (left > 0) label += '  ' + Math.max(1, Math.ceil(left / 1000)) + 's';
     weaponText.setText(label);
     weaponText.setFill(left > 0 && left < 3000 ? '#ff8877' : '#66f6ff');
@@ -6610,9 +6796,12 @@ function updateShieldVisual(time) {
     shieldVisual.setStrokeStyle(2, 0x55ffaa, 0.55 + pulse * 0.35);
 }
 
-function getWeaponName() {
-    const names = ['Single', 'Twin', 'Spread'];
-    return names[weaponLevel - 1] || names[0];
+function getWeaponName(level, topId) {
+    const rank = Number.isFinite(level) ? level : weaponLevel;
+    const tier = topId || topTierWeapon;
+    if (rank >= MAX_WEAPON_LEVEL) return tier === 'laser' ? 'Laser' : 'Spread';
+    if (rank >= 2) return 'Twin';
+    return 'Single';
 }
 
 // ---------------------------------------------------------------------------
@@ -7055,8 +7244,8 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
         fx.fillStyle(0xfff3df, strength * 0.65);
         fx.fillCircle(x, y, radius * 0.6);
     };
-    if (currentLevel === 5 && enemy.texture.key === 'enemyDart') {
-        // Articulated reactor shutters: local visual parts only. The simulation
+    if (enemy.texture && enemy.texture.key === 'enemyDart') {
+        // Articulated reactor shutters, selected by texture. The simulation
         // clock and existing shot timestamp own anticipation/recoil; no timers
         // or projectile callbacks are introduced on pooled enemies.
         const opening = Math.max(charge, flash);
@@ -7088,6 +7277,22 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
         glow(0, -h * 0.04, 3 + charge * 3 + flash * 4, 0.35 + pulse * 0.2 + charge * 0.4);
     } else if (type === 'splitter') {
         glow(-w * 0.04, 0, 3 + pulse * 1.5 + charge * 3 + flash * 3, 0.4 + charge * 0.5);
+    } else if (enemy.animationId === 'prismLens') {
+        // Nose petals from the prism-battery manifest. Local graphics only.
+        const opening = Math.max(charge, flash * 0.35);
+        const hingeX = -w * 0.28;
+        const span = 0.5 + opening * 0.85;
+        for (let i = 0; i < 3; i++) {
+            const angle = -span + span * 2 * (i / 2);
+            const length = w * (0.16 + opening * 0.05);
+            const tipX = hingeX - Math.cos(angle) * length;
+            const tipY = Math.sin(angle) * length;
+            fx.fillStyle(0x123043, 1);
+            fx.fillTriangle(hingeX, -2, tipX, tipY, hingeX, 2);
+            fx.lineStyle(1.2, 0x7ef6ff, 0.45 + opening * 0.5);
+            fx.lineBetween(hingeX, 0, tipX, tipY);
+        }
+        glow(hingeX, 0, 1.5 + opening * 3, 0.25 + opening * 0.6);
     } else if (type === 'mineDropper') {
         const untilMine = enemy.nextMineAt - time;
         const deploy = untilMine >= 0 && untilMine < 350 ? 1 - untilMine / 350 : 0;
@@ -7236,6 +7441,20 @@ function handleKeyboardDown(event) {
         cycleAudioStyle(event.code === 'BracketLeft' || event.key === '[' ? -1 : 1);
         event.preventDefault();
         return;
+    }
+
+    if (!event.repeat && !levelEnded) {
+        const code = event.code || '';
+        if (code === 'KeyQ') {
+            cycleTopTierWeapon(null);
+            event.preventDefault();
+            return;
+        }
+        if (coopEnabled && code === 'Period') {
+            cycleTopTierWeapon(coopState && coopState.p2);
+            event.preventDefault();
+            return;
+        }
     }
 
     const handledMovement = trackMovementInput(event, true);
@@ -7794,15 +8013,15 @@ function hideOpeningOverlay() {
 
 function formatGameplayControlsHint() {
     if (shouldShowTouchControls()) {
-        return 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  AUTO OPTIONAL';
+        return 'DRAG TO STEER  ·  HOLD FIRE / BOOST  ·  GUN SWITCHES  ·  AUTO OPTIONAL';
     }
     if (coopEnabled) {
-        return 'P1 WASD / SPACE / L SHIFT  ·  P2 ARROWS / ENTER / R SHIFT  ·  ESC PAUSE';
+        return 'P1 WASD / SPACE / L SHIFT / Q  ·  P2 ARROWS / ENTER / R SHIFT / .  ·  ESC PAUSE';
     }
     if (readRawGamepads().some(Boolean)) {
-        return 'STICK MOVE  ·  LT / B BOOST  ·  RT / A FIRE  ·  START PAUSE';
+        return 'STICK MOVE  ·  LT / B BOOST  ·  RT / A FIRE  ·  Y WEAPON  ·  START PAUSE';
     }
-    return 'WASD / ARROWS MOVE  ·  SHIFT BOOST  ·  SPACE FIRE  ·  ESC / P PAUSE';
+    return 'WASD / ARROWS MOVE  ·  SHIFT BOOST  ·  SPACE FIRE  ·  Q WEAPON  ·  ESC / P PAUSE';
 }
 
 function showOpeningOverlay(scene, onPlay) {
@@ -8050,8 +8269,10 @@ function showBonusTestingGrounds(scene) {
     };
     text(100, 'BONUS TESTING GROUNDS', '28px');
     text(150, 'Experimental stages • Outside the main campaign\nPractice runs do not enter the leaderboard.', '14px');
-    getEffectiveLevelDefs().filter(level => level.bonus).forEach((level, index) => {
-        text(230 + index * 60, 'LEVEL ' + level.id + ': ' + level.name)
+    const bonuses = getEffectiveLevelDefs().filter(level => level.bonus);
+    const step = bonuses.length > 4 ? 48 : 60;
+    bonuses.forEach((level, index) => {
+        text(196 + index * step, 'LEVEL ' + level.id + ': ' + level.name, bonuses.length > 4 ? '16px' : '18px')
             .setPadding(18, 12).setBackgroundColor('#12445c')
             .setInteractive({ useHandCursor: true }).setName('bonus-level-' + level.id)
             .on('pointerdown', () => {
@@ -8061,7 +8282,7 @@ function showBonusTestingGrounds(scene) {
                 scene.scene.restart();
             });
     });
-    text(510, 'BACK TO MAIN SCREEN').setPadding(18, 12)
+    text(196 + bonuses.length * step + 18, 'BACK TO MAIN SCREEN').setPadding(18, 12)
         .setInteractive({ useHandCursor: true }).on('pointerdown', () => {
             nodes.forEach(node => node.destroy());
             openingBonusNodes = null;
@@ -8780,6 +9001,12 @@ function isGamepadBoostHeld(pilot) {
     return GAMEPAD_BOOST_BUTTONS.some(button => padButtonHeld(pad, button));
 }
 
+function pilotGamepadJustPressed(pilot, button) {
+    const pad = padForPilot(pilot);
+    if (!pad || !gamepadJustPressed[pad.index]) return false;
+    return gamepadJustPressed[pad.index].has(button);
+}
+
 function anyGamepadJustPressed(button) {
     const keys = Object.keys(gamepadJustPressed);
     for (let i = 0; i < keys.length; i++) {
@@ -9053,6 +9280,10 @@ function handleGamepadUi() {
     }
     if (anyGamepadJustPressed(GAMEPAD_BTN.SELECT)) {
         toggleMute();
+    }
+    if (pilotGamepadJustPressed(1, GAMEPAD_BTN.Y)) cycleTopTierWeapon(null);
+    if (coopEnabled && coopState && coopState.p2 && pilotGamepadJustPressed(2, GAMEPAD_BTN.Y)) {
+        cycleTopTierWeapon(coopState.p2);
     }
 }
 
@@ -9427,6 +9658,7 @@ function createDomTouchControls(scene) {
     const auto = dock.querySelector('[data-touch="auto"]');
     const pause = dock.querySelector('[data-touch="pause"]');
     const mute = dock.querySelector('[data-touch="mute"]');
+    const weapon = dock.querySelector('[data-touch="weapon"]');
     if (!stick || !knob || !fire || !boost || !auto || !pause || !mute) return;
 
     const dockVisible = !openingActive && !gamePaused && !levelEnded && !victoryPending && !awaitingNextLevel;
@@ -9498,6 +9730,7 @@ function createDomTouchControls(scene) {
     const onAuto = event => { stopPointer(event); mobileAutoFire = !mobileAutoFire; resetDomTouchVisuals(controls); showFloatingText(scene, 400, 120, mobileAutoFire ? 'AUTO-FIRE ON' : 'AUTO-FIRE OFF', '#66f6ff', { screenSpace: true }); };
     const onPause = event => { stopPointer(event); togglePause(scene); };
     const onMute = event => { stopPointer(event); toggleMute(); resetDomTouchVisuals(controls); };
+    const onWeapon = event => { stopPointer(event); cycleTopTierWeapon(null); if (sfx) sfx.unlock(); };
     let utilityPointerAt = -Infinity;
     const utilityPointer = action => event => { utilityPointerAt = performance.now(); action(event); };
     const utilityClick = action => event => {
@@ -9509,9 +9742,11 @@ function createDomTouchControls(scene) {
     const onAutoDown = utilityPointer(onAuto);
     const onPauseDown = utilityPointer(onPause);
     const onMuteDown = utilityPointer(onMute);
+    const onWeaponDown = utilityPointer(onWeapon);
     const onAutoClick = utilityClick(onAuto);
     const onPauseClick = utilityClick(onPause);
     const onMuteClick = utilityClick(onMute);
+    const onWeaponClick = utilityClick(onWeapon);
     const onCancel = () => { releaseStick(); releaseFire(); releaseBoost(); };
     stick.addEventListener('pointerdown', onStickDown, { passive: false });
     stick.addEventListener('pointermove', onStickMove, { passive: false });
@@ -9520,6 +9755,10 @@ function createDomTouchControls(scene) {
     boost.addEventListener('pointerdown', onBoostDown, { passive: false }); boost.addEventListener('pointerup', releaseBoost); boost.addEventListener('pointercancel', releaseBoost); boost.addEventListener('lostpointercapture', releaseBoost);
     auto.addEventListener('pointerdown', onAutoDown, { passive: false }); pause.addEventListener('pointerdown', onPauseDown, { passive: false }); mute.addEventListener('pointerdown', onMuteDown, { passive: false });
     auto.addEventListener('click', onAutoClick); pause.addEventListener('click', onPauseClick); mute.addEventListener('click', onMuteClick);
+    if (weapon) {
+        weapon.addEventListener('pointerdown', onWeaponDown, { passive: false });
+        weapon.addEventListener('click', onWeaponClick);
+    }
     window.addEventListener('blur', onCancel); document.addEventListener('visibilitychange', onCancel);
     controls.cleanup = () => {
         stick.removeEventListener('pointerdown', onStickDown); stick.removeEventListener('pointermove', onStickMove); stick.removeEventListener('pointerup', onStickEnd); stick.removeEventListener('pointercancel', onStickEnd); stick.removeEventListener('lostpointercapture', onStickEnd);
@@ -9527,6 +9766,10 @@ function createDomTouchControls(scene) {
         boost.removeEventListener('pointerdown', onBoostDown); boost.removeEventListener('pointerup', releaseBoost); boost.removeEventListener('pointercancel', releaseBoost); boost.removeEventListener('lostpointercapture', releaseBoost);
         auto.removeEventListener('pointerdown', onAutoDown); pause.removeEventListener('pointerdown', onPauseDown); mute.removeEventListener('pointerdown', onMuteDown);
         auto.removeEventListener('click', onAutoClick); pause.removeEventListener('click', onPauseClick); mute.removeEventListener('click', onMuteClick);
+        if (weapon) {
+            weapon.removeEventListener('pointerdown', onWeaponDown);
+            weapon.removeEventListener('click', onWeaponClick);
+        }
         window.removeEventListener('blur', onCancel); document.removeEventListener('visibilitychange', onCancel);
     };
     resetDomTouchVisuals(controls);
@@ -9681,7 +9924,10 @@ function releasePowerup(scene, powerup) {
         powerup.aura.destroy();
         powerup.aura = null;
     }
-    if (powerup) powerup.powerupType = null;
+    if (powerup) {
+        powerup.powerupType = null;
+        if (powerup.clearTint) powerup.clearTint();
+    }
     releaseSprite(powerup);
 }
 
@@ -9693,6 +9939,7 @@ function resetPooledEnemyState(sprite) {
     sprite.enemyAnimationBank = 0;
     sprite.enemyAnimationFiredAt = -Infinity;
     sprite.enemyAnimationPhase = null;
+    sprite.animationId = null;
     sprite.usesRadialShot = false;
     sprite.convergeVx = null;
     sprite.strafeAmplitude = null;
@@ -11904,7 +12151,9 @@ function getBotSnapshot() {
         score,
         lives,
         weaponLevel,
+        weaponId: activeWeaponId(null),
         weaponMs: soonestWeaponChargeMs(weaponCharges),
+        laserRechargeMs: laserRechargeRemainingMs(laserState),
         hasShield: Boolean(hasShield),
         boostEnergy,
         isBoosting: Boolean(isBoosting),
@@ -12258,10 +12507,64 @@ window.__novawingDebug = {
     debugWeaponState() {
         return {
             weaponLevel,
+            weaponId: activeWeaponId(null),
+            topTierWeapon,
             weaponMs: soonestWeaponChargeMs(weaponCharges),
+            laserActiveMs: Math.max(0, laserState.activeUntil - playtestClockMs),
+            laserRechargeMs: laserRechargeRemainingMs(laserState),
             text: weaponText && weaponText.text ? weaponText.text : '',
             randomWaves: difficultyFlag('randomWaves', false),
             weaponPowerMs: weaponPowerDurationMs()
+        };
+    },
+    debugLaserProbe() {
+        const scene = getActiveScene();
+        if (!scene) return null;
+        const count = group => (group && group.getChildren
+            ? group.getChildren().filter(child => child.active).length
+            : 0);
+        const beforeSwitch = {
+            changed: cycleTopTierWeapon(null),
+            weaponLevel,
+            topTierWeapon
+        };
+        while (weaponLevel < MAX_WEAPON_LEVEL) applyWeaponPowerup(scene, 400, 280);
+        const toLaser = cycleTopTierWeapon(null);
+        const spawned = spawnEnemy.call(scene, {
+            x: 520, y: 280, type: 'regular', skipPathClamp: true
+        });
+        const bossBefore = count(bosses);
+        const now = Math.max(playtestClockMs, laserState.readyAt);
+        fireBullet.call(scene, now);
+        updateLaserBursts(scene, now);
+        const meltUntil = laserState.activeUntil;
+        const readyAt = laserState.readyAt;
+        fireBullet.call(scene, meltUntil + 20);
+        const rechargeHeld = laserState.activeUntil === meltUntil;
+        fireBullet.call(scene, readyAt);
+        const restarted = laserState.activeUntil > meltUntil;
+        cycleTopTierWeapon(null);
+        const bulletsBefore = count(bullets);
+        fireBullet.call(scene, readyAt + 5000);
+        laserState.activeUntil = playtestClockMs;
+        laserState.readyAt = playtestClockMs;
+        lastFired = playtestClockMs;
+        updateWeaponText();
+        return {
+            beforeSwitch,
+            toLaser,
+            spawned: Boolean(spawned),
+            melted: Boolean(spawned && !spawned.active),
+            bossBefore,
+            bossAfter: count(bosses),
+            meltMs: meltUntil - now,
+            rechargeMs: readyAt - meltUntil,
+            rechargeHeld,
+            restarted,
+            spreadId: activeWeaponId(null),
+            bulletsBefore,
+            bulletsAfter: count(bullets),
+            text: weaponText && weaponText.text ? weaponText.text : ''
         };
     },
     debugGrantWeapon() {

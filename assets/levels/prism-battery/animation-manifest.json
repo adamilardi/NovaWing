@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "candidateId": "prism-battery",
+  "camera": "side",
+  "facing": "left",
+  "clock": "simulation",
+  "states": [
+    {
+      "id": "prismLens",
+      "subject": "enemy",
+      "enemyType": "regular",
+      "method": "code",
+      "loop": true,
+      "displayWidth": 112,
+      "events": { "anticipation": "nextShotAt", "fire": "enemyAnimationFiredAt" },
+      "parts": [{ "name": "petal", "count": 3, "pivot": "nose" }]
+    },
+    {
+      "id": "enemyDart",
+      "subject": "enemy",
+      "method": "code",
+      "select": "texture",
+      "displayWidth": 52,
+      "parts": [{ "name": "shutter", "count": 2, "pivot": "reactor" }]
+    }
+  ],
+  "boss": {
+    "id": "prismCaster",
+    "method": "parts",
+    "sprite": "assets/bosses/prism-caster.png",
+    "displayWidth": 340,
+    "windupMs": 1100,
+    "activeMs": 520,
+    "recoveryMs": 2400,
+    "rootCollision": "unarticulated",
+    "parts": [
+      { "name": "upperGuns", "rect": [0, 0, 0.34, 0.33] },
+      { "name": "midGuns", "rect": [0, 0.33, 0.34, 0.34] },
+      { "name": "lowerGuns", "rect": [0, 0.67, 0.34, 0.33] },
+      { "name": "upperPetal", "rect": [0.34, 0, 0.28, 0.38] },
+      { "name": "lens", "rect": [0.34, 0.38, 0.28, 0.24] },
+      { "name": "lowerPetal", "rect": [0.34, 0.62, 0.28, 0.38] },
+      { "name": "hull", "rect": [0.62, 0, 0.22, 1] },
+      { "name": "engine", "rect": [0.84, 0, 0.16, 1] }
+    ]
+  }
+}

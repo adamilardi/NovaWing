@@ -215,6 +215,50 @@ async function caseDesktopMove(browser, base, evidenceDir) {
     }
 }
 
+async function caseLaser(browser, base, evidenceDir) {
+    const session = await openGame(browser, base, '?level=1&diff=hard');
+    try {
+        const probe = await session.page.evaluate(() => window.__novawingDebug.debugLaserProbe());
+        await session.page.keyboard.press('q');
+        const switched = await session.page.evaluate(() => window.__novawingDebug.debugWeaponState());
+        await session.page.keyboard.down('Space');
+        await session.page.waitForTimeout(180);
+        const melting = await session.page.evaluate(() => window.__novawingDebug.debugWeaponState());
+        await session.page.keyboard.up('Space');
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { connected: true }));
+        await session.page.evaluate(() => window.__novawingDebug.setGamepad(0, { buttons: { 3: 1 } }));
+        const padSwitched = await session.page.evaluate(() => window.__novawingDebug.debugWeaponState());
+        await session.page.evaluate(() => window.__novawingDebug.clearGamepads());
+        const shot = path.join(evidenceDir, 'laser.png');
+        await session.page.screenshot({ path: shot });
+        const ok = probe
+            && probe.beforeSwitch.changed === false
+            && probe.beforeSwitch.topTierWeapon === 'spread'
+            && probe.toLaser === true
+            && probe.spawned === true
+            && probe.melted === true
+            && probe.bossBefore === probe.bossAfter
+            && Math.abs(probe.meltMs - 3000) < 1
+            && Math.abs(probe.rechargeMs - 3000) < 1
+            && probe.rechargeHeld === true
+            && probe.restarted === true
+            && probe.spreadId === 'spread'
+            && probe.bulletsAfter > probe.bulletsBefore
+            && switched.weaponId === 'laser'
+            && String(switched.text).includes('LASER')
+            && melting.laserActiveMs > 2000
+            && melting.laserActiveMs < 3100
+            && melting.text === 'WEAPON  LASER'
+            && padSwitched.weaponId === 'spread'
+            && session.pageErrors.length === 0;
+        return result('laser', ok, ok
+            ? `melt=${probe.meltMs} recharge=${probe.rechargeMs} spreadBullets=${probe.bulletsAfter - probe.bulletsBefore}`
+            : JSON.stringify({ probe, switched, melting, padSwitched, pageErrors: session.pageErrors }), { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
 async function caseController(browser, base, evidenceDir) {
     const session = await openGame(browser, base);
     try {
@@ -987,6 +1031,7 @@ const CASES = {
     performance: casePerformance,
     boot: caseBoot,
     'desktop-move': caseDesktopMove,
+    laser: caseLaser,
     controller: caseController,
     'local-coop': caseLocalCoop,
     'coop-mode-picker': caseCoopModePicker,

@@ -9,7 +9,9 @@ const catalog = Object.freeze({
     voidCantor: { name: 'VOID CANTOR', color: 0xdc83ff, width: 250,
         phases: ['SINGLE SIGIL', 'DUAL INVOCATION', 'TRIPLE CHOIR'], windupMs: 1200, activeMs: 550, recoveryMs: 2500 },
     graveyardLeviathan: { name: 'GRAVEYARD LEVIATHAN', color: 0xffbd77, width: 365,
-        phases: ['SALVAGE TORPEDOES', 'STAGGERED BATTERIES', 'WRECKAGE ESCORT'], windupMs: 1000, activeMs: 1000, recoveryMs: 2200 }
+        phases: ['SALVAGE TORPEDOES', 'STAGGERED BATTERIES', 'WRECKAGE ESCORT'], windupMs: 1000, activeMs: 1000, recoveryMs: 2200 },
+    prismCaster: { name: 'PRISM CASTER', color: 0x66f6ff, width: 340,
+        phases: ['SINGLE LENS', 'SPLIT BEAMS', 'NARROW PRISM'], windupMs: 1100, activeMs: 520, recoveryMs: 2400 }
 });
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 function plan(id, cycle, phase, focus = 300) {
@@ -31,6 +33,15 @@ function plan(id, cycle, phase, focus = 300) {
         return { kind: 'sigilLanes', lanes: phase === 1 ? [cycle % 2 ? 520 : 280]
             : phase === 2 ? (cycle % 2 ? [280, 520] : [160, 640])
             : (cycle % 2 ? [160, 400, 640] : [250, 550]), thickness: 26 };
+    }
+    if (id === 'prismCaster') {
+        // The safe gap walks a fixed cycle. It does not chase the pilot.
+        const gapCenter = [160, 300, 440, 240][cycle % 4];
+        const half = phase === 1 ? 0 : phase === 2 ? 150 : 110;
+        const lanes = phase === 1
+            ? [gapCenter < 300 ? 460 : 150]
+            : [clamp(gapCenter - half, 90, 510), clamp(gapCenter + half, 90, 510)];
+        return { kind: 'prismSweep', lanes, thickness: phase === 3 ? 26 : 20, gapCenter };
     }
     const upper = cycle % 2 === 0;
     return { kind: 'salvageBurst', angles: phase === 1 ? [170, 190]
@@ -97,6 +108,16 @@ function parts(id) {
         { name: 'rightRing', rect: [0.72, 0.20, 0.28, 0.60] },
         { name: 'southSigil', rect: [0, 0.80, 1, 0.20] }
     ];
+    if (id === 'prismCaster') return [
+        { name: 'upperGuns', rect: [0, 0, 0.34, 0.33] },
+        { name: 'midGuns', rect: [0, 0.33, 0.34, 0.34] },
+        { name: 'lowerGuns', rect: [0, 0.67, 0.34, 0.33] },
+        { name: 'upperPetal', rect: [0.34, 0, 0.28, 0.38] },
+        { name: 'lens', rect: [0.34, 0.38, 0.28, 0.24] },
+        { name: 'lowerPetal', rect: [0.34, 0.62, 0.28, 0.38] },
+        { name: 'hull', rect: [0.62, 0, 0.22, 1] },
+        { name: 'engine', rect: [0.84, 0, 0.16, 1] }
+    ];
     return [
         { name: 'battery', rect: [0, 0, 1, 0.38] },
         { name: 'hull', rect: [0, 0.38, 1, 0.27] },
@@ -125,6 +146,14 @@ function pose(state, name, time) {
         }
         if (name === 'northSigil') result.y = -charge * 8 + recoil * 5;
         if (name === 'southSigil') result.y = charge * 8 - recoil * 5;
+    } else if (state.id === 'prismCaster') {
+        const side = name === 'upperPetal' ? -1 : name === 'lowerPetal' ? 1 : 0;
+        if (side) {
+            result.y = side * charge * 12;
+            result.angle = side * (charge * 8 - recoil * 3);
+        }
+        if (name === 'upperGuns' || name === 'midGuns' || name === 'lowerGuns') result.x = 9 * recoil;
+        if (name === 'engine') result.x = -6 * recoil;
     } else if (name === 'battery') {
         result.x = 11 * recoil;
         result.y = -charge * 3;

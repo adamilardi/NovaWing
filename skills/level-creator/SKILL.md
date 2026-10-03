@@ -40,7 +40,7 @@ Check that enemy entry positions, travel direction, bullet paths, terrain, and p
 
 ## Build terrain into the encounters
 
-For NovaWing levels 4–7, author walls, planet surfaces, wreckage, and other obstacles as gameplay geometry, using the themed environment assets. Preserve levels 1–3 unless changes there are requested. See the NovaWing reference for `terrainEvents`; inspect the current runtime rather than assuming that generic art roles automatically spawn geometry.
+When a new NovaWing level needs terrain, author walls, planet surfaces, wreckage, and other obstacles as gameplay geometry, using the themed environment assets. Leave levels 1–3 and existing levels 4–7 unchanged unless the request is to revise them. See the NovaWing reference for `terrainEvents`; inspect the current runtime rather than assuming that generic art roles automatically spawn geometry.
 
 Give each level a distinct spatial idea: foundry bulkheads and reactors; an icy rift with rock outcrops; cathedral arches and broken masonry; a planet surface with derelict hulls. Design a flight route and its combat pressure before choosing obstacle placements. Geometry should displace the player into readable danger: an offset gate exposes them to a firing lane, a bend breaks cover, or a wreck forces a crossing between threats. A perpetually safe central lane with occasional side blocks does not meet this goal. Read [references/geometry.md](references/geometry.md) when designing or revising obstacles, corridors, and space junk.
 
@@ -81,10 +81,6 @@ Write a build report in the project's established content documentation location
 
 Finish with the playable level's identity, how to start it, the art/enemies used, and verification results. Creating the level authorizes local implementation and checks. Deployment follows only an explicit deployment request and the project's deployment instructions. If required inputs or execution capabilities prevent completion, retain useful work and report the specific remaining dependency.
 
-## NovaWing playtesting and difficulty requirements
+## NovaWing playtesting and difficulty
 
-For NovaWing level creation, default to **VERY hard Hotshot (`diff=normal`)** unless the user specifies otherwise. Build difficulty from sustained enemy pressure, demanding movement and distinct boss patterns, while preserving readable tells and physically traversable escape routes. Verify the actual Hotshot difficulty overlay; do not substitute Supernova or make an encounter difficult solely by increasing health.
-
-Every level must contain reachable weapon powerups, including recurring replenishment through long combat sections and a weapon opportunity in recovery sections. Keep pickups aligned with safe terrain routes and verify their runtime scheduling and collection.
-
-Bonus Testing Grounds offers unlimited continues. Automated playtests must use `playtestContinues=unlimited`, retain ordinary movement, damage and collision rules, and explicitly accept pending continues. Report continues used and distinguish a continued clear from a death-free clear. Pausing simulation to compute actions is allowed; prefer controlled 1x simulation, suppress rendering between captures, and record simulated duration separately from wall time. Unlimited continues are a playtest setting, not a change to ranked campaign continue budgets.
+Follow [references/novawing.md](references/novawing.md#required-default-balance-and-playtest-rules). That section owns the default difficulty, weapon placement, and playtest entry rules.

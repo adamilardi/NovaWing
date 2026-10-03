@@ -26,3 +26,7 @@ Use the same combat state and simulation clock to control animation and attacks.
 ## Handoff and evidence
 
 Record the canonical source path, action/state table, selected animation method per action, part/frame paths, pivots and attachment points, packing transforms, playback timing, and intentional design changes. Deliver a playable preview or captured loop when tooling allows, plus in-game observations. Distinguish planned motion, prepared assets, runtime implementation, and verified playback. A pose sheet or an idle screenshot is not proof that an attack cycle works.
+
+## NovaWing
+
+Boss playback, the shared versioned manifest, and the Supernova windup check live in [the enemy animation integrator](../../enemy-animation-integrator/SKILL.md). An animation-only request changes parts and pose for the current encounter.

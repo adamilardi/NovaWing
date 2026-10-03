@@ -32,6 +32,8 @@ Inspect playback at gameplay size on light and dark backgrounds. Check alpha, cl
 
 ## Deliver the handoff
 
-Write `animation-manifest.json` with a version, candidate ID, canonical source path, camera/facing, logical canvas dimensions, target display size, root pivot, body bounds, asset paths, and preview paths. For each state include its method, ordered frames or part tracks, durations, loop policy, attachment/event metadata, and remaining work. Record sheet frame rectangles and trim offsets if packed. Paths are relative to the manifest; distinguish source assets from packed derivatives.
+Write one `animation-manifest.json` for the encounter. Give it a version, candidate ID, canonical source path, camera/facing, logical canvas dimensions, target display size, root pivot, body bounds, asset paths, and preview paths. List every enemy state in that file and, when the encounter has a boss, that boss's part tracks too. For each state include its method, ordered frames or part tracks, durations, loop policy, attachment/event metadata, and remaining work. Record sheet frame rectangles and trim offsets if packed. Paths are relative to the manifest; distinguish source assets from packed derivatives.
+
+NovaWing playback, including which motions are legal and how boss windup survives Supernova tempo, is in `../enemy-animation-integrator/SKILL.md`.
 
 Link the manifest and playback previews. State which actions were visually verified and whether assets still need runtime integration. Hand off to `../enemy-animation-integrator/SKILL.md` when integration is requested.

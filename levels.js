@@ -420,6 +420,8 @@
             interceptorChance: difficulty.interceptorChance,
             enemyFireChance: difficulty.enemyFireChance,
             art: def.art && typeof def.art === 'object' ? Object.assign({}, def.art) : null,
+            enemyMotions: def.enemyMotions && typeof def.enemyMotions === 'object'
+                ? Object.assign({}, def.enemyMotions) : null,
             music: Object.assign({ waves: 'waves', boss: 'boss', transition: null }, def.music),
             // Multi-segment levels (null = classic waves → boss flow)
             segments: Array.isArray(def.segments) ? def.segments : null,
@@ -936,6 +938,28 @@
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
         ]
     });
+    const LEVEL_8 = defineLevel({
+        id: 8, name: 'PRISM BATTERY', tier: 3,
+        introHint: 'TAKE THE LASER • SWITCH GUNS • MELT, THEN WAIT',
+        art: { background: 'prismBattery', wall: 'foundryWall', boss: 'prismCaster' },
+        enemyMotions: { regular: 'prismLens' },
+        music: { waves: 'canyon', boss: 'canyonBoss' },
+        durationMs: 74000, bossScore: 3200, bossHealth: 300,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'prismCaster', health: 240, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: PRISM CASTER' } },
+        segments: [
+            expansionWaves('outerLens', 22000, ['diagonal', 'vFormation', 'chaser'], 'splitterBay', false,
+                { interceptorChance: 0.12, enemyFireChance: 0.28 }),
+            expansionWaves('splitterBay', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors'], 'chargeBay', false,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            expansionWaves('chargeBay', 9000, ['diagonal'], 'casterApproach', false,
+                { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
+            expansionWaves('casterApproach', 17000, ['splitterAmbush', 'sandwich', 'vFormation'], 'finalBoss', false),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
 
     // Authored flight routes. Each gate is a set of separate solid modules;
     // its opening stays empty in both rendering and physics.
@@ -951,16 +975,20 @@
             6: [[0.62, 0.30, 0.70, 0.36], [0.30, 0.68, 0.32, 0.70, 0.36],
                 [0.48, 0.52], [0.70, 0.30, 0.66, 0.34, 0.64]],
             7: [[0.40, 0.70, 0.30, 0.66, 0.34], [0.70, 0.30, 0.64, 0.34, 0.66],
-                [0.46, 0.53], [0.30, 0.70, 0.34, 0.66]]
+                [0.46, 0.53], [0.30, 0.70, 0.34, 0.66]],
+            8: [[0.60, 0.30, 0.70, 0.36, 0.64], [0.30, 0.70, 0.34, 0.66, 0.30],
+                [0.50, 0.55], [0.70, 0.30, 0.64]]
         };
         const centers = routes[level.id][phase];
         const gap = recovery ? span * 0.60 : (vertical ? 272 : 224);
         const interval = recovery ? 4000 : 3600;
-        const material = { 4: 'salvageBulkhead', 5: 'riftStone', 6: 'voidMasonry', 7: 'salvageHull' }[level.id];
+        const material = { 4: 'salvageBulkhead', 5: 'riftStone', 6: 'voidMasonry', 7: 'salvageHull',
+            8: 'salvageBulkhead' }[level.id];
         const names = { 4: ['OFFSET BULKHEADS', 'FURNACE CROSSING', 'COOLING BAY', 'REACTOR GATES'],
             5: ['ICE SHELVES', 'RIFT SLALOM', 'STORM SHELTER', 'CRYSTAL CROWN'],
             6: ['BROKEN ARCHES', 'ASCENDING BUTTRESSES', 'SANCTUARY', 'CHOIR GATES'],
-            7: ['WRECK APPROACH', 'SPLIT HULLS', 'SALVAGE SHELTER', 'BATTERY TRENCH'] };
+            7: ['WRECK APPROACH', 'SPLIT HULLS', 'SALVAGE SHELTER', 'BATTERY TRENCH'],
+            8: ['PRISM GATES', 'LENS CROSSING', 'CHARGE BAY', 'CASTER TRENCH'] };
         const events = centers.map((ratio, index) => {
             const center = Math.round(span * ratio);
             const open = [center - gap / 2, center + gap / 2];
@@ -972,7 +1000,7 @@
                 const breadth = (hi - lo) / count;
                 for (let tile = 0; tile < count; tile++) {
                     const cap = hi === open[0] ? tile === count - 1 : tile === 0;
-                    const along = recovery ? 0 : level.id === 4 ? (lo === 0 ? 0 : 65)
+                    const along = recovery ? 0 : (level.id === 4 || level.id === 8) ? (lo === 0 ? 0 : 65)
                         : level.id === 5 ? ((tile + index) % 3 - 1) * 30
                         : level.id === 6 ? (cap ? -35 : 35) : (lo === 0 ? 45 : -25);
                     blocks.push({ cross: lo + (tile + 0.5) * breadth, breadth,
@@ -995,7 +1023,7 @@
                 cue: index === 0 ? names[level.id][phase] : null,
                 // Fire across the route from ahead; first gate teaches geometry.
                 escort: !recovery && index > 0 ? { cross: split ? 300 : center,
-                    type: vertical ? 'regular' : 'interceptor' } : null };
+                    type: vertical || level.id === 8 ? 'regular' : 'interceptor' } : null };
         });
         // Pickups travel beside their gate at the same speed, keeping the authored
         // route reachable instead of drifting into a later wall at another speed.
@@ -1013,9 +1041,19 @@
             }
             segment.powerups.sort((a, b) => a.progressMs - b.progressMs);
         }
+        if (level.id === 8 && !recovery) {
+            segment.powerups.forEach(drop => {
+                if (drop.type === 'weapon') drop.type = 'laser';
+            });
+            for (const event of events.filter((_, index) => index % 2 === 1)) {
+                segment.powerups.push({ progressMs: event.progressMs + 700,
+                    type: 'laser', terrainSpeed: true, x: 910, y: event.routeCenter });
+            }
+            segment.powerups.sort((a, b) => a.progressMs - b.progressMs);
+        }
         return events;
     }
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7].forEach(level => {
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8].forEach(level => {
         level.segments.filter(s => s.kind === 'waves').forEach((segment, phase) => {
             segment.terrainEvents = terrainEvents(level, segment, phase);
             // Authored gate escorts provide pressure; leave space between random waves.
@@ -1025,8 +1063,8 @@
             }
         });
     });
-    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7];
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7].forEach(level => { level.bonus = true; });
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8];
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8].forEach(level => { level.bonus = true; });
 
     /**
      * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via

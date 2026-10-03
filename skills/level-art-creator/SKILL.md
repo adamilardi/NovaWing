@@ -15,7 +15,7 @@ Use the actual camera and gameplay as constraints. A side-scrolling scene and a 
 
 ## Plan an environment that moves and shapes play
 
-For NovaWing levels 4–7, a background painting alone is incomplete environment coverage. Include solid wall or planet-surface modules, wreckage or other isolated obstacles, and a separate distant scenery layer. Match the existing environment: industrial foundry structures (4), frozen planet/rift rock (5), alien cathedral masonry (6), and devastated planet surface with ship wreckage (7). Preserve good existing backgrounds while extending their asset sets.
+For a new NovaWing expansion level, a background painting alone is incomplete environment coverage. Include solid wall or planet-surface modules, wreckage or other isolated obstacles, and a separate distant scenery layer. Match the existing environment: industrial foundry structures (4), frozen planet/rift rock (5), alien cathedral masonry (6), and devastated planet surface with ship wreckage (7). Leave shipped levels 4–7 unchanged unless the request is to revise their terrain.
 
 Separate physics terrain from decorative scenery in the brief and manifest. Specify intended collision bounds, open edges, placement, and gameplay display size for each solid asset. Use dense, readable silhouettes; keep transparent margins outside the collision body. Avoid floating painted rocks that visually overlap an empty rectangular hitbox. Surface modules need a clear navigable edge and enough variants to avoid repetitive slabs.
 
@@ -65,7 +65,19 @@ Write `brief.md`, images/previews where available, exact generation prompts, and
           "width_px": 2048,
           "height_px": 1024,
           "alpha": false,
-          "readiness": "concept"
+          "readiness": "concept",
+          "collision": null,
+          "motion": {"method": "code", "kind": "parallax", "animated_frames": false}
+        },
+        {
+          "role": "obstacle-solid",
+          "path": "level-crystal-canyon-a/gate-elbow.png",
+          "width_px": 384,
+          "height_px": 256,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {"shape": "separate-rects", "body": "dense-silhouette", "openings": "transparent gap stays non-solid"},
+          "motion": {"method": "code", "kind": "scroll-with-terrain", "animated_frames": false}
         }
       ],
       "preview_paths": [],
@@ -76,7 +88,7 @@ Write `brief.md`, images/previews where available, exact generation prompts, and
         "scroll": "horizontal",
         "palette": ["dark violet", "cyan"],
         "tile_axes": ["x"],
-        "layer_order": ["background-far"],
+        "layer_order": ["background-far", "obstacle-solid"],
         "target_display": "Fit the level viewport; retain bullet contrast."
       },
       "checks": {"dimensions": "pass", "alpha": "pass", "seams": "unverified", "gameplay_readability": "unverified"},
@@ -86,4 +98,4 @@ Write `brief.md`, images/previews where available, exact generation prompts, and
 }
 ```
 
-All paths are relative to the manifest's folder. The example illustrates the format, not required art choices. `kind` is `level`; candidate `status` is `generated` or `prompt-only`. Asset `readiness` is `concept` or `verified`; use `verified` only for an asset checked against its intended role. Missing image paths and unknown dimensions or alpha are null. Check values are `pass`, `fail`, `unverified`, or `not-applicable`; state the reasons for failures and meaningful unknowns in `limitations`. Record per-asset specifications/checks when assets have different requirements. Include generator settings or seed only if available. Final delivery should link the manifest and previews and identify any follow-up needed before integration.
+All paths are relative to the manifest's folder. The example illustrates the format, not required art choices. `kind` is `level`; candidate `status` is `generated` or `prompt-only`. Asset `readiness` is `concept` or `verified`; use `verified` only for an asset checked against its intended role. Put `collision` and `motion` on each asset. Use `collision: null` for a non-solid layer. Name the motion `method` (`code`, `parts`, `keyframes`, or `effects`), a short `kind`, and whether `animated_frames` exist. Missing image paths and unknown dimensions or alpha are null. Check values are `pass`, `fail`, `unverified`, or `not-applicable`; state the reasons for failures and meaningful unknowns in `limitations`. Record per-asset specifications/checks when assets have different requirements. Include generator settings or seed only if available. Final delivery should link the manifest and previews and identify any follow-up needed before integration.
