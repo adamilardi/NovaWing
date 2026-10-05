@@ -15,6 +15,7 @@ import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
 import { defaultLaunchOptions } from './chrome.mjs';
+import { routeVendorPhaser } from './chrome.mjs';
 import { isRunWin, advanceCampaign } from './run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -81,11 +82,13 @@ async function main() {
         }
     }
 
-    policy.tacticalAssist = process.env.POLICY_ASSIST !== '0';
+    // Raw-policy eval by default (matches unassisted training rollouts).
+    // Set POLICY_ASSIST=1 to measure policy + tactics planner instead.
+    policy.tacticalAssist = process.env.POLICY_ASSIST === '1';
     console.log('NovaWing RL policy pilot');
     console.log(`policy=${POLICY_PATH}`);
     console.log(`hidden=${JSON.stringify(policy.hidden)} obs=${policy.obsSize}`);
-    console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms explore=${Boolean(policy.explore)}`);
+    console.log(`URL=${BASE} headless=${HEADLESS} duration=${DURATION_MS}ms explore=${Boolean(policy.explore)} assist=${policy.tacticalAssist}`);
     if (BOSS_SKIP) console.log(`boss practice=ON encounter=${BOSS_ENCOUNTER}`);
 
     const dummy = new Float32Array(OBS_SIZE);
@@ -104,6 +107,7 @@ async function main() {
     });
     const page = await context.newPage();
     await page.clock.install();
+    await routeVendorPhaser(page);
     await page.addInitScript({ path: RUNTIME_PURE_PATH });
     page.on('dialog', async (dialog) => {
         if (dialog.type() === 'prompt') await dialog.accept('RLPilot');

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 _RL = Path(__file__).resolve().parent.parent
 if str(_RL) not in sys.path:
@@ -181,6 +182,31 @@ class TestModel(unittest.TestCase):
             load_checkpoint_into_policy(bc2, ppo_ckpt, torch.device("cpu"))
             with torch.no_grad():
                 self.assertTrue(torch.allclose(bc(x), bc2(x), atol=1e-5))
+
+    def test_action_loss_ignores_constant_discrete_heads(self):
+        ac = ActorCritic(OBS_SIZE, ACTION_SIZE, [16])
+        obs = torch.randn(8, OBS_SIZE)
+        logits, _ = ac(obs)
+        # Constant fire=1 (heuristic-demo regime): fire term must be zero so
+        # the constant head consumes no gradient budget; boost still varies.
+        act = torch.zeros(8, ACTION_SIZE)
+        act[:, 0] = 0.1
+        act[:, 2] = 1.0
+        act[:4, 3] = 1.0
+        loss = action_loss(logits, act)
+        move_only = ((torch.tanh(logits[:, 0:2]) - act[:, 0:2]) ** 2).mean(dim=1)
+        boost_l = F.binary_cross_entropy_with_logits(
+            logits[:, 3], act[:, 3], reduction="none")
+        expected = (move_only + 0.5 * boost_l).mean()
+        torch.testing.assert_close(loss, expected)
+        # Fully constant discrete targets: loss is pure move MSE.
+        act[:, 3] = 1.0
+        loss_const = action_loss(logits, act)
+        torch.testing.assert_close(loss_const, move_only.mean())
+        # Varying fire target: fire term contributes again.
+        act[0, 2] = 0.0
+        loss_vary = action_loss(logits, act)
+        self.assertGreater(float(loss_vary), float(loss_const))
 
     def test_log_prob_and_loss_shapes(self):
         ac = ActorCritic(OBS_SIZE, ACTION_SIZE, [16])

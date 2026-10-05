@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { defaultLaunchOptions, routeVendorPhaser } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -159,7 +159,9 @@ async function installExpert(page, policy) {
         if (!hasRt) {
             await page.addScriptTag({ path: RUNTIME_PURE_PATH });
         }
-        await page.evaluate(installPolicyPilot, { ...policy, tacticalAssist: process.env.POLICY_ASSIST !== '0', explore: process.env.EXPLORE === '1' });
+        // Raw-policy eval by default (matches unassisted training rollouts).
+        // Set POLICY_ASSIST=1 to measure policy + tactics planner instead.
+        await page.evaluate(installPolicyPilot, { ...policy, tacticalAssist: process.env.POLICY_ASSIST === '1', explore: process.env.EXPLORE === '1' });
         return 'policy';
     }
     await page.evaluate(installInPagePilot);
@@ -209,6 +211,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
     });
     const page = await context.newPage();
     await page.clock.install();
+    if (serveLocalPhaser) await routeVendorPhaser(page);
     if (EXPERT === 'policy') {
         await page.addInitScript({ path: RUNTIME_PURE_PATH });
     }
@@ -306,7 +309,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
         scenario: scenarioId,
         trial,
         description: scenario.description,
-        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST !== '0', expert: EXPERT,
+        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST === '1', expert: EXPERT,
         won,
         outcome,
         deathClass: won ? null : outcome,
@@ -351,6 +354,7 @@ async function main() {
     const results = [];
     const deathHist = {};
     const segmentCoverage = new Set();
+    const serveLocalPhaser = fs.existsSync(path.join(ROOT, 'vendor', 'phaser.min.js'));
 
     try {
         for (const id of ids) {
@@ -380,7 +384,7 @@ async function main() {
     const wins = results.filter((r) => r.won).length;
     const report = {
         createdAt: new Date().toISOString(),
-        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST !== '0', expert: EXPERT,
+        tacticalAssist: EXPERT === 'policy' && process.env.POLICY_ASSIST === '1', expert: EXPERT,
         trialsPerScenario: TRIALS,
         scenarios: ids,
         winRate: results.length ? wins / results.length : 0,

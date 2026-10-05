@@ -166,13 +166,15 @@ def train(args: argparse.Namespace) -> Path:
         model.train()
         train_losses = []
         for batch in train_loader:
-            obs, act, w = batch
+            obs, act, _ = batch
             obs = obs.to(device)
             act = act.to(device)
-            w = w.to(device)
             opt.zero_grad(set_to_none=True)
             pred = model(obs)
-            loss = action_loss(pred, act, w if args.speedrun else None)
+            # Sample weights are already embodied in the WeightedRandomSampler
+            # above; passing them to the loss as well would apply them twice
+            # (roughly squaring the intended emphasis).
+            loss = action_loss(pred, act, None)
             loss.backward()
             opt.step()
             train_losses.append(loss.item())

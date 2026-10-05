@@ -572,7 +572,10 @@
      * @param {object} policy JSON weights (+ optional explore flags)
      */
     function installPolicyPilot(policy) {
-        var assisted = policy.tacticalAssist !== false;
+        // Raw policy by default. Training rollouts are always collected
+        // unassisted, so assisted eval would measure policy + tactics planner
+        // instead of what was trained. Opt in explicitly per run.
+        var assisted = policy.tacticalAssist === true;
         if(assisted && !global.NovaWingTactics) throw new Error('Tactical runtime is required for assisted policy');
         var lastDecisionAt=-Infinity;
         var explore = Boolean(policy && policy.explore);

@@ -263,11 +263,14 @@ def train(args: argparse.Namespace) -> Path:
 
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    # Keep both advantages and the behavior denominator fixed for this rollout.
-    buf = build_ppo_buffer(model, episodes, gamma=args.gamma,
-                           gae_lambda=args.gae_lambda, device=device)
     last_stats = {}
     for epoch in range(1, args.epochs + 1):
+        # Re-bootstrap values/advantages from the current model each outer
+        # epoch. The behavior denominator (recorded behavior_logp) stays fixed
+        # for this rollout cohort; only the value estimates are refreshed so
+        # GAE targets don't go stale after the first round of updates.
+        buf = build_ppo_buffer(model, episodes, gamma=args.gamma,
+                               gae_lambda=args.gae_lambda, device=device)
         stats = ppo_update(
             model,
             opt,
@@ -350,7 +353,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=str,
         default=str(DEFAULT_OUT.with_suffix(".pt")),
     )
-    p.add_argument("--epochs", type=int, default=4, help="Outer loops over one fixed rollout buffer")
+    p.add_argument("--epochs", type=int, default=4, help="Outer loops over one fixed rollout cohort (values re-bootstrapped each loop)")
     p.add_argument(
         "--ppo-epochs",
         type=int,

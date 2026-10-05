@@ -62,6 +62,12 @@ class PolicyMLP(nn.Module):
             "hidden": self.hidden,
             "layers": exported,
             "post": {"move": "tanh", "fire": "sigmoid", "boost": "sigmoid"},
+            # Training data is always collected unassisted (see
+            # scripts/rl/record-demos.mjs, which rejects POLICY_ASSIST=1 for
+            # PPO collection). Stamp that on the artifact so eval harnesses
+            # default to the same raw-policy regime the weights were trained
+            # in; opt into planner assistance explicitly at eval time.
+            "tacticalAssist": False,
         }
 
 
@@ -195,11 +201,25 @@ def action_loss(
     move_tgt = target[:, 0:2]
     move_l = ((move_pred - move_tgt) ** 2).mean(dim=1)
 
-    fire_l = F.binary_cross_entropy_with_logits(
-        pred[:, 2], target[:, 2].clamp(0, 1), reduction="none"
+    # A binary head whose target is constant across the batch carries no
+    # information (e.g. heuristic demos hardcode fire=1). Fitting it anyway
+    # only saturates the head and spends gradient budget on bias shift, so
+    # gate each discrete head on batch target variance.
+    fire_t = target[:, 2].clamp(0, 1)
+    fire_l = (
+        F.binary_cross_entropy_with_logits(
+            pred[:, 2], fire_t, reduction="none"
+        )
+        if fire_t.max() - fire_t.min() > 0.5
+        else torch.zeros_like(move_l)
     )
-    boost_l = F.binary_cross_entropy_with_logits(
-        pred[:, 3], target[:, 3].clamp(0, 1), reduction="none"
+    boost_t = target[:, 3].clamp(0, 1)
+    boost_l = (
+        F.binary_cross_entropy_with_logits(
+            pred[:, 3], boost_t, reduction="none"
+        )
+        if boost_t.max() - boost_t.min() > 0.5
+        else torch.zeros_like(move_l)
     )
     per = move_l + 0.5 * fire_l + 0.5 * boost_l
     if weights is not None:

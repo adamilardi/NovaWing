@@ -29,7 +29,6 @@ import {
     REWARD_DEATH
 } from '../rewards.mjs';
 import { loadRuntime, RUNTIME_PURE_PATH } from '../load-runtime.mjs';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..', '..');
 
@@ -241,6 +240,69 @@ describe('forwardPolicy', () => {
         // sigmoid(2) ~ 0.88, sigmoid(-2) ~ 0.12
         assert.ok(y[2] > 0.8);
         assert.ok(y[3] < 0.2);
+    });
+});
+
+describe('policy assist default', () => {
+    it('installPolicyPilot runs raw policy unless explicitly assisted', () => {
+        const rt = loadRuntime();
+        // loadRuntime pulls Node's NovaWingTactics; simulate a page without it.
+        const hadTactics = globalThis.NovaWingTactics;
+        delete globalThis.NovaWingTactics;
+        const g = globalThis;
+        g.window = g;
+        const inputs = [];
+        g.__novawingDebug = {
+            getBotSnapshot: () => ({
+                ready: true, levelEnded: false, victoryPending: false,
+                levelTransitioning: false, time: 1000,
+                player: { x: 120, y: 300, w: 32, h: 24 },
+                // Tactical-feature writers assume a full snapshot; the
+                // planner path in the assisted case exercises them.
+                world: { width: 960, height: 720, bounds: { x: 0, y: 0, w: 960, h: 720 } },
+                movementRules: {
+                    baseSpeed: 300, boostSpeed: 600, boostIntensity: 1,
+                    boostReengageThreshold: 20, boostDrainPerSecond: 30,
+                },
+                boostEnergy: 100, boostLocked: false, isBoosting: false,
+                enemies: [], enemyBullets: [], obstacles: [], walls: [],
+                powerups: [], openBands: [],
+            }),
+            setBotInput: (a) => inputs.push(a),
+        };
+        let rafs = 0;
+        g.requestAnimationFrame = () => ++rafs;
+        g.cancelAnimationFrame = () => {};
+        const layers = [{
+            w: Array.from({ length: 4 }, () => new Array(OBS_SIZE).fill(0)),
+            b: [0, 0, 5, 0], act: 'identity',
+        }];
+        try {
+            // New exports stamp tacticalAssist:false -> must not require tactics.
+            rt.installPolicyPilot({ obsSize: OBS_SIZE, actionSize: 4, layers, tacticalAssist: false });
+            g.__novawingPolicyTick();
+            assert.ok(inputs.length > 0);
+            assert.equal(g.__novawingPolicyAssisted, false);
+            g.__novawingPolicyStop();
+            inputs.length = 0;
+            // Legacy/assisted payloads still route through the planner.
+            if (hadTactics) globalThis.NovaWingTactics = hadTactics;
+            rt.installPolicyPilot({ obsSize: OBS_SIZE, actionSize: 4, layers, tacticalAssist: true });
+            g.__novawingPolicyTick();
+            assert.equal(g.__novawingPolicyAssisted, true);
+            g.__novawingPolicyStop();
+        } finally {
+            g.__novawingPolicyStop?.();
+            delete g.__novawingPolicyTick;
+            delete g.__novawingPolicyStop;
+            delete g.__novawingPolicyError;
+            delete g.__novawingDebug;
+            delete g.requestAnimationFrame;
+            delete g.cancelAnimationFrame;
+            delete g.window;
+            if (hadTactics) globalThis.NovaWingTactics = hadTactics;
+            else delete globalThis.NovaWingTactics;
+        }
     });
 });
 
