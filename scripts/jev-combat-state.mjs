@@ -16,7 +16,9 @@ export function buildJevCombatState(snap, durationMs, recent = []) {
         rules: { unlimitedContinues: Boolean(snap.unlimitedContinues), continuesUsed: snap.continuesUsed, playtestBot: snap.playtestBot, difficulty: snap.difficultyMode,
             timeScale: snap.timeScale, ...snap.movementRules },
         boost: { energy: snap.boostEnergy, locked: snap.boostLocked, active: snap.isBoosting },
-        enemies: snap.enemies, enemyBullets: snap.enemyBullets, obstacles: snap.obstacles,
+        enemies: snap.enemies, enemyBullets: snap.enemyBullets, playerBullets: snap.playerBullets || [],
+        score: snap.score ?? null, kills: snap.kills ?? null,
+        obstacles: snap.obstacles,
         walls: snap.walls, openBands: snap.openBands, pickups: snap.powerups, boss: snap.boss,
         blackHole: snap.blackHole, hazards: snap.combatHazards, actionOptions, recommendation: tactical.recommended, tacticalGoal: tactical.goal, recent
     };

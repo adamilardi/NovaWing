@@ -33,6 +33,7 @@ const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-p
 const OUT_DIR = process.env.PLAYTEST_OUT || path.join(ROOT, 'rl', 'weights');
 const SAMPLE_MS = Number(process.env.SAMPLE_MS || 64);
 if (!Number.isFinite(SAMPLE_MS) || SAMPLE_MS < 16) throw new Error('SAMPLE_MS must be at least 16');
+const SERVE_LOCAL_PHASER = fs.existsSync(path.join(ROOT, 'vendor', 'phaser.min.js'));
 
 /** Named scenarios for coverage-oriented playtests. */
 export const SCENARIOS = {
@@ -211,7 +212,7 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
     });
     const page = await context.newPage();
     await page.clock.install();
-    if (serveLocalPhaser) await routeVendorPhaser(page);
+    if (SERVE_LOCAL_PHASER) await routeVendorPhaser(page);
     if (EXPERT === 'policy') {
         await page.addInitScript({ path: RUNTIME_PURE_PATH });
     }
@@ -354,7 +355,6 @@ async function main() {
     const results = [];
     const deathHist = {};
     const segmentCoverage = new Set();
-    const serveLocalPhaser = fs.existsSync(path.join(ROOT, 'vendor', 'phaser.min.js'));
 
     try {
         for (const id of ids) {

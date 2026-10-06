@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Validation level expert review",
+  "type": "object",
+  "required": ["slug", "iteration", "levelId", "verdict", "scores", "bugs", "requiredChanges", "summary"],
+  "properties": {
+    "slug": { "type": "string" },
+    "iteration": { "type": "integer" },
+    "levelId": { "type": "integer" },
+    "verdict": {
+      "type": "string",
+      "enum": ["ship_it", "iterate", "kill"],
+      "description": "ship_it: playtests green and fun; iterate: fix requiredChanges and run another iteration; kill: concept unworkable, stop the loop."
+    },
+    "scores": {
+      "type": "object",
+      "required": ["readability", "pacing", "fairness", "showcase", "performance"],
+      "properties": {
+        "readability": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "pacing": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "fairness": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "showcase": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "performance": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "bugs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "description"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor"] },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "requiredChanges": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Mandatory fixes for the next iteration. Empty only when verdict is ship_it."
+    },
+    "suggestedChanges": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "summary": { "type": "string" }
+  }
+}

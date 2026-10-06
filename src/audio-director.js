@@ -42,7 +42,16 @@
             silence();
             if (!key) return;
             const track = tracks[key];
-            if (!track) throw new Error('Unknown music track: ' + key);
+            if (!track) {
+                console.error('Unknown music track: ' + key + ' — falling back to waves');
+                selected = 'waves';
+                if (selected === playing) return;
+                const fallback = tracks[selected];
+                if (!fallback) return;
+                if (fallback.procedural) sfx.startMusic(fallback.procedural);
+                playing = selected;
+                return;
+            }
             if (track.procedural) {
                 sfx.startMusic(track.procedural);
             } else {

@@ -49,6 +49,41 @@ function totalLevels() {
     }
     return typeof TOTAL_LEVELS === 'number' ? TOTAL_LEVELS : 1;
 }
+// Seeded gameplay RNG (?seed=123 for repro; waves/spawns only, FX stays cosmetic).
+// Canonical implementation lives in src/gameplay-rng.js; these wrappers delegate
+// when loaded, else fall back to the inline mulberry32 below.
+let gameplaySeed = 0;
+let gameplayRngState = 0;
+function resolveGameplaySeed() {
+    if (typeof window !== 'undefined' && window.NovaWingRng) {
+        return window.NovaWingRng.resolveSeed(window.location.search || '');
+    }
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const raw = Number(params.get('seed'));
+        if (Number.isFinite(raw)) return raw >>> 0;
+    } catch (error) { /* default below */ }
+    return (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
+}
+function resetGameplayRng(seed) {
+    if (typeof window !== 'undefined' && window.NovaWingRng) {
+        window.NovaWingRng.reset(seed);
+        gameplaySeed = seed >>> 0;
+        gameplayRngState = seed >>> 0 || 0x9e3779b9;
+        return;
+    }
+    gameplaySeed = seed >>> 0;
+    gameplayRngState = gameplaySeed || 0x9e3779b9;
+}
+function gameplayRandom() {
+    if (typeof window !== 'undefined' && window.NovaWingRng && window.NovaWingRng.getSeed() === gameplaySeed) {
+        return window.NovaWingRng.random();
+    }
+    gameplayRngState |= 0; gameplayRngState = (gameplayRngState + 0x6D2B79F5) | 0;
+    let t = Math.imul(gameplayRngState ^ (gameplayRngState >>> 15), 1 | gameplayRngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
 const WALL_SLICE_WIDTH = 96;
 const WALL_SCROLL_SPEED = -128;
 const WALL_MIN_BLOCK_HEIGHT = 18;
@@ -282,6 +317,10 @@ const ENEMY_WAVE_PATTERNS = [
     { key: 'swarm', spawn: spawnSwarmWave },
     { key: 'sandwich', spawn: spawnSandwichWave },
     { key: 'splitterPair', spawn: spawnSplitterPairWave },
+    // Horizontal flankers: dive from top / rise from bottom so back-camping
+    // near the left edge still has to move vertically.
+    { key: 'skyDive', spawn: spawnSkyDiveWave },
+    { key: 'floorRise', spawn: spawnFloorRiseWave },
     // L3 top-down (PR4+PR5)
     { key: 'verticalRegular', spawn: spawnVerticalRegularWave },
     { key: 'verticalV', spawn: spawnVerticalVWave },
@@ -573,6 +612,7 @@ let shotsFired = 0;
 let shotsHit = 0;
 let enemiesKilled = 0;
 let lastWavePatternKey = null;
+let nextRearHunterAt = 0;
 let nextPowerupIndex = 0;
 let levelStartTime = 0;
 let levelAttemptStartTime = 0;
@@ -683,6 +723,9 @@ function preload() {
 }
 
 function createCombatTextures(scene) {
+    // Skip re-upload on scene.restart; textures persist in the TextureManager.
+    if (scene.textures.exists('bullet') && scene.textures.exists('missile') &&
+        scene.textures.exists('bossLaser') && scene.textures.exists('spark')) return;
     // Distinct silhouettes, with the original texture bounds / collision sizes.
     const bolt = scene.add.graphics();
     bolt.fillStyle(0x49dfff, 0.22);
@@ -829,6 +872,8 @@ function createSoftLightTexture(scene, key, size, color) {
 
 
 function createWorldTextures(scene) {
+    if (scene.textures.exists('obstacle') && scene.textures.exists('bossShip') &&
+        scene.textures.exists('wall') && scene.textures.exists('pathHazard')) return;
     const obstacleGfx = scene.add.graphics();
     obstacleGfx.fillStyle(0x2a3140, 1);
     obstacleGfx.fillCircle(36, 32, 30);
@@ -1005,6 +1050,7 @@ function createWorldTextures(scene) {
 
 
 function createPowerupTextures(scene) {
+    if (scene.textures.exists('powerupWeapon') && scene.textures.exists('powerup')) return;
     const definitions = [
         {
             key: 'powerupWeapon',
@@ -1162,6 +1208,7 @@ function create() {
     musicDirector.setMuted(audioMuted);
     gamePaused = false;
     playtestTimeScale = resolvePlaytestTimeScale();
+    resetGameplayRng(resolveGameplaySeed());
     playtestClockMs = this.time && Number.isFinite(this.time.now) ? this.time.now : 0;
     applyPlaytestClock(this);
     pauseRestartArmed = false;
@@ -1216,6 +1263,7 @@ function create() {
     shotsHit = 0;
     enemiesKilled = 0;
     lastWavePatternKey = null;
+    nextRearHunterAt = 0;
     nextPowerupIndex = 0;
     nextPathEventIndex = 0;
     currentOpenBands = null;
@@ -1756,46 +1804,53 @@ function update(time, delta) {
     }
 
     // Cleanup (orientation-aware; pads tuned to match pre-PR1 horizontal culls).
-    bullets.getChildren().forEach(b => {
+    // Indexed loops over entries avoid the per-frame getChildren() array allocs.
+    for (let i = 0, list = bullets.children.entries, n = list.length; i < n; i++) {
+        const b = list[i];
         if (b.active && isOffscreen(b, 30)) releaseSprite(b);
-    });
+    }
 
     updateProjectileTrails();
 
-    enemies.getChildren().forEach(e => {
-        if (!e.active) return;
+    for (let i = 0, list = enemies.children.entries, n = list.length; i < n; i++) {
+        const e = list[i];
+        if (!e.active) continue;
         updateEnemyMovement(e, frameDelta);
         maybeFireEnemyShot.call(this, e, simTime);
         updateEnemyAnimation(e, simTime, frameDelta);
         if (isOffscreen(e, 40)) releaseSprite(e);
-    });
-
-    enemyBullets.getChildren().forEach(b => {
-        if (b.active && isOffscreen(b, 10)) releaseSprite(b);
-    });
-
-    obstacles.getChildren().forEach(o => {
-        if (!o.active) return;
-        updateScrollVelocity(o);
-        if (isOffscreen(o, 60)) releaseSprite(o);
-    });
-
-    if (walls) {
-        walls.getChildren().forEach(w => {
-            if (!w.active) return;
-            updateScrollVelocity(w);
-            if (isOffscreen(w, 90)) releaseSprite(w);
-        });
     }
 
-    powerups.getChildren().forEach(p => {
-        if (!p.active) return;
+    for (let i = 0, list = enemyBullets.children.entries, n = list.length; i < n; i++) {
+        const b = list[i];
+        if (b.active && isOffscreen(b, 10)) releaseSprite(b);
+    }
+
+    for (let i = 0, list = obstacles.children.entries, n = list.length; i < n; i++) {
+        const o = list[i];
+        if (!o.active) continue;
+        updateScrollVelocity(o);
+        if (isOffscreen(o, 60)) releaseSprite(o);
+    }
+
+    if (walls) {
+        for (let i = 0, list = walls.children.entries, n = list.length; i < n; i++) {
+            const w = list[i];
+            if (!w.active) continue;
+            updateScrollVelocity(w);
+            if (isOffscreen(w, 90)) releaseSprite(w);
+        }
+    }
+
+    for (let i = 0, list = powerups.children.entries, n = list.length; i < n; i++) {
+        const p = list[i];
+        if (!p.active) continue;
         updateScrollVelocity(p);
         if (p.aura && p.aura.active) {
             p.aura.setPosition(p.x, p.y);
         }
         if (isOffscreen(p, 40)) releasePowerup(this, p);
-    });
+    }
 }
 
 function keepCoopShipsOnScreen() {
@@ -1906,6 +1961,21 @@ function destroyEnemy(enemy, options = {}) {
     }
 }
 
+// Tempest Condenser: three shield gaps rotate on the simulation clock; only
+// hits landing inside a gap arc damage the boss. The effect renderer draws
+// the same angles from the same clock.
+function condenserGapHit(scene, bossSprite, hitX, hitY) {
+    const dx = hitX - bossSprite.x, dy = hitY - bossSprite.y;
+    const turn = playtestNow(scene) * Math.PI * 2 / 6000;
+    const hit = Math.atan2(dy, dx);
+    for (let k = 0; k < 3; k++) {
+        let d = Math.abs(hit - (turn + k * Math.PI * 2 / 3)) % (Math.PI * 2);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        if (d < Math.PI / 6) return true;
+    }
+    return false;
+}
+
 function hitBoss(bullet, bossSprite) {
     if (!bullet.active || !bossSprite.active || victoryPending) return;
 
@@ -1915,6 +1985,12 @@ function hitBoss(bullet, bossSprite) {
     const impactAngle = getProjectileImpactAngle(bullet);
     releaseSprite(bullet);
     shotsHit++;
+    if (bossSprite.encounterState && bossSprite.encounterState.id === 'tempestCondenser'
+        && !condenserGapHit(this, bossSprite, hitX, hitY)) {
+        createExplosion(this, hitX, hitY, 6, { palette: 'cyan', flash: false });
+        sfx.spark(hitX);
+        return;
+    }
     if (!NovaWingBosses.vulnerable(bossSprite.encounterState)) {
         createExplosion(this, hitX, hitY, 6, { palette: 'orange', flash: false });
         sfx.spark(hitX);
@@ -2829,7 +2905,8 @@ function spawnEnemyWave() {
     if (!pattern || typeof pattern.spawn !== 'function') return;
     lastWavePatternKey = pattern.key;
     pattern.spawn(this);
-    if (!randomWaves || levelPatterns.length < 2 || Math.random() >= 0.28) return;
+    maybeSpawnRearHunter(this);
+    if (!randomWaves || levelPatterns.length < 2 || gameplayRandom() >= 0.28) return;
     const extras = levelPatterns.filter(candidate => candidate.key !== pattern.key);
     const extra = Phaser.Utils.Array.GetRandom(extras);
     if (extra && typeof extra.spawn === 'function') extra.spawn(this);
@@ -3117,6 +3194,7 @@ function applyLevelArt(scene, levelId, segment = null) {
     }
     currentLevelArt = {
         background: pick('background', null),
+        scenery: pick('scenery', null),
         wall: pick('wall', 'wall'),
         boss: pick('boss', 'bossShip'),
         bossVertical: pick('bossVertical', 'bossVertical'),
@@ -3166,7 +3244,7 @@ function scheduleWavePart(scene, delayMs, callback) {
 
 function spawnDiagonalEnemyWave(scene) {
     const topStart = Phaser.Math.Between(0, WAVE_LANES.length - 3);
-    const direction = Math.random() < 0.5 ? 1 : -1;
+    const direction = gameplayRandom() < 0.5 ? 1 : -1;
     const firstLane = direction > 0 ? topStart : topStart + 2;
 
     for (let step = 0; step < 3; step++) {
@@ -3177,7 +3255,10 @@ function spawnDiagonalEnemyWave(scene) {
                 y: getWaveLaneY(laneIndex),
                 type: 'regular',
                 canShoot: step === 1,
-                nextShotDelay: 1050 + step * 180
+                nextShotDelay: 1050 + step * 180,
+                // Marksman: steep aimed shots deny the camper's lane from range.
+                shotAimScale: step === 1 ? 1.6 : undefined,
+                shotMaxDy: step === 1 ? 340 : undefined
             });
         });
     }
@@ -3254,8 +3335,8 @@ function spawnVFormationWave(scene) {
         { laneOffset: 0, delay: 0, x: 860, canShoot: true },
         { laneOffset: -1, delay: 180, x: 920, canShoot: false },
         { laneOffset: 1, delay: 180, x: 920, canShoot: false },
-        { laneOffset: -2, delay: 360, x: 980, canShoot: Math.random() < 0.4 },
-        { laneOffset: 2, delay: 360, x: 980, canShoot: Math.random() < 0.4 }
+        { laneOffset: -2, delay: 360, x: 980, canShoot: gameplayRandom() < 0.4 },
+        { laneOffset: 2, delay: 360, x: 980, canShoot: gameplayRandom() < 0.4 }
     ];
 
     steps.forEach(step => {
@@ -3267,7 +3348,10 @@ function spawnVFormationWave(scene) {
                 type: 'regular',
                 speed: -168,
                 canShoot: step.canShoot,
-                nextShotDelay: 900 + Math.abs(step.laneOffset) * 120
+                nextShotDelay: 900 + Math.abs(step.laneOffset) * 120,
+                // Tip marksman: steep aimed shots deny the camper's lane.
+                shotAimScale: step.laneOffset === 0 ? 1.6 : undefined,
+                shotMaxDy: step.laneOffset === 0 ? 340 : undefined
             });
         });
     });
@@ -3301,7 +3385,9 @@ function spawnPincerWave(scene) {
             type: 'regular',
             speed: -140,
             canShoot: true,
-            nextShotDelay: 1000
+            nextShotDelay: 1000,
+            shotAimScale: 1.6,
+            shotMaxDy: 340
         });
     });
 }
@@ -3398,7 +3484,7 @@ function spawnSandwichWave(scene) {
 
 function spawnSplitterPairWave(scene) {
     const lane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
-    const escortLane = Phaser.Math.Clamp(lane + (Math.random() < 0.5 ? -1 : 1), 0, WAVE_LANES.length - 1);
+    const escortLane = Phaser.Math.Clamp(lane + (gameplayRandom() < 0.5 ? -1 : 1), 0, WAVE_LANES.length - 1);
 
     spawnEnemy.call(scene, {
         x: 870,
@@ -3450,6 +3536,140 @@ function spawnSplitterAmbushWave(scene) {
 }
 
 /**
+ * Current camera view bounds for horizontal flank entries.
+ * L2's tall canyon follows Y, so top/bottom mean view edges, not world edges.
+ */
+function getHorizontalFlankBounds(scene) {
+    const worldHeight = typeof getLevelWorldHeight === 'function'
+        ? getLevelWorldHeight(currentLevel)
+        : GAME_HEIGHT;
+    let viewTop = 0;
+    try {
+        if (scene && scene.cameras && scene.cameras.main) {
+            viewTop = scene.cameras.main.scrollY || 0;
+        }
+    } catch (e) { /* default below */ }
+    if (!Number.isFinite(viewTop)) viewTop = 0;
+    viewTop = Phaser.Math.Clamp(viewTop, 0, Math.max(0, worldHeight - GAME_HEIGHT));
+    return {
+        top: viewTop - 20,
+        bottom: viewTop + GAME_HEIGHT + 20,
+        viewTop: viewTop
+    };
+}
+
+/**
+ * Horizontal top entry: trackers dive from above mid-field, then home on Y.
+ * Interceptor tracking steers them into view, so back-campers must move.
+ */
+function spawnSkyDiveWave(scene) {
+    if (isVerticalScroll()) {
+        spawnVerticalRegularWave(scene);
+        return;
+    }
+    const bounds = getHorizontalFlankBounds(scene);
+    const baseX = Phaser.Math.Between(380, 600);
+    const count = 3;
+
+    for (let i = 0; i < count; i++) {
+        scheduleWavePart(scene, i * 220, () => {
+            spawnEnemy.call(scene, {
+                x: Phaser.Math.Clamp(baseX + i * 55, 300, 750),
+                y: bounds.top,
+                type: i % 2 === 0 ? 'dart' : 'interceptor',
+                speed: -130,
+                tracksPlayer: true,
+                canShoot: true,
+                nextShotDelay: 550 + i * 220,
+                skipPathClamp: true,
+                // Middle diver fires vertically down the camp column.
+                fireMode: i === 1 ? 'plunge' : undefined,
+                shotMaxDx: i === 1 ? 140 : undefined
+            });
+        });
+    }
+}
+
+/**
+ * Horizontal bottom entry: trackers climb from below mid-field.
+ */
+function spawnFloorRiseWave(scene) {
+    if (isVerticalScroll()) {
+        spawnVerticalRegularWave(scene);
+        return;
+    }
+    const bounds = getHorizontalFlankBounds(scene);
+    const baseX = Phaser.Math.Between(380, 600);
+    const count = 3;
+
+    for (let i = 0; i < count; i++) {
+        scheduleWavePart(scene, i * 220, () => {
+            spawnEnemy.call(scene, {
+                x: Phaser.Math.Clamp(baseX + i * 55, 300, 750),
+                y: bounds.bottom,
+                type: i % 2 === 0 ? 'interceptor' : 'dart',
+                speed: -130,
+                tracksPlayer: true,
+                canShoot: true,
+                nextShotDelay: 550 + i * 220,
+                skipPathClamp: true,
+                // Middle riser fires vertically up the camp column.
+                fireMode: i === 1 ? 'plunge' : undefined,
+                shotMaxDx: i === 1 ? 140 : undefined
+            });
+        });
+    }
+}
+
+/**
+ * Rear-entry hunter: fast tracker from behind the player (x < 0).
+ * Everything else spawns ahead-right, so the back wall is otherwise free.
+ * Time-gated every 12–18s on horizontal waves; flies right while homing on Y.
+ */
+function spawnRearHunterWave(scene) {
+    if (isVerticalScroll()) return;
+    const ships = [player, playerTwo].filter(ship => ship && ship.active);
+    const anchorY = ships.length && Number.isFinite(ships[0].y) ? ships[0].y : 300;
+    const worldHeight = typeof getLevelWorldHeight === 'function'
+        ? getLevelWorldHeight(currentLevel)
+        : GAME_HEIGHT;
+    const y = Phaser.Math.Clamp(
+        anchorY + Phaser.Math.Between(-90, 90),
+        80,
+        Math.max(120, worldHeight - 80)
+    );
+    const enemy = spawnEnemy.call(scene, {
+        x: -20,
+        y: y,
+        type: 'dart',
+        tracksPlayer: true,
+        canShoot: true,
+        nextShotDelay: 700,
+        skipPathClamp: true,
+        shotAimScale: 1.6,
+        shotMaxDy: 340
+    });
+    if (enemy && enemy.body) {
+        enemy.baseVelocityX = 165 * difficultyNumber('enemySpeedScale', 1);
+        updateScrollVelocity(enemy);
+    }
+}
+
+function maybeSpawnRearHunter(scene) {
+    if (isVerticalScroll()) return;
+    if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
+    const now = playtestNow(scene);
+    if (!Number.isFinite(now)) return;
+    if (!(nextRearHunterAt > 0)) {
+        nextRearHunterAt = now + 9000;
+        return;
+    }
+    if (now < nextRearHunterAt) return;
+    nextRearHunterAt = now + Phaser.Math.Between(12000, 18000);
+    spawnRearHunterWave(scene);
+}
+
+/**
  * L3 top-down wave (PR4): WAVE_LANES as X columns; dive from y < 0.
  */
 function spawnVerticalRegularWave(scene) {
@@ -3462,14 +3682,14 @@ function spawnVerticalRegularWave(scene) {
         }
         used[laneIndex] = true;
         const laneX = WAVE_LANES[laneIndex];
-        const isDart = Math.random() < 0.35;
+        const isDart = gameplayRandom() < 0.35;
         scheduleWavePart(scene, i * 140, () => {
             spawnEnemy.call(scene, {
                 x: laneX + Phaser.Math.Between(-12, 12),
                 y: -60 - i * 18,
                 type: isDart ? 'dart' : 'regular',
                 speed: isDart ? -245 : -155,
-                canShoot: i === 0 || Math.random() < 0.45,
+                canShoot: i === 0 || gameplayRandom() < 0.45,
                 nextShotDelay: 700 + i * 120,
                 tracksPlayer: isDart,
                 skipPathClamp: true
@@ -3714,7 +3934,7 @@ function spawnEnemy(options = {}) {
     const rawY = ahead.y;
     const y = options.skipPathClamp ? rawY : clampYToOpenBands(rawY);
     const x = ahead.x;
-    const type = options.type || (Math.random() < getInterceptorSpawnChance() ? 'interceptor' : 'regular');
+    const type = options.type || (gameplayRandom() < getInterceptorSpawnChance() ? 'interceptor' : 'regular');
     const typeDef = getEnemyTypeDef(type);
     const key = options.key || resolveEnemyTexture(type, options, this);
     const enemy = enemies.get(x, y, key);
@@ -3730,6 +3950,7 @@ function spawnEnemy(options = {}) {
         spriteDef.body
     );
     applyEnemyTypeProfile.call(this, enemy, type, typeDef, options, x);
+    applyShotOverrides(enemy, options);
     const levelMotions = getLevelDef(currentLevel).enemyMotions;
     enemy.animationId = levelMotions && levelMotions[type] ? levelMotions[type] : null;
     applyDifficultyToEnemy(enemy);
@@ -3746,6 +3967,18 @@ function spawnEnemy(options = {}) {
 
 function getEnemyTypeDef(type) {
     return ENEMY_TYPES[type] || ENEMY_TYPES.regular;
+}
+
+/**
+ * Per-spawn shot overrides (marksmen / plungers / rear hunter).
+ * Applied after the type + interceptor tier profiles so wave spawners win.
+ */
+function applyShotOverrides(enemy, options) {
+    if (!enemy || !options) return;
+    if (Number.isFinite(options.shotAimScale)) enemy.shotAimScale = options.shotAimScale;
+    if (Number.isFinite(options.shotMaxDy)) enemy.shotMaxDy = options.shotMaxDy;
+    if (Number.isFinite(options.shotMaxDx)) enemy.shotMaxDx = options.shotMaxDx;
+    if (options.fireMode === 'plunge') enemy.fireMode = 'plunge';
 }
 
 function resolveEnemyTexture(type, options, scene) {
@@ -3842,7 +4075,7 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
 
     if (typeDef.move === 'strafer') {
         enemy.strafeAmplitude = 120;
-        enemy.strafePhase = Math.random() * Math.PI * 2;
+        enemy.strafePhase = gameplayRandom() * Math.PI * 2;
         enemy.homeX = spawnX;
     }
     if (typeDef.move === 'mineDropper') {
@@ -3858,10 +4091,10 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
             enemy.canShoot = false;
         } else {
             const typedChance = difficultyNumber('typedFireChance', 1);
-            enemy.canShoot = typedChance >= 1 ? true : Math.random() < Math.max(0, typedChance);
+            enemy.canShoot = typedChance >= 1 ? true : gameplayRandom() < Math.max(0, typedChance);
         }
     } else {
-        enemy.canShoot = Math.random() < defaultFireChance;
+        enemy.canShoot = gameplayRandom() < defaultFireChance;
     }
 
     if (typeDef.profile === 'interceptor') {
@@ -3902,7 +4135,7 @@ function applyInterceptorTierProfile(enemy, options) {
     const fireChance = difficultyNumber('interceptorFireChance', opener ? 0.55 : 0.78);
     enemy.canShoot = typeof options.canShoot === 'boolean'
         ? options.canShoot
-        : Math.random() < fireChance;
+        : gameplayRandom() < fireChance;
     enemy.nextShotAt = playtestNow(this) + (
         Number.isFinite(options.nextShotDelay)
             ? options.nextShotDelay
@@ -5005,7 +5238,8 @@ function updateExpansionBoss(time, frameDelta) {
     updateExpansionBossParts(target, time);
     if (!ready) return;
     const action = NovaWingBosses.tick(state, time, bossPhase,
-        difficultyNumber('bossTempoScale', 1), player && player.active ? player.y : 300);
+        difficultyNumber('bossTempoScale', 1), player && player.active
+            ? (target.verticalMode ? player.x : player.y) : (target.verticalMode ? 400 : 300));
     bossNextVolleyAt = state.mode === 'windup' ? state.windupUntil : state.nextAt;
     updateExpansionBossParts(target, time);
     const gfx = target.encounterEffects;
@@ -5052,6 +5286,54 @@ function updateExpansionBoss(time, frameDelta) {
                     muzzleY + Math.sin(radians) * 210);
             });
         }
+    } else if (state.id === 'trenchCustodian') {
+        // Alternating cores: the venting core glows and previews its attack.
+        const upperActive = !state.plan || state.plan.core !== 'lower';
+        gfx.fillStyle(upperActive ? 0x3df06a : 0xff4fd8, charged ? 0.7 : 0.2);
+        gfx.fillCircle(-target.displayWidth * 0.08,
+            upperActive ? -target.displayHeight * 0.12 : target.displayHeight * 0.14,
+            10 + (charged ? Math.sin(time * 0.008) * 2 : 0));
+        if (charged && state.plan && state.plan.angles) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            const muzzleX = -target.displayWidth * 0.32;
+            state.plan.angles.forEach(angle => {
+                const rad = angle * Math.PI / 180;
+                gfx.lineBetween(muzzleX, 0, muzzleX + Math.cos(rad) * 210, Math.sin(rad) * 210);
+            });
+        }
+    } else if (state.id === 'tempestCondenser') {
+        // Rotating shield gaps, drawn from the same clock the damage gate uses.
+        const turn = time * Math.PI * 2 / 6000;
+        const radius = target.displayWidth * 0.27;
+        for (let k = 0; k < 3; k++) {
+            const a = turn + k * Math.PI * 2 / 3;
+            gfx.lineStyle(3, 0xffe66d, charged ? 0.95 : 0.55);
+            gfx.beginPath();
+            gfx.arc(0, 0, radius, a - Math.PI / 6, a + Math.PI / 6);
+            gfx.strokePath();
+        }
+        if (charged && state.plan && state.plan.angles && state.plan.bursts) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            const muzzleY = target.displayHeight * 0.3;
+            state.plan.angles.forEach(angle => {
+                const radians = angle * Math.PI / 180;
+                gfx.lineBetween(0, muzzleY, Math.cos(radians) * 210,
+                    muzzleY + Math.sin(radians) * 210);
+            });
+        }
+    } else if (state.id === 'duneHerald') {
+        // Volley previews for composite cycles; lane tells render in windup.
+        if (charged && state.plan && state.plan.angles && state.plan.bursts) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            const muzzleY = target.displayHeight * 0.3;
+            state.plan.angles.forEach(angle => {
+                const radians = angle * Math.PI / 180;
+                gfx.lineBetween(0, muzzleY, Math.cos(radians) * 210,
+                    muzzleY + Math.sin(radians) * 210);
+            });
+        }
+        gfx.fillStyle(spec.color, charged ? 0.5 : 0.15);
+        gfx.fillCircle(0, target.displayHeight * 0.28, 6 + (charged ? Math.sin(time * 0.01) * 2 : 0));
     } else {
         const muzzleX = -target.displayWidth * 0.32;
         for (const offset of [-32, 32]) {
@@ -5131,10 +5413,13 @@ function fireExpansionBossAttack(target, plan, endsAt) {
             });
         });
         sfx.laserFire(target.x);
-    } else if (plan.kind === 'iceFan') {
+    }
+    // Lanes and volleys fire independently so one plan can combine both.
+    // Existing plans carry only one arm, so their behavior is unchanged.
+    if (plan.kind === 'iceFan') {
         plan.angles.forEach(angle => spawnExpansionBossMissile.call(this, target, angle, plan.speed, spec.color));
         sfx.missile(target.x);
-    } else {
+    } else if (plan.angles && plan.bursts) {
         for (let burst = 0; burst < plan.bursts; burst++) {
             segmentScope.delay(this, burst * 240, () => {
                 plan.angles.forEach((angle, i) => spawnExpansionBossMissile.call(this,
@@ -5284,7 +5569,7 @@ function spawnBossDroneAdd(time) {
         difficultyNumber('bossTempoScale', 1)
     );
     bossNextDroneAt = time + Phaser.Math.Between(droneDelay.min, droneDelay.max);
-    const useInterceptor = bossPhase >= 3 && Math.random() < 0.55;
+    const useInterceptor = bossPhase >= 3 && gameplayRandom() < 0.55;
 
     if (boss.verticalMode) {
         const droneX = Phaser.Math.Clamp(
@@ -5338,7 +5623,7 @@ function spawnBossDroneAdd(time) {
         if (drone.active) drone.clearTint();
     });
 
-    if (bossPhase >= 3 && Math.random() < 0.35) {
+    if (bossPhase >= 3 && gameplayRandom() < 0.35) {
         const wingman = spawnEnemy.call(this, {
             allowDuringBoss: true,
             x: 890,
@@ -5770,6 +6055,7 @@ function startLevel(levelId, options = {}) {
     previousOpenBands = null;
     clearPathDeadEndWarnings(this);
     lastWavePatternKey = null;
+    nextRearHunterAt = 0;
     playerInvulnerableUntil = playtestNow(this) + 1500;
 
     // Play-test bot: top up lives between stages so mid-campaign deaths after a
@@ -5966,6 +6252,7 @@ function enterProgressWaves(scene, segDef) {
     nextTerrainEventIndex = 0;
     nextPowerupIndex = 0;
     lastWavePatternKey = null;
+    nextRearHunterAt = 0;
     if (segDef && segDef.scrollMode) scrollMode = segDef.scrollMode;
     if (segDef && segDef.combatOrientation) combatOrientation = segDef.combatOrientation;
 
@@ -6891,6 +7178,17 @@ function enemyInFireRange(enemy) {
         if (enemy.enemyType === 'orbiter') return true;
         return enemy.y > 40 && enemy.y < 520;
     }
+    if (enemy.fireMode === 'plunge') {
+        // Divers hold fire until actually visible — no offscreen cheap shots.
+        let viewTop = 0;
+        try {
+            if (enemy.scene && enemy.scene.cameras && enemy.scene.cameras.main) {
+                viewTop = enemy.scene.cameras.main.scrollY || 0;
+            }
+        } catch (e) { /* default above */ }
+        if (!Number.isFinite(viewTop)) viewTop = 0;
+        if (enemy.y < viewTop - 10 || enemy.y > viewTop + GAME_HEIGHT + 10) return false;
+    }
     return enemy.x <= 780 && enemy.x >= 180;
 }
 
@@ -6937,6 +7235,19 @@ function getEnemyFireVector(enemy, options) {
     }
 
     const maxDy = Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150;
+    // Plungers (top/bottom divers) fire vertically down/up the camp column,
+    // forcing horizontal movement instead of another flat leftward shot.
+    if (!isVerticalScroll() && enemy.fireMode === 'plunge') {
+        const vySign = target.y < enemy.y - 4 ? -1 : 1;
+        const maxDx = Number.isFinite(enemy.shotMaxDx) ? enemy.shotMaxDx : 120;
+        const vx = Phaser.Math.Clamp((target.x - enemy.x) * 0.3, -maxDx, maxDx);
+        return {
+            x: enemy.x,
+            y: enemy.y + enemy.displayHeight * muzzleScale * vySign,
+            vx: vx,
+            vy: speedMag * vySign
+        };
+    }
     let dy = Phaser.Math.Clamp(
         (target.y - enemy.y) * aimScale,
         -maxDy,
@@ -8730,7 +9041,7 @@ function clearInputWhenHidden() {
 }
 
 function isBoostHeld() {
-    if (botInput && typeof botInput.boost === 'boolean') return botInput.boost;
+    if (botInput && botInput.boost != null) return Boolean(botInput.boost);
     return touchBoostHeld ||
         boostHeld ||
         (!coopEnabled && boostKey && boostKey.isDown) ||
@@ -8741,7 +9052,7 @@ function isBoostHeld() {
 
 function isFireHeld() {
     if (gamePaused || continuePending) return false;
-    if (botInput && typeof botInput.fire === 'boolean') return botInput.fire;
+    if (botInput && botInput.fire != null) return Boolean(botInput.fire);
     // Touch devices auto-fire so one thumb can stay on the stick (A11 / Fire).
     if (mobileAutoFire && !levelEnded && !victoryPending) return true;
     return touchFireHeld || fireHeld || (spaceKey && spaceKey.isDown) || isGamepadFireHeld(1);
@@ -8908,7 +9219,8 @@ function readRawGamepads() {
     }
     for (let i = 0; i < injectedGamepads.length; i++) {
         if (injectedGamepads[i] && injectedGamepads[i].connected !== false) {
-            byIndex[i] = injectedGamepads[i];
+            // Namespaced past native pads so injected bot pads never collide.
+            byIndex[1000 + i] = injectedGamepads[i];
         }
     }
     return byIndex;
@@ -8922,7 +9234,8 @@ function pollGamepads() {
     const stickRightJust = Object.create(null);
     const seen = Object.create(null);
 
-    for (let i = 0; i < raw.length; i++) {
+    for (const key of Object.keys(raw)) {
+        const i = Number(key);
         if (!raw[i]) continue;
         const pad = snapshotPad(raw[i], i);
         snaps.push(pad);
@@ -9894,6 +10207,7 @@ function releaseSprite(sprite) {
     sprite.isBossLaser = false;
     sprite.nextHitEffectAt = null;
     sprite.enemyType = null;
+    sprite.fireMode = null;
     sprite.splitsOnDeath = false;
     sprite.usesMissile = false;
     resetPooledEnemyState(sprite);
@@ -9953,6 +10267,7 @@ function resetPooledEnemyState(sprite) {
     sprite.orbitCenterY = null;
     sprite.orbitOmega = null;
     sprite.orbitRadiusTarget = null;
+    sprite.fireMode = null;
 }
 
 function deactivateGroup(group, releaseChild = releaseSprite) {
@@ -10257,9 +10572,13 @@ function drawBackgroundLayers(scene, frameDelta, time) {
         if (!scene.environmentProps || scene.environmentPropsLevel !== currentLevel) {
             (scene.environmentProps || []).forEach(prop => prop.destroy());
             scene.environmentPropsLevel = currentLevel;
-            const key = currentLevel === 5 ? 'mineralRock' : 'wreckageHull';
+            const key = currentLevel === 5 ? 'mineralRock' : currentLevel === 9 ? 'abyssalRib'
+                : currentLevel === 10 ? 'stormRing' : currentLevel === 11 ? 'duneHelm' : 'wreckageHull';
+            const propShape = key === 'abyssalRib' || key === 'duneHelm' ? 'tall' : key === 'stormRing' ? 'square' : 'wide';
             scene.environmentProps = [0, 1, 2, 3].map(i => scene.add.image(
-                i * 240, 90 + (i % 3) * 180, key).setDisplaySize(110 + i * 24, 65 + i * 12)
+                i * 240, 90 + (i % 3) * 180, key).setDisplaySize(
+                    propShape === 'tall' ? 80 + i * 18 : propShape === 'square' ? 88 + i * 22 : 110 + i * 24,
+                    propShape === 'tall' ? 108 + i * 24 : propShape === 'square' ? 88 + i * 22 : 65 + i * 12)
                 .setDepth(-0.5).setScrollFactor(0).setAlpha(0.16 + i * 0.025));
         }
         scene.environmentProps.forEach((prop, i) => {
@@ -10276,6 +10595,21 @@ function drawBackgroundLayers(scene, frameDelta, time) {
     } else if (scene.environmentProps) {
         scene.environmentProps.forEach(prop => prop.destroy());
         scene.environmentProps = null;
+    }
+
+    // Scenery mid-layer (selected levels): one slow full-frame drift layer.
+    const sceneryKey = currentLevelArt && currentLevelArt.scenery;
+    if (sceneryKey) {
+        if (!scene.sceneryLayer || scene.sceneryLayerLevel !== currentLevel) {
+            if (scene.sceneryLayer) scene.sceneryLayer.destroy();
+            scene.sceneryLayerLevel = currentLevel;
+            scene.sceneryLayer = scene.add.image(400, 300, sceneryKey)
+                .setDisplaySize(960, 720).setDepth(-0.5).setScrollFactor(0).setAlpha(0.9);
+        }
+        scene.sceneryLayer.x = 400 + Math.sin(time * 0.00002) * 40;
+    } else if (scene.sceneryLayer) {
+        scene.sceneryLayer.destroy();
+        scene.sceneryLayer = null;
     }
 
     // Move cached images rather than rebuilding cloud geometry every frame.
@@ -12149,6 +12483,7 @@ function getBotSnapshot() {
             ? Math.max(0, playtestNow(game && game.scene && game.scene.scenes[0] ? game.scene.scenes[0] : null) - levelStartTime)
             : 0,
         score,
+        kills: typeof enemiesKilled === 'number' ? enemiesKilled : 0,
         lives,
         weaponLevel,
         weaponId: activeWeaponId(null),
@@ -12251,6 +12586,17 @@ function getBotSnapshot() {
                 expiresAt: bullet.isBossLaser ? bullet.combatExpiresAt : null
             };
         }),
+        playerBullets: collectActiveSpriteSnapshots(typeof bullets !== 'undefined' ? bullets : null, bullet => {
+            const b = bodyCenter(bullet);
+            return {
+                x: b.x,
+                y: b.y,
+                vx: b.vx,
+                vy: b.vy,
+                w: b.w,
+                h: b.h
+            };
+        }),
         powerups: collectActiveSpriteSnapshots(powerups, powerup => {
             const b = bodyCenter(powerup);
             return {
@@ -12258,6 +12604,8 @@ function getBotSnapshot() {
                 y: b.y,
                 vx: b.vx || powerup.baseVelocityX || 0,
                 vy: b.vy || powerup.baseVelocityY || 0,
+                w: b.w,
+                h: b.h,
                 type: powerup.powerupType || 'weapon'
             };
         }),
@@ -12272,6 +12620,12 @@ function getBotSnapshot() {
                 encounter: bossEncounterKey,
                 behavior: boss.encounterState ? boss.encounterState.id : null,
                 attackState: boss.encounterState ? boss.encounterState.mode : null,
+                cycle: boss.encounterState ? boss.encounterState.cycle : null,
+                nextAt: boss.encounterState ? boss.encounterState.nextAt : null,
+                windupUntil: boss.encounterState ? boss.encounterState.windupUntil : null,
+                activeUntil: boss.encounterState ? boss.encounterState.activeUntil : null,
+                plan: boss.encounterState && boss.encounterState.plan
+                    ? Object.assign({}, boss.encounterState.plan) : null,
                 vulnerable: NovaWingBosses.vulnerable(boss.encounterState),
                 vx: b.vx, vy: b.vy,
                 w: b.w,

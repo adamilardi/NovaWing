@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "candidateId": "enemy-dune-ripper-a",
+  "canonicalSource": "../default.png",
+  "camera": "side view, orthographic, horizontal level",
+  "facing": "left",
+  "logicalCanvas": {
+    "width": 1024,
+    "height": 1024,
+    "origin": "top-left"
+  },
+  "targetDisplay": {
+    "bodyWidthPx": 112,
+    "canvasWidthPx": 131,
+    "note": "112 px of canonical body width (874 px) scales the 1024 canvas to about 131 px."
+  },
+  "rootPivot": {
+    "x": 512,
+    "y": 512,
+    "normalized": [
+      0.5,
+      0.5
+    ]
+  },
+  "bodyBounds": {
+    "source": "canonical opaque alpha >= 16",
+    "x": 75,
+    "y": 226,
+    "width": 874,
+    "height": 572,
+    "center": [
+      511.5,
+      511.5
+    ]
+  },
+  "packed": false,
+  "assetsAreFullCanvas": true,
+  "generation": {
+    "tool": "image_edit",
+    "reference": "../default.png",
+    "referenceUsedInEveryCall": true,
+    "background": "Generated on black, then keyed to binary alpha. Canvas stayed 1024x1024. Frames were not cropped to their opaque bounds and were not recentered.",
+    "statesRequested": [
+      "idle",
+      "dash"
+    ]
+  },
+  "previews": [
+    "playback-contact-sheet.png",
+    "playback-idle.gif",
+    "playback-dash.gif",
+    "playback-preview.html"
+  ],
+  "states": {
+    "idle": {
+      "method": "referenced-keyframes",
+      "loop": true,
+      "loopSeam": "The sail drops from the upright billow to the flattened rake, then the loop restarts on the upright ease. That restart is the large step.",
+      "frames": [
+        {
+          "file": "idle_00.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 73,
+            "y": 198,
+            "width": 878,
+            "height": 601
+          },
+          "opaqueCentroid": [
+            544.2,
+            614.1
+          ],
+          "opaquePx": 207814,
+          "durationMs": 240,
+          "pose": "Sail eased toward the prow, a little more upright than the canonical rake. Hull stays level."
+        },
+        {
+          "file": "idle_01.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 73,
+            "y": 185,
+            "width": 878,
+            "height": 614
+          },
+          "opaqueCentroid": [
+            541.4,
+            613.1
+          ],
+          "opaquePx": 204792,
+          "durationMs": 240,
+          "pose": "Sail a little fuller and higher than idle_00. Hull stays level."
+        },
+        {
+          "file": "idle_02.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 73,
+            "y": 364,
+            "width": 879,
+            "height": 435
+          },
+          "opaqueCentroid": [
+            522.7,
+            610.5
+          ],
+          "opaquePx": 213409,
+          "durationMs": 240,
+          "pose": "Sail flattened back toward the thrusters. Hull stays level."
+        }
+      ],
+      "events": [],
+      "attachments": {
+        "root": [
+          512,
+          512
+        ],
+        "sailFootRest": [
+          643,
+          574
+        ],
+        "note": "Idle is a sail pose on a level hull. The sail foot is meant to stay on the rail. Exhaust is not in these frames."
+      }
+    },
+    "dash": {
+      "method": "referenced-keyframes",
+      "loop": false,
+      "returnsTo": "idle",
+      "frames": [
+        {
+          "file": "dash_00.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 95,
+            "y": 215,
+            "width": 841,
+            "height": 606
+          },
+          "opaqueCentroid": [
+            550.3,
+            573.6
+          ],
+          "opaquePx": 207698,
+          "durationMs": 140,
+          "pose": "Anticipation. Whole skiff banks nose-up, teeth stay closed, sail rakes back."
+        },
+        {
+          "file": "dash_01.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 101,
+            "y": 112,
+            "width": 841,
+            "height": 716
+          },
+          "opaqueCentroid": [
+            525.8,
+            514.2
+          ],
+          "opaquePx": 222864,
+          "durationMs": 100,
+          "pose": "Active slash. Whole skiff banks nose-down, glass teeth open into the bite, sail swings toward the prow."
+        },
+        {
+          "file": "dash_02.png",
+          "canvas": [
+            1024,
+            1024
+          ],
+          "trimOffset": [
+            0,
+            0
+          ],
+          "opaqueBounds": {
+            "x": 73,
+            "y": 203,
+            "width": 881,
+            "height": 589
+          },
+          "opaqueCentroid": [
+            541.8,
+            606.9
+          ],
+          "opaquePx": 208310,
+          "durationMs": 180,
+          "pose": "Recovery. Skiff settles near level with the teeth closing and the sail returning toward its rest rake."
+        }
+      ],
+      "events": [
+        {
+          "name": "slash",
+          "timeMs": 140,
+          "frame": "dash_01.png",
+          "note": "Intended contact at the start of the active frame. This does not change gameplay timing."
+        }
+      ],
+      "attachments": {
+        "root": [
+          512,
+          512
+        ],
+        "note": "The bank is baked into the sprite around the canvas center. Thruster nozzles stay on the stern. No exhaust plume and no motion trail are baked in."
+      }
+    }
+  },
+  "identityDrift": [
+    "Every frame is a redraw guided by the canonical PNG, then keyed. Contours are softer than the hard-edged source, and glass-plate cracks, tooth spacing, and skull knots are not pixel-identical.",
+    "Idle hull correlation against the canonical lower hull is about 0.98, and the opaque left edge stays near x=73 versus the canonical x=75. The hull was not recentered.",
+    "Idle sail tips, topmost rose pixel: canonical (711, 251), idle_00 (663, 228), idle_01 (655, 217), idle_02 (478, 386). The ease-to-billow step is small. The rake-back flattens the sail and is the obvious pose.",
+    "Dash redraws the whole skiff, so plate patterns drift more. dash_00 is a clear nose-up load (opaque centroid y 573.6 versus the canonical 619.6). dash_01 is a clear nose-down bite; its opaque centroid is (525.8, 514.2) because the mass rotates, and the frame was not recentered onto the bounding box. dash_02 settles to (541.8, 606.9).",
+    "Facing stays left. No second sail, no mirrored prow, no lettering, no baked exhaust. Two thrusters remain. The open bite in dash_01 changes tooth spacing and can merge or split teeth relative to the canonical row.",
+    "Opaque bounds stay inside the 1024 canvas on every frame. Nothing was auto-cropped."
+  ],
+  "remainingWork": [
+    "Not packed and not wired into NovaWing. Hand off to skills/enemy-animation-integrator.",
+    "Previewed offline at about 131 px canvas width on light and dark. Not verified in the running game.",
+    "The idle loop seam from rake-back to the next ease is abrupt. In-betweens would smooth it.",
+    "Dash recovery is a smaller pose change than the slash. Plate and tooth identity on the banked frames still drifts from the canonical drawing."
+  ]
+}

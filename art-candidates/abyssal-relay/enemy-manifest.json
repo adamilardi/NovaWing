@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "brief_id": "abyssal-relay",
+  "kind": "enemy",
+  "brief_path": "enemy-brief.md",
+  "candidates": [
+    {
+      "id": "enemy-abyss-gulper-a",
+      "title": "Gulper gunship",
+      "status": "generated",
+      "summary": "Elongated deep-teal gulper-eel hull facing left, open jaw with a torpedo tube, side fins, and six green gill slits.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-abyss-gulper-a/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-abyss-gulper-a/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "facing": "left",
+        "palette": ["deep teal", "bioluminescent green", "magenta"],
+        "target_display": "112 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-abyss-gulper-a/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "The neutral pose already holds the jaw open around the torpedo tube.",
+        "Silhouette was checked on a flattened preview at about 112 px of body width, not in the game."
+      ]
+    },
+    {
+      "id": "enemy-abyss-lantern-b",
+      "title": "Lantern mine-layer",
+      "status": "generated",
+      "summary": "Round deep-teal lanternfish hull facing left, magenta lure on a stalk, and six translucent mine sacs under the belly.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-abyss-lantern-b/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-abyss-lantern-b/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "facing": "left",
+        "palette": ["deep teal", "bioluminescent green", "magenta"],
+        "target_display": "112 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-abyss-lantern-b/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "The lure's broad glow was mixed with the chroma-key field and was removed. A thin colored fringe remains beside the stalk in a tight crop. It does not read at about 112 px of body width.",
+        "Silhouette was checked on a flattened preview at about 112 px of body width, not in the game."
+      ]
+    }
+  ]
+}

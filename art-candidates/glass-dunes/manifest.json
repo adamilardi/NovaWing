@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "brief_id": "glass-dunes",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "level-glass-dunes-a",
+      "title": "Glass dunes",
+      "status": "generated",
+      "summary": "Vitrified desert at dusk: an opaque dune sea with a dark flight basin and a low rose sky band, edge fulgurite shards, one horizontal dune-blade block, and five separated glass obstacle modules.",
+      "assets": [
+        {
+          "role": "background-far",
+          "path": "dune-background.png",
+          "width_px": 1448,
+          "height_px": 1086,
+          "alpha": false,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {
+            "method": "code",
+            "kind": "parallax",
+            "axes": ["x", "y"],
+            "animated_frames": false
+          },
+          "checks": {"dimensions": "pass", "alpha": "pass"}
+        },
+        {
+          "role": "scenery-mid",
+          "path": "dune-scenery.png",
+          "width_px": 1152,
+          "height_px": 864,
+          "alpha": true,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {
+            "method": "code",
+            "kind": "parallax-nearer",
+            "axes": ["x", "y"],
+            "animated_frames": false
+          },
+          "crops": [
+            {"name": "left-spires", "x": 125, "y": 222, "width_px": 195, "height_px": 360, "pieces": 5},
+            {"name": "right-spires", "x": 880, "y": 263, "width_px": 149, "height_px": 370, "pieces": 7}
+          ],
+          "checks": {"dimensions": "pass", "alpha": "pass"}
+        },
+        {
+          "role": "wall-surface",
+          "path": "dune-wall-block.png",
+          "width_px": 1152,
+          "height_px": 864,
+          "alpha": true,
+          "readiness": "verified",
+          "collision": {
+            "shape": "rect",
+            "body": "one dense horizontal fulgurite dune-blade slab",
+            "openings": "Transparent margin around the block. Opaque bounds are x137 y211 880x445 and 87.3% filled. The unfilled part is the V-notches between twelve glass teeth on the top edge. The slab under those notches, x138 y312 878x344, has no transparent pixels, so one rectangle covers the body. The tooth notches stay non-solid. No enclosed holes. One right-edge column stops short of the slab bottom and sits outside that rectangle."
+          },
+          "motion": {
+            "method": "code",
+            "kind": "scroll-with-terrain",
+            "axes": ["x", "y"],
+            "animated_frames": false
+          },
+          "crops": [
+            {"name": "dune-slab", "x": 138, "y": 312, "width_px": 878, "height_px": 344, "opaque_px": 302032},
+            {"name": "with-teeth", "x": 137, "y": 211, "width_px": 880, "height_px": 445, "opaque_px": 341708}
+          ],
+          "checks": {"dimensions": "pass", "alpha": "pass"}
+        },
+        {
+          "role": "obstacle-solid",
+          "path": "dune-obstacles.png",
+          "width_px": 1152,
+          "height_px": 864,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "separate-rects",
+            "body": "five dense modules",
+            "openings": "Gaps between the crops stay non-solid. The mirror slab fills its crop. The glass tooth and dune fin have concave edges, so one rectangle on those crops covers open side pockets. The buried helm has four enclosed transparent spoke holes that one rectangle would bridge. The fulgurite spike mouth is painted dark, not an alpha opening, and the rim is narrower than the base."
+          },
+          "motion": {
+            "method": "code",
+            "kind": "scroll-with-terrain",
+            "axes": ["x", "y"],
+            "animated_frames": false
+          },
+          "crops": [
+            {"name": "glass-tooth", "x": 18, "y": 245, "width_px": 206, "height_px": 396},
+            {"name": "mirror-slab", "x": 248, "y": 243, "width_px": 204, "height_px": 398},
+            {"name": "dune-fin", "x": 477, "y": 244, "width_px": 204, "height_px": 397},
+            {"name": "buried-helm", "x": 706, "y": 243, "width_px": 216, "height_px": 398, "holes": [
+              {"x": 829, "y": 316, "width_px": 55, "height_px": 67},
+              {"x": 784, "y": 338, "width_px": 66, "height_px": 61},
+              {"x": 776, "y": 398, "width_px": 65, "height_px": 56},
+              {"x": 792, "y": 443, "width_px": 46, "height_px": 51}
+            ]},
+            {"name": "fulgurite-spike", "x": 966, "y": 244, "width_px": 156, "height_px": 397}
+          ],
+          "checks": {"dimensions": "pass", "alpha": "pass"}
+        }
+      ],
+      "preview_paths": [
+        "previews/dune-background-800.jpg",
+        "previews/dune-scenery-checker.jpg",
+        "previews/dune-wall-checker.jpg",
+        "previews/dune-obstacles-checker.jpg",
+        "previews/dune-lane-960.jpg",
+        "previews/dune-composite-960.jpg"
+      ],
+      "prompt_path": "prompt.md",
+      "reference_paths": [
+        "originals/background-source.jpg",
+        "originals/scenery-source.jpg",
+        "originals/wall-source.jpg",
+        "originals/obstacles-source.jpg"
+      ],
+      "spec": {
+        "camera": "mixed side-view and vertical ascent",
+        "scroll": "horizontal then vertical",
+        "palette": ["amber glass", "rose dusk", "bleached bone", "near-black"],
+        "tile_axes": [],
+        "layer_order": ["background-far", "scenery-mid", "wall-surface", "obstacle-solid"],
+        "target_display": "800x600 viewport inside 960x720 overscan. Keep the basin darker than bullets. Horizontal gates span y (600px) and vertical gates span x (800px); the blade is one placed module, not a tile."
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "pass"
+      },
+      "limitations": [
+        "background-far was generated at 1152x864 and Lanczos-scaled to 1448x1086, so it is softer than a native paint at that size. It is RGB with no alpha. The center basin, from about 35% to 70% of the height, averages luminance 16. The rose sky band peaks near luminance 141 around 12% down the frame and fades into the basin by about 19% down. The painting does not tile.",
+        "The same plate reads as a side view (sky band, dark basin, dunes along the bottom) and as an ascent (dark corridor between the side dunes). The rose line is a side-view horizon, so a pure top-down read is weaker.",
+        "Scenery is 12 soft shards in two clusters, left at x125 y222 195x360 and right at x880 y263 149x370. The open center has no opaque pixels. None touch the canvas. A few needles are pale and blobby rather than tall spires. The accepted edit briefly showed a second green rectangle; both greens keyed out and the checkerboard shows no leftover frame.",
+        "The wall-surface is dune-wall-block.png, a horizontal slab with glass teeth on the top edge only. dune-wall.png is unchanged and kept as a decor alternate: it is still the diagonal blade whose opaque box is 42% filled. The block is 1152x864 RGBA. Its opaque bounds, x137 y211 880x445, are 87.3% filled because of the tooth notches. The collision slab, x138 y312 878x344, is fully opaque. Fully transparent pixels are 0,0,0,0. The partial-alpha fringe is 2071 px and is not green-dominant. There are no enclosed holes. Previews still show the original blade.",
+        "Obstacle crops, left to right, are separated by about 24, 25, 25, and 44 pixels. The mirror slab matches its crop. The helm spoke holes are transparent and must stay open. The spike's cup is painted dark glass.",
+        "Cutouts were keyed from JPEG chroma green. Fully transparent pixels are 0,0,0,0. Edges keep a thin partial-alpha fringe (scenery 3285 px, wall 903 px, obstacles 2889 px). No remaining opaque pixel is green-dominant. Checkerboard previews show real transparency.",
+        "A still composite at 960x720 shows the two layers with three bright bullet dots on the basin, and a second composite places the blade and the five modules in the lane. The art was not loaded in the game."
+      ]
+    }
+  ]
+}

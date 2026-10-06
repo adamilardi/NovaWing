@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS leaderboard_entries (
     score INTEGER NOT NULL,
     kills INTEGER NOT NULL,
     accuracy INTEGER NOT NULL,
+    continues INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
@@ -24,7 +25,8 @@ CREATE TABLE IF NOT EXISTS leaderboard_runs (
     used_at TEXT,
     score INTEGER,
     kills INTEGER,
-    accuracy INTEGER
+    accuracy INTEGER,
+    continues INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS leaderboard_runs_expiry_idx

@@ -1053,7 +1053,8 @@ function selectedCases() {
     if (WANT_FULL) {
         return [
             'boot', 'desktop-move', 'controller', 'pause', 'difficulty', 'continues',
-            'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
+            'content', 'performance', 'polish', 'campaign-ranking', 'combat-polish',
+            'graphics-polish', 'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
         ];
     }
     return [

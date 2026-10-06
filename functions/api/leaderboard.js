@@ -11,11 +11,21 @@ export async function onRequest(context) {
         return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
+    const db = env ? env.DB : null;
+
     if (request.method === 'GET') {
+        if (!db) {
+            return jsonResponse(request, { error: 'Leaderboard unavailable' }, 503);
+        }
+        try {
         const version = getRequestVersion(request);
         const scope = getRequestScope(request);
-        const entries = await getLeaderboard(env.DB, version, scope);
+        const entries = await getLeaderboard(db, version, scope);
         return jsonResponse(request, { version, scope, entries });
+        } catch (err) {
+            console.error('leaderboard GET error', err);
+            return jsonResponse(request, { error: 'Server error' }, 500);
+        }
     }
 
     if (request.method !== 'POST') {
@@ -25,6 +35,10 @@ export async function onRequest(context) {
         });
     }
 
+    if (!db) {
+        return jsonResponse(request, { error: 'Leaderboard unavailable' }, 503);
+    }
+
     let payload;
     try {
         payload = await readJson(request);
@@ -32,8 +46,9 @@ export async function onRequest(context) {
         return jsonResponse(request, { error: err.message || 'Invalid request' }, err.statusCode || 400);
     }
 
+    try {
     // Stats were locked at run completion. Leaderboard POST may only choose a name.
-    const runValidation = await inspectRunToken(env.DB, payload);
+    const runValidation = await inspectRunToken(db, payload);
     if (!runValidation.ok) {
         return jsonResponse(request, { error: runValidation.error }, 400);
     }
@@ -55,16 +70,16 @@ export async function onRequest(context) {
         return jsonResponse(request, { error: 'Invalid leaderboard entry' }, 400);
     }
 
-    const consumed = await consumeRunTokenAndInsert(env.DB, runValidation.runId, entry);
+    const consumed = await consumeRunTokenAndInsert(db, runValidation.runId, entry);
     if (!consumed.ok) {
         return jsonResponse(request, { error: consumed.error }, 400);
     }
 
-    const rankedEntries = await getRankedEntries(env.DB, entry.version, entry.scope);
+    const rankedEntries = await getRankedEntries(db, entry.version, entry.scope);
     const rank = rankedEntries.findIndex(candidate => candidate.id === entry.id) + 1;
     const entries = rankedEntries.slice(0, LEADERBOARD_LIMIT);
 
-    await pruneLeaderboard(env.DB);
+    await pruneLeaderboard(db);
 
     return jsonResponse(request, {
         entry,
@@ -73,6 +88,10 @@ export async function onRequest(context) {
         scope: entry.scope,
         entries
     }, 201);
+    } catch (err) {
+        console.error('leaderboard POST error', err);
+        return jsonResponse(request, { error: 'Server error' }, 500);
+    }
 }
 
 async function readJson(request) {
@@ -272,6 +291,7 @@ async function consumeRunTokenAndInsert(db, runId, entry) {
 
         return { ok: true };
     } catch (err) {
+        console.error('consumeRunTokenAndInsert error', err);
         return { ok: false, error: 'Failed to save leaderboard entry' };
     }
 }
@@ -341,7 +361,8 @@ function jsonResponse(request, payload, status = 200) {
         headers: {
             ...corsHeaders(request),
             'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'no-store'
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff'
         }
     });
 }

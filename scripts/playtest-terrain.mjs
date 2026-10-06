@@ -25,7 +25,7 @@ try {
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
         await page.clock.install();
-        await page.goto(`${base}?level=${level}&timescale=1&diff=normal&playtestContinues=unlimited`, { waitUntil: 'load' });
+        await page.goto(`${base}?level=${level}&timescale=1&diff=${process.env.TERRAIN_PLAY_DIFF || 'normal'}&playtestContinues=unlimited`, { waitUntil: 'load' });
         const initial = await bootControlledGame(page, level);
         assert.equal(initial.lives, 3);
         assert.equal(initial.playtestBot, false);

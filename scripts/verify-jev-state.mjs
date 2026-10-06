@@ -31,17 +31,29 @@ try {
                     obstacles: obstacles.getChildren().filter(b => b.active).length,
                     walls: walls.getChildren().filter(b => b.active).length,
                     pickups: powerups.getChildren().filter(b => b.active).length,
+                    playerBullets: (typeof bullets !== 'undefined' && bullets)
+                        ? bullets.getChildren().filter(b => b.active).length : 0,
                     lives, shield: hasShield, weapon: weaponLevel, intensity: boostIntensity,
+                    score, kills: enemiesKilled,
                     time: playtestNow(getActiveScene()), invulnerableUntil: playerInvulnerableUntil,
                     bot: isPlaytestBotSession(), cooldown: difficultyNumber('playerIFramesMs', PLAYER_DAMAGE_COOLDOWN_MS)
                 }
             }));
             const sent = JSON.parse(JSON.stringify(buildJevCombatState(snapshot, 150)));
             for (const [field, count] of [['enemyBullets','bullets'], ['enemies','enemies'],
-                ['obstacles','obstacles'], ['walls','walls'], ['pickups','pickups']]) {
+                ['obstacles','obstacles'], ['walls','walls'], ['pickups','pickups'],
+                ['playerBullets','playerBullets']]) {
                 assert.equal(sent[field].length, source[count], `${field} must match all active runtime objects`);
             }
             assert.equal(sent.timeMs, source.time); assert.equal(sent.lives, source.lives);
+            assert.equal(sent.score, source.score); assert.equal(sent.kills, source.kills);
+            if (sent.boss && sent.boss.behavior) {
+                assert.equal(typeof sent.boss.cycle, 'number');
+                assert.equal(typeof sent.boss.nextAt, 'number');
+                assert.ok(sent.boss.windupUntil === null || typeof sent.boss.windupUntil === 'number');
+                assert.ok(sent.boss.activeUntil === null || typeof sent.boss.activeUntil === 'number');
+                assert.ok(sent.boss.plan === null || typeof sent.boss.plan.kind === 'string');
+            }
             assert.equal(sent.shield, source.shield); assert.equal(sent.weaponLevel, source.weapon);
             assert.equal(sent.rules.boostIntensity, source.intensity);
             assert.equal(sent.invulnerableForMs, Math.max(0, source.invulnerableUntil-source.time));
@@ -64,6 +76,9 @@ try {
                     scene.enemySpawnEvent?.remove(false);
                     deactivateGroup(enemies); deactivateGroup(enemyBullets); deactivateGroup(obstacles);
                     deactivateGroup(powerups); clearBlackHoleState();
+                    // Free-space movement check: walls block the ship but the
+                    // predictor integrates free motion, so clear them too.
+                    if (typeof walls !== 'undefined') deactivateGroup(walls);
                     gamePhase = 'waves'; levelProgressMs = 0;
                     player.body.reset(400, 480); boostIntensity = 0; boostEnergy = 100;
                     boostLocked = false; isBoosting = false;
@@ -125,7 +140,11 @@ try {
         if (level === 6) {
             await page.evaluate(() => {
                 lives=3; hasShield=false; playerInvulnerableUntil=0;
-                player.body.reset(blackHoleConfig.x, blackHoleConfig.y+280);
+                // L6's final arena is flat, so establish ring context directly
+                // from the level def instead of relying on an ambient arena.
+                const bh = Object.assign({}, BLACK_HOLE_DEFAULTS, getLevelDef(currentLevel).blackHole);
+                blackHolePreview = false; blackHoleActive = true; blackHoleConfig = bh;
+                player.body.reset(bh.x, bh.y+280);
                 hazardRingState = {phase:'telegraph', mode:'expand', radius:90, targetRadius:280,
                     telegraphEndsAt:playtestNow(getActiveScene())+100,
                     lethalEndsAt:0, cooldownEndsAt:Infinity};

@@ -8,7 +8,7 @@ import { defaultLaunchOptions } from './rl/chrome.mjs';
 
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const out = process.env.EXPANSION_OUT || '/tmp/novawing-expansion-check';
-const levels = (process.env.EXPANSION_LEVELS || '4,5,6,7').split(',').map(Number);
+const levels = (process.env.EXPANSION_LEVELS || '4,5,6,7,8,9,10,11').split(',').map(Number);
 const viewports = process.env.EXPANSION_VIEWPORT === 'desktop' ? [false]
     : process.env.EXPANSION_VIEWPORT === 'mobile' ? [true] : [false, true];
 const runtimeHash = createHash('sha256').update(['game.js', 'levels.js', 'src/assets.js']
@@ -16,8 +16,8 @@ const runtimeHash = createHash('sha256').update(['game.js', 'levels.js', 'src/as
 fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch(defaultLaunchOptions(true));
 const reportPath = path.join(out, 'report.json');
-const previous = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, 'utf8')) : null;
-const results = previous?.runtimeHash === runtimeHash ? previous.results : [];
+// Always re-execute checks; a cached green report hid expansion regressions.
+const results = [];
 const saveReport = () => fs.writeFileSync(reportPath, JSON.stringify({
     runtimeHash, when: new Date().toISOString(),
     method: '8x structural checks with debug progression, real title launch, asset rendering and lifecycle; not a balance playthrough', results
@@ -187,12 +187,21 @@ try {
             assert.equal(completion.awardedScore, completion.expectedScore);
             assert.equal(completion.awardedKills, 1);
             await tick(100);
-            Object.assign(completion, await page.evaluate(() => ({ next: awaitingNextLevel, victory: victoryPending })));
-            assert.equal(level < 7 ? completion.next : completion.victory, true);
-            if (level < 7) {
-                await page.keyboard.press('Enter');
-                await tick(1500);
-                assert.equal(await page.evaluate(() => currentLevel), level + 1, 'clear must enter the next campaign level');
+            Object.assign(completion, await page.evaluate(() => ({ next: awaitingNextLevel, victory: victoryPending,
+                ended: levelEnded, bonus: bonusTestingLevel, continuing: continuePending })));
+            if (completion.bonus) {
+                // Bonus testing stages clear without campaign routing.
+                assert.equal(completion.ended, true, 'bonus clear must end the level');
+                assert.equal(completion.continuing, false);
+                assert.equal(completion.next, false);
+                assert.equal(completion.victory, false);
+            } else {
+                assert.equal(level < 7 ? completion.next : completion.victory, true);
+                if (level < 7) {
+                    await page.keyboard.press('Enter');
+                    await tick(1500);
+                    assert.equal(await page.evaluate(() => currentLevel), level + 1, 'clear must enter the next campaign level');
+                }
             }
             assert.deepEqual(errors, []);
             const priorIndex = results.findIndex(r => r.level === level && r.mobile === mobile);

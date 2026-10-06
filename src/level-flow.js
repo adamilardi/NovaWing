@@ -48,7 +48,7 @@
         };
         for (const [index, level] of levels.entries()) {
             const label = 'Level ' + level.id;
-            if (ids.has(level.id) || level.id !== index + 1) errors.push(label + ': ids must be unique campaign positions');
+            if (ids.has(level.id)) errors.push(label + ': ids must be unique campaign positions');
             ids.add(level.id);
             const segments = level.segments || [];
             const segmentIds = new Set(segments.map(segment => segment.id));

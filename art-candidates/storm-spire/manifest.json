@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "brief_id": "storm-spire",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "level-storm-spire-a",
+      "title": "Storm spire",
+      "status": "generated",
+      "summary": "Ascent up a lightning tower: an opaque indigo storm with a dim central shaft, edge pylon silhouettes, one brass conductor block, and five separated obstacle modules.",
+      "assets": [
+        {
+          "role": "background-far",
+          "path": "storm-background.png",
+          "width_px": 1448,
+          "height_px": 1086,
+          "alpha": false,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {"method": "code", "kind": "parallax", "animated_frames": false}
+        },
+        {
+          "role": "scenery-mid",
+          "path": "storm-scenery.png",
+          "width_px": 1152,
+          "height_px": 864,
+          "alpha": true,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {"method": "code", "kind": "parallax-nearer", "animated_frames": false}
+        },
+        {
+          "role": "wall-surface",
+          "path": "storm-wall.png",
+          "width_px": 647,
+          "height_px": 648,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "rect",
+            "body": "dense riveted brass and indigo conductor block",
+            "openings": "transparent margin around the block; a notch between the two lower feet and small pockets beside the upper bolt stay open, so one rectangle covers those openings; the thin left lightning spur is outside the main mass"
+          },
+          "motion": {"method": "code", "kind": "scroll-with-terrain", "animated_frames": false}
+        },
+        {
+          "role": "obstacle-solid",
+          "path": "storm-obstacles.png",
+          "width_px": 1152,
+          "height_px": 864,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "separate-rects",
+            "body": "five dense modules",
+            "openings": "gaps between modules stay non-solid; the coil ring has an enclosed transparent hole; the shard cracks are open, so one rectangle across that crop bridges them"
+          },
+          "motion": {"method": "code", "kind": "scroll-with-terrain", "animated_frames": false},
+          "crops": [
+            {"name": "pylon-shard", "x": 36, "y": 263, "width_px": 169, "height_px": 351},
+            {"name": "coil-ring", "x": 215, "y": 316, "width_px": 240, "height_px": 243},
+            {"name": "cloud-anchor", "x": 471, "y": 274, "width_px": 258, "height_px": 332},
+            {"name": "broken-vane", "x": 750, "y": 260, "width_px": 176, "height_px": 356},
+            {"name": "conductor-fork", "x": 957, "y": 225, "width_px": 167, "height_px": 409}
+          ]
+        }
+      ],
+      "preview_paths": [
+        "previews/storm-background-800.jpg",
+        "previews/storm-scenery-checker.jpg",
+        "previews/storm-wall-checker.jpg",
+        "previews/storm-obstacles-checker.jpg",
+        "previews/storm-composite-960.jpg"
+      ],
+      "prompt_path": "prompt.md",
+      "reference_paths": [
+        "originals/background-source.jpg",
+        "originals/scenery-source.jpg",
+        "originals/wall-source.jpg",
+        "originals/obstacles-source.jpg"
+      ],
+      "spec": {
+        "camera": "top-down",
+        "scroll": "vertical",
+        "palette": ["indigo", "amber", "brass"],
+        "tile_axes": [],
+        "layer_order": ["background-far", "scenery-mid", "wall-surface", "obstacle-solid"],
+        "target_display": "800x600 viewport inside 960x720 overscan. Keep the shaft darker than bullets."
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "pass"
+      },
+      "limitations": [
+        "background-far was generated at 1152x864 and Lanczos-scaled to 1448x1086, so it is softer than a native paint at that size. It is RGB with no alpha. The narrow central shaft averages about luminance 31.",
+        "Scenery clouds and pylons run off the left, right, top, and bottom edges. The open center is transparent. The pylons read as slim transmission towers. A few amber sparks sit on the cloud banks.",
+        "The wall is one placed module, not a seamless tile, and it is a front elevation of riveted plates. A single rectangle includes the notch between the lower feet and small pockets beside the upper bolt. The left lightning spur is decorative.",
+        "Obstacle crop boxes, left to right, are separated by about 11, 17, 22, and 32 pixels. The coil-ring hole is transparent, about 129x130 inside that crop, and must not be one filled rectangle. The pylon shard is several fragments with open cracks. The broken vane is a torn storm plate. The cloud anchor is a nautical anchor in cloud.",
+        "Cutouts were keyed from JPEG chroma green, so alpha is binary and edges are hard. Opaque pixels were checked for leftover green dominance and none remained. Checkerboard previews show real transparency.",
+        "A still composite at 960x720 shows the ship and two bright bullet dots on the dark shaft. The art was not loaded in the game."
+      ]
+    }
+  ]
+}

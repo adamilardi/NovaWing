@@ -509,6 +509,8 @@
             'swarm',
             'minefield',
             'sandwich',
+            'skyDive',
+            'floorRise',
             'oppositeInterceptors'
         ],
         hasPathWalls: false,
@@ -560,6 +562,8 @@
             'pincer',
             'swarm',
             'sandwich',
+            'skyDive',
+            'floorRise',
             'splitterPair',
             'splitterAmbush'
         ],
@@ -847,13 +851,13 @@
         bossEncounters: { final: { behavior: 'foundryWarden', health: 230, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: FOUNDRY WARDEN' } },
         segments: [
-            expansionWaves('outerRing', 22000, ['diagonal', 'vFormation', 'chaser'], 'smelter', false,
+            expansionWaves('outerRing', 22000, ['diagonal', 'vFormation', 'chaser', 'skyDive', 'floorRise'], 'smelter', false,
                 { interceptorChance: 0.18, enemyFireChance: 0.32 }),
-            expansionWaves('smelter', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors'], 'cooling', false,
+            expansionWaves('smelter', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors', 'skyDive', 'floorRise'], 'cooling', false,
                 { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
             expansionWaves('cooling', 9000, ['diagonal'], 'coreDefense', false,
                 { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
-            expansionWaves('coreDefense', 15000, ['splitterAmbush', 'sandwich', 'vFormation'], 'finalBoss', false),
+            expansionWaves('coreDefense', 15000, ['splitterAmbush', 'sandwich', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
         ]
@@ -894,7 +898,7 @@
         bossEncounters: { final: { behavior: 'voidCantor', health: 270, maxPhase: 3, entry: 'warpCenter',
             arena: 'flat', label: 'WARNING: VOID CANTOR' } },
         segments: [
-            expansionWaves('narthex', 20000, ['vFormation', 'oppositeInterceptors', 'splitterPair'], 'shear', false,
+            expansionWaves('narthex', 20000, ['vFormation', 'oppositeInterceptors', 'splitterPair', 'skyDive', 'floorRise'], 'shear', false,
                 { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
             { id: 'shear', kind: 'transition', cinematic: 'perspectiveFlip', durationMs: 3500,
                 scrollMode: 'horizontal', combatOrientation: 'right', powerups: [], next: 'ascendingNave' },
@@ -926,13 +930,13 @@
         bossEncounters: { final: { behavior: 'graveyardLeviathan', health: 300, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
         segments: [
-            expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation'], 'hullField', false,
+            expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation', 'skyDive', 'floorRise'], 'hullField', false,
                 { waveIntervalMinMs: 1900, waveIntervalMaxMs: 2400 }),
-            expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser'], 'ashShelter', false,
+            expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser', 'skyDive', 'floorRise'], 'ashShelter', false,
                 { waveIntervalMinMs: 1800, waveIntervalMaxMs: 2300 }),
             expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
                 { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
-            expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation'], 'finalBoss', false,
+            expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false,
                 { waveIntervalMinMs: 1700, waveIntervalMaxMs: 2200 }),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
@@ -949,15 +953,82 @@
         bossEncounters: { final: { behavior: 'prismCaster', health: 240, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: PRISM CASTER' } },
         segments: [
-            expansionWaves('outerLens', 22000, ['diagonal', 'vFormation', 'chaser'], 'splitterBay', false,
+            expansionWaves('outerLens', 22000, ['diagonal', 'vFormation', 'chaser', 'skyDive', 'floorRise'], 'splitterBay', false,
                 { interceptorChance: 0.12, enemyFireChance: 0.28 }),
-            expansionWaves('splitterBay', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors'], 'chargeBay', false,
+            expansionWaves('splitterBay', 26000, ['splitterPair', 'pincer', 'oppositeInterceptors', 'skyDive', 'floorRise'], 'chargeBay', false,
                 { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
             expansionWaves('chargeBay', 9000, ['diagonal'], 'casterApproach', false,
                 { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
-            expansionWaves('casterApproach', 17000, ['splitterAmbush', 'sandwich', 'vFormation'], 'finalBoss', false),
+            expansionWaves('casterApproach', 17000, ['splitterAmbush', 'sandwich', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_9 = defineLevel({
+        id: 9, name: 'ABYSSAL RELAY', tier: 3,
+        introHint: 'RIDE THE VENT GATES • HIT THE GLOWING CORE',
+        art: { background: 'abyssalRelay', scenery: 'abyssalScenery', wall: 'abyssalWall', boss: 'trenchCustodian' },
+        music: { waves: 'gauntlet', boss: 'singularity' },
+        durationMs: 80000, bossScore: 3600, bossHealth: 340,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'trenchCustodian', health: 200, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: TRENCH CUSTODIAN' } },
+        segments: [
+            expansionWaves('trenchApproach', 22000, ['diagonal', 'vFormation', 'chaser', 'skyDive', 'floorRise'], 'cableKelp', false,
+                { interceptorChance: 0.15, enemyFireChance: 0.3 }),
+            expansionWaves('cableKelp', 26000, ['splitterPair', 'pincer', 'sandwich', 'skyDive', 'floorRise'], 'quietCurrent', false,
+                { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
+            expansionWaves('quietCurrent', 10000, ['diagonal'], 'ventTrench', false,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            expansionWaves('ventTrench', 22000, ['splitterAmbush', 'oppositeInterceptors', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_10 = defineLevel({
+        id: 10, name: 'STORM SPIRE', tier: 3, scrollMode: 'vertical',
+        introHint: 'CLIMB THE CONDUITS • FIRE THROUGH THE GAPS',
+        art: { background: 'stormSpire', scenery: 'stormScenery', wall: 'stormWall', bossVertical: 'tempestCondenser' },
+        music: { waves: 'singularity', boss: 'finalBoss' },
+        durationMs: 78000, bossScore: 3400, bossHealth: 320,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'tempestCondenser', health: 160, maxPhase: 3, entry: 'warpCenter',
+            arena: 'flat', label: 'WARNING: TEMPEST CONDENSER' } },
+        segments: [
+            expansionWaves('cloudApproach', 22000, ['verticalRegular', 'verticalV'], 'pylonCrossfire', true,
+                { typedFireChance: 0.4, enemySpeedScale: 0.9 }),
+            expansionWaves('pylonCrossfire', 25000, ['riserColumns', 'crossfireStrafe', 'verticalV'], 'stormEye', true,
+                { waveIntervalMinMs: 2800, waveIntervalMaxMs: 3400 }),
+            expansionWaves('stormEye', 10000, ['verticalRegular'], 'condenserCrown', true,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            expansionWaves('condenserCrown', 21000, ['orbiterRing', 'pincerDive', 'mixedGauntlet'], 'finalBoss', true,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'vertical',
+                combatOrientation: 'up', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    const LEVEL_11 = defineLevel({
+        id: 11, name: 'GLASS DUNES', tier: 3,
+        introHint: 'RIDE THE DUNE SEA • DODGE THE SWEEP LINES',
+        art: { background: 'glassDunes', scenery: 'duneScenery', wall: 'duneWall', bossVertical: 'duneHerald' },
+        music: { waves: 'canyon', boss: 'canyonBoss', transition: null },
+        durationMs: 80500, bossScore: 3500, bossHealth: 330,
+        difficultyModes: EXPANSION_MODES,
+        bossEncounters: { final: { behavior: 'duneHerald', health: 220, maxPhase: 3, entry: 'warpCenter',
+            arena: 'flat', label: 'WARNING: DUNE HERALD' } },
+        segments: [
+            expansionWaves('duneTraverse', 20000, ['diagonal', 'vFormation', 'splitterPair', 'skyDive', 'floorRise'], 'shearDunes', false,
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            { id: 'shearDunes', kind: 'transition', cinematic: 'perspectiveFlip', durationMs: 3500,
+                scrollMode: 'horizontal', combatOrientation: 'right', powerups: [], next: 'glassAscent' },
+            expansionWaves('glassAscent', 23000, ['verticalV', 'riserColumns', 'orbiterRing'], 'stillBasin', true,
+                { waveIntervalMinMs: 2800, waveIntervalMaxMs: 3400 }),
+            expansionWaves('stillBasin', 10000, ['verticalRegular'], 'heraldApproach', true,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            expansionWaves('heraldApproach', 24000, ['crossfireStrafe', 'pincerDive', 'orbiterRing', 'mixedGauntlet'], 'finalBoss', true,
+                { waveIntervalMinMs: 2900, waveIntervalMaxMs: 3500 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'vertical',
+                combatOrientation: 'up', wavePatternKeys: [], powerups: [], next: null }
         ]
     });
 
@@ -977,18 +1048,27 @@
             7: [[0.40, 0.70, 0.30, 0.66, 0.34], [0.70, 0.30, 0.64, 0.34, 0.66],
                 [0.46, 0.53], [0.30, 0.70, 0.34, 0.66]],
             8: [[0.60, 0.30, 0.70, 0.36, 0.64], [0.30, 0.70, 0.34, 0.66, 0.30],
-                [0.50, 0.55], [0.70, 0.30, 0.64]]
+                [0.50, 0.55], [0.70, 0.30, 0.64]],
+            9: [[0.30, 0.62, 0.38, 0.68, 0.32], [0.62, 0.34, 0.70, 0.30, 0.66],
+                [0.50, 0.48], [0.36, 0.66, 0.28, 0.72]],
+            10: [[0.34, 0.64, 0.30, 0.70, 0.36], [0.66, 0.32, 0.68, 0.36, 0.64],
+                [0.48, 0.52], [0.30, 0.68, 0.36, 0.64]],
+            11: [[0.30, 0.62, 0.38, 0.68, 0.32], [0.62, 0.34, 0.70, 0.30, 0.66],
+                [0.50, 0.48], [0.36, 0.66, 0.30, 0.68]]
         };
         const centers = routes[level.id][phase];
         const gap = recovery ? span * 0.60 : (vertical ? 272 : 224);
         const interval = recovery ? 4000 : 3600;
         const material = { 4: 'salvageBulkhead', 5: 'riftStone', 6: 'voidMasonry', 7: 'salvageHull',
-            8: 'salvageBulkhead' }[level.id];
+            8: 'salvageBulkhead', 9: 'abyssalWall', 10: 'stormWall', 11: 'duneWall' }[level.id];
         const names = { 4: ['OFFSET BULKHEADS', 'FURNACE CROSSING', 'COOLING BAY', 'REACTOR GATES'],
             5: ['ICE SHELVES', 'RIFT SLALOM', 'STORM SHELTER', 'CRYSTAL CROWN'],
             6: ['BROKEN ARCHES', 'ASCENDING BUTTRESSES', 'SANCTUARY', 'CHOIR GATES'],
             7: ['WRECK APPROACH', 'SPLIT HULLS', 'SALVAGE SHELTER', 'BATTERY TRENCH'],
-            8: ['PRISM GATES', 'LENS CROSSING', 'CHARGE BAY', 'CASTER TRENCH'] };
+            8: ['PRISM GATES', 'LENS CROSSING', 'CHARGE BAY', 'CASTER TRENCH'],
+            9: ['VENT GATES', 'KELP CROSSING', 'QUIET CURRENT', 'CUSTODIAN TRENCH'],
+            10: ['CLOUD GATES', 'PILON SLALOM', 'STORM EYE', 'CONDENSER CROWN'],
+            11: ['DUNE GATES', 'GLASS ASCENT', 'STILL BASIN', 'HERALD APPROACH'] };
         const events = centers.map((ratio, index) => {
             const center = Math.round(span * ratio);
             const open = [center - gap / 2, center + gap / 2];
@@ -1005,7 +1085,10 @@
                         : level.id === 6 ? (cap ? -35 : 35) : (lo === 0 ? 45 : -25);
                     blocks.push({ cross: lo + (tile + 0.5) * breadth, breadth,
                         length: cap && !recovery ? length - 25 : length,
-                        along, texture: cap && level.id === 4 && phase > 0 ? 'salvageEngine' : material,
+                        along, texture: cap && phase > 0
+                            ? (level.id === 4 ? 'salvageEngine' : level.id === 9 ? 'abyssalShard'
+                                : level.id === 10 ? 'stormShard' : level.id === 11 ? 'duneTooth' : material)
+                            : material,
                         artVariant: 1 + (tile + index) % 3 });
                 }
             }
@@ -1032,7 +1115,7 @@
                 : ['weapon', 'shield', 'repair', 'boost', 'bomb'][index % 5],
             terrainSpeed: true
         }, vertical ? { x: event.routeCenter, y: -110 } : { x: 910, y: event.routeCenter }));
-        if (level.id === 7) {
+        if (level.id === 7 || level.id === 9) {
             // Follow the same open route, just behind its gate. Supply weapons
             // throughout the pressure sections and during the recovery window.
             for (const event of events.filter((_, index) => recovery || index % 2 === 1)) {
@@ -1053,7 +1136,7 @@
         }
         return events;
     }
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8].forEach(level => {
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11].forEach(level => {
         level.segments.filter(s => s.kind === 'waves').forEach((segment, phase) => {
             segment.terrainEvents = terrainEvents(level, segment, phase);
             // Authored gate escorts provide pressure; leave space between random waves.
@@ -1063,8 +1146,8 @@
             }
         });
     });
-    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8];
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8].forEach(level => { level.bonus = true; });
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11];
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11].forEach(level => { level.bonus = true; });
 
     /**
      * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via

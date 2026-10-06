@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "brief_id": "glass-dunes",
+  "kind": "enemy",
+  "brief_path": "enemy-brief.md",
+  "candidates": [
+    {
+      "id": "enemy-dune-ripper-a",
+      "title": "Dune ripper",
+      "status": "generated",
+      "summary": "Side-view amber glass skiff facing left, bone rail, double row of glass teeth, rose sail, and two stern thrusters.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-dune-ripper-a/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-dune-ripper-a/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "facing": "left",
+        "palette": ["amber glass", "rose dusk", "bone"],
+        "target_display": "112 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-dune-ripper-a/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "The alpha matte is binary. Edge color is bled into nearby zero-alpha pixels so filtering does not revive the green key.",
+        "The sail is rose cloth with dark ribs. It is not a glass plate.",
+        "Tooth count is whatever the canonical image shows. It was not reduced to a single number.",
+        "Silhouette was checked on a flattened preview at about 112 px of body width, on white and near-black, not in the game."
+      ]
+    },
+    {
+      "id": "enemy-dune-manta-b",
+      "title": "Glass manta",
+      "status": "generated",
+      "summary": "Top-down amber glass manta facing down, wide wings, a rose helm core, and trailing glass barbs.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-dune-manta-b/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-dune-manta-b/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "top-down",
+        "facing": "down",
+        "palette": ["amber glass", "rose dusk", "bone"],
+        "target_display": "60 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-dune-manta-b/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Wing translucency is painted as pale stained glass. The wings are opaque, so they stay readable at about 60 px of body width.",
+        "The keyed sprite was scaled by 744/935 inside the canvas so each wingtip has about 140 px of padding. That inset left a thin partial-alpha rim.",
+        "The trailing barbs soften at about 60 px of body width. The wings and helm still read.",
+        "Silhouette was checked on a flattened preview at about 60 px of body width, on white and near-black, not in the game."
+      ]
+    }
+  ]
+}

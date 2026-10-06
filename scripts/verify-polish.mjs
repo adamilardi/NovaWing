@@ -32,7 +32,7 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
         assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
         await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
         await page.waitForFunction(() => awaitingNextLevel && getLocalLeaderboard('level-3').length > 0);
-        for (const level of [4, 5, 6]) {
+        for (const level of [4, 5, 6, 7, 8]) {
             await page.keyboard.press('Enter');
             await page.waitForFunction(next => currentLevel === next && !levelTransitioning, level);
             await page.evaluate(() => {
@@ -41,7 +41,7 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
             });
             await page.waitForFunction(() => levelSegment === 'finalBoss' && boss && boss.active);
             await page.evaluate(() => defeatBoss.call(getActiveScene(), boss));
-            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 6);
+            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 8);
         }
         assert.equal(await page.evaluate(() => isLeaderboardEligibleSession()), true);
         await page.waitForFunction(() => getLocalLeaderboard('campaign').length > 0 &&
@@ -79,11 +79,11 @@ export async function caseCampaignRanking(browser, base, evidenceDir) {
         await page.waitForFunction(() => awaitingNextLevel && getLocalLeaderboard('level-3-easy').some(entry => entry.continues === 1));
         assert.equal(await page.evaluate(() => getLocalLeaderboard('level-3-easy').some(entry => entry.continues === 1)), true);
         assert.equal(await page.evaluate(() => getLocalLeaderboard('level-2-easy').every(entry => entry.continues === 0)), true);
-        for (const level of [4, 5, 6]) {
+        for (const level of [4, 5, 6, 7, 8]) {
             await page.keyboard.press('Enter');
             await page.waitForFunction(next => currentLevel === next && !levelTransitioning, level);
             await page.evaluate(() => completeLevel.call(getActiveScene()));
-            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 6);
+            await page.waitForFunction(final => final ? levelEnded : awaitingNextLevel, level === 8);
         }
         await page.waitForFunction(() => getLocalLeaderboard('campaign-easy').some(entry => entry.continues === 2));
         await launch();

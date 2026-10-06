@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "package_version": "1",
+  "candidate_id": "enemy-abyss-gulper-a",
+  "brief_id": "abyssal-relay",
+  "canonical_source_path": "../default.png",
+  "camera": "side view, orthographic, horizontal level",
+  "facing": "left",
+  "coordinate_space": "pixels, origin top-left, x right, y down",
+  "logical_canvas_px": [1024, 1024],
+  "target_display_px": {
+    "canvas_width": 140,
+    "body_width": 112,
+    "note": "Ordinary enemies read at about 112 px of body width. The full 1024 canvas is about 140 px wide at that scale."
+  },
+  "root_pivot": {
+    "space": "pixels",
+    "origin": "top-left",
+    "x": 512,
+    "y": 512,
+    "normalized": [0.5, 0.5]
+  },
+  "body_bounds_canonical": {
+    "space": "pixels",
+    "alpha_threshold": 16,
+    "x": 103,
+    "y": 373,
+    "w": 818,
+    "h": 278,
+    "note": "Opaque bounds of ../default.png. Idle-01 is those exact pixels. Other frames are not recentered."
+  },
+  "attachments": {
+    "muzzle_seated_px": [103, 503],
+    "jaw_hinge_px": [250, 510],
+    "note": "Seated muzzle is the canonical torpedo tip. On the launch frame the tip moves to muzzle_launch_px. A separate muzzle flash and projectile are not baked except for the shifted tube on firing-01."
+  },
+  "preview_paths": [
+    "contact-sheet.png",
+    "playback.gif"
+  ],
+  "generation": {
+    "tool": "image_edit",
+    "reference_every_call": "../default.png",
+    "output_note": "The editor returned 1024 JPEGs with a flat black field or a noisy matte in the old transparent band. Each used pose was keyed and spliced back onto the canonical RGBA canvas so the hull, eye, six gill slits, rivets, and root stayed put. Frames were not cropped or rescaled.",
+    "poses": {
+      "fin_spread": "session image 4.jpg, dorsal raised and pectoral lowered, spliced only in the fin and tail zones",
+      "wide_jaw": "session image 3.jpg, jaws opened, spliced in the jaw zone, canonical tube pasted back on",
+      "empty_mouth": "session image 1.jpg, torpedo absent, jaw near rest, spliced in the jaw zone",
+      "rest_checked": "session images 2.jpg and 5.jpg matched the canonical rest within JPEG noise and were not used as pixels"
+    }
+  },
+  "states": [
+    {
+      "name": "idle",
+      "method": "referenced keyframes",
+      "loop": "ping-pong",
+      "playback_order": ["idle-00.png", "idle-01.png", "idle-02.png", "idle-01.png"],
+      "duration_ms": 720,
+      "frame_duration_ms": 180,
+      "frames": [
+        {
+          "path": "idle-00.png",
+          "role": "fin spread",
+          "duration_ms": 180,
+          "opaque_bounds_px": [103, 336, 924, 675],
+          "source": "image_edit fin pose spliced onto ../default.png"
+        },
+        {
+          "path": "idle-01.png",
+          "role": "rest",
+          "duration_ms": 180,
+          "opaque_bounds_px": [103, 373, 920, 650],
+          "source": "exact pixels of ../default.png"
+        },
+        {
+          "path": "idle-02.png",
+          "role": "fins eased down, jaw eased closed",
+          "duration_ms": 180,
+          "opaque_bounds_px": [103, 385, 920, 640],
+          "source": "canonical dorsal shifted down 12 px and pectoral shifted up 10 px; upper teeth shifted down 4 px and lower teeth shifted up 4 px"
+        }
+      ]
+    },
+    {
+      "name": "firing",
+      "method": "referenced keyframes",
+      "loop": false,
+      "one_shot": true,
+      "duration_ms": 420,
+      "frames": [
+        {
+          "path": "firing-00.png",
+          "role": "anticipation",
+          "duration_ms": 140,
+          "opaque_bounds_px": [99, 369, 920, 650],
+          "source": "wide-jaw image_edit with the canonical tube restored in the mouth"
+        },
+        {
+          "path": "firing-01.png",
+          "role": "active",
+          "duration_ms": 100,
+          "opaque_bounds_px": [70, 369, 920, 650],
+          "muzzle_launch_px": [70, 503],
+          "source": "same wide jaw; canonical tube copied, given a mirrored nose as a tail, and translated 34 px left"
+        },
+        {
+          "path": "firing-02.png",
+          "role": "recovery",
+          "duration_ms": 180,
+          "opaque_bounds_px": [128, 373, 920, 650],
+          "source": "empty-mouth image_edit; tube removed"
+        }
+      ],
+      "events": [
+        {
+          "name": "projectile_release",
+          "at_ms": 140,
+          "frame": "firing-01.png",
+          "muzzle_px": [70, 503],
+          "note": "Synchronization hint only. Does not change gameplay timing. The baked tube on this frame should be replaced by a separate projectile at integration."
+        }
+      ]
+    }
+  ],
+  "identity_drift": [
+    "Hull plates, single green eye, six gill slits, left facing, palette, and root pivot match the canonical sprite. Gill-run count on every delivered frame is 6.",
+    "Idle-01 is pixel-identical to ../default.png.",
+    "Idle-00 fin spread is a real edit. The new fin edges are a little jagged, and some canonical fin-hole pixels are covered because the generated fin redrew the blades.",
+    "Image edits asked to lower the dorsal fin either left it raised or redesigned the fin and tail. Idle-02 is therefore the canonical blades shifted the other way, not a raw edit. The jaw close on that frame is a 4 px tooth shift of the canonical teeth.",
+    "The wide-open firing jaw keeps the same eye and gill count, but the tooth outline is noisier than the canonical line and carries a faint double edge.",
+    "The generator would not slide the tube without adding extra fins or a second shape. Firing-01 uses the canonical tube, shifted, with a mirrored nose cap for the tail. The tail where it meets the mouth is blunter than the nose. One gold band remains. No muzzle flash is baked.",
+    "Recovery leaves an empty dark mouth. The leftmost opaque pixel in the mouth band is the jaw, near x 197, not a tube."
+  ],
+  "remaining_work": [
+    "Runtime integration is not done. Hand off to enemy-animation-integrator when that is requested.",
+    "Replace the baked launch tube with a separate torpedo sprite and a separate muzzle flash at the recorded muzzle.",
+    "Bank, recoil, and gill pulse stay code motion and are not in this package.",
+    "Fin holes on the spread pose still need a clean redraw if the hole must stay open in every idle frame."
+  ]
+}

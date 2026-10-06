@@ -3,6 +3,7 @@
  *
  * EXPERT=heuristic  — classic play-bot pilot (default)
  * EXPERT=policy     — learned policy self-play (needs rl/weights/bc-policy.json)
+ * EXPERT=tactics    — planner pilot (NovaWingTactics.plan, same brain as JEV/simple-bot)
  *
  * Policy rollouts store shaped `reward` per step for PPO fine-tuning.
  *
@@ -85,10 +86,42 @@ async function stopExpert(page, mode) {
     await page.evaluate((m) => {
         if (m === 'policy') {
             if (window.__novawingPolicyStop) window.__novawingPolicyStop();
+        } else if (m === 'tactics') {
+            if (window.__novawingTacticsStop) window.__novawingTacticsStop();
         } else if (window.__novawingPilotStop) {
             window.__novawingPilotStop();
         }
     }, mode).catch(() => {});
+}
+
+/**
+ * In-page tactics pilot for controlled recording. Serialized into the
+ * browser; no Node closures. Single-tick (no timer): the recorder calls
+ * __novawingTacticsTick once per frozen decision, then advances the clock.
+ */
+export function installTacticsPilot() {
+    if (window.__novawingTacticsInstalled) return true;
+    window.__novawingTacticsPreferred = null;
+    window.__novawingTacticsLastInput = null;
+    window.__novawingTacticsError = null;
+    window.__novawingTacticsTick = () => {
+        try {
+            const snap = window.__novawingDebug.getBotSnapshot();
+            const result = window.NovaWingTactics.plan(snap, 160, window.__novawingTacticsPreferred);
+            if (!result || result.error) throw new Error((result && result.error) || 'tactics plan failed');
+            window.__novawingDebug.setBotInput(result.input);
+            window.__novawingTacticsPreferred = { x: result.input.x, y: result.input.y };
+            window.__novawingTacticsLastInput = result.input;
+        } catch (err) {
+            window.__novawingTacticsError = String((err && err.message) || err);
+        }
+    };
+    window.__novawingTacticsStop = () => {
+        window.__novawingTacticsPreferred = null;
+        if (window.__novawingDebug) window.__novawingDebug.clearBotInput();
+    };
+    window.__novawingTacticsInstalled = true;
+    return true;
 }
 
 async function recordEpisode(browser, episodeIndex, policy) {
@@ -130,11 +163,17 @@ async function recordEpisode(browser, episodeIndex, policy) {
         }
     }
     if (START_SEGMENT && !BOSS_SKIP) await jumpControlledSegment(page, START_SEGMENT);
-    const mode = EXPERT === 'policy' ? 'policy' : 'heuristic';
+    const mode = EXPERT === 'policy' ? 'policy' : EXPERT === 'tactics' ? 'tactics' : 'heuristic';
     if (mode === 'policy') await page.evaluate(p => { window.__novawingRolloutPolicy = p; }, policy);
     if (mode === 'heuristic') {
         await page.evaluate(installInPagePilot);
         await page.evaluate(() => cancelAnimationFrame(window.__novawingPilotRaf));
+    }
+    if (mode === 'tactics') {
+        await page.waitForFunction(() => window.NovaWingTactics &&
+            typeof window.NovaWingTactics.plan === 'function', null, { timeout: 30000 });
+        const installed = await page.evaluate(installTacticsPilot);
+        if (!installed) throw new Error('Failed to install tactics pilot');
     }
     if (HEADLESS) await suppressRendering(page);
 
@@ -180,6 +219,12 @@ async function recordEpisode(browser, episodeIndex, policy) {
                     const sampled = rt.samplePolicyAction(window.__novawingRolloutPolicy, obs);
                     __novawingDebug.setBotInput(rt.fromCanonicalAction(sampled.action, snap));
                     return { obs, ...sampled };
+                }
+                if (mode === 'tactics') {
+                    window.__novawingTacticsTick();
+                    if (window.__novawingTacticsError) throw new Error(window.__novawingTacticsError);
+                    return { obs,
+                        action: rt.encodeAction(window.__novawingTacticsLastInput, snap) };
                 }
                 window.__novawingPilotTick();
                 if (window.__novawingPilotError) throw new Error(window.__novawingPilotError);
@@ -294,7 +339,7 @@ async function main() {
 
         const tag = [
             ep.won ? 'win' : null,
-            EXPERT === 'policy' ? 'policy' : null,
+            EXPERT === 'policy' ? 'policy' : EXPERT === 'tactics' ? 'tactics' : null,
             BOSS_SKIP ? 'boss' : null,
             process.env.LEVEL ? `L${process.env.LEVEL}` : null,
             START_SEGMENT ? START_SEGMENT : null

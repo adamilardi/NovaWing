@@ -9,7 +9,7 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch(defaultLaunchOptions(true));
 const results = [];
 try {
-    for (const mobile of [false, true]) for (const level of [4, 5, 6, 7]) {
+    for (const mobile of [false, true]) for (const level of [4, 5, 6, 7, 8]) {
         const context = await browser.newContext(mobile
             ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
             : { viewport: { width: 960, height: 720 } });

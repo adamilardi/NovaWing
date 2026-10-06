@@ -63,6 +63,12 @@ const BAKED_SPRITE_ASSETS = {
         body: { w: 0.65, h: 0.40, ox: 0.15, oy: 0.30 } },
     prismCaster: { path: 'assets/bosses/prism-caster.png', sourceKey: 'prismCasterSource', hasAlpha: true,
         body: { w: 0.62, h: 0.55, ox: 0.16, oy: 0.22 } },
+    trenchCustodian: { path: 'assets/bosses/trench-custodian.png', sourceKey: 'trenchCustodianSource', hasAlpha: true,
+        body: { w: 0.70, h: 0.38, ox: 0.13, oy: 0.31 } },
+    tempestCondenser: { path: 'assets/bosses/tempest-condenser.png', sourceKey: 'tempestCondenserSource', hasAlpha: true,
+        body: { w: 0.60, h: 0.78, ox: 0.20, oy: 0.11 } },
+    duneHerald: { path: 'assets/bosses/dune-herald.png', sourceKey: 'duneHeraldSource', hasAlpha: true,
+        body: { w: 0.78, h: 0.78, ox: 0.11, oy: 0.12 } },
     ashenSurface: { path: 'assets/levels/terrain/ashen-surface.png', sourceKey: 'ashenSurfaceSource', hasAlpha: true },
     ashenGraveyard: { path: 'assets/levels/ashen-graveyard.png', sourceKey: 'ashenGraveyardSource', hasAlpha: false },
     foundryWall: { path: 'assets/levels/terrain/foundry-wall.png', sourceKey: 'foundryWallSource', hasAlpha: true },
@@ -75,6 +81,12 @@ const BAKED_SPRITE_ASSETS = {
     prismBattery: { path: 'assets/levels/prism-battery.webp', sourceKey: 'prismBatterySource', hasAlpha: false },
     auroraPassage: { path: 'assets/levels/aurora-passage.webp', sourceKey: 'auroraPassageSource', hasAlpha: false },
     voidCathedral: { path: 'assets/levels/void-cathedral.webp', sourceKey: 'voidCathedralSource', hasAlpha: false },
+    abyssalRelay: { path: 'assets/levels/abyssal-relay.png', sourceKey: 'abyssalRelaySource', hasAlpha: false },
+    abyssalScenery: { path: 'assets/levels/abyssal-scenery.png', sourceKey: 'abyssalScenerySource', hasAlpha: true },
+    stormSpire: { path: 'assets/levels/storm-spire.png', sourceKey: 'stormSpireSource', hasAlpha: false },
+    stormScenery: { path: 'assets/levels/storm-scenery.png', sourceKey: 'stormScenerySource', hasAlpha: true },
+    glassDunes: { path: 'assets/levels/glass-dunes.png', sourceKey: 'glassDunesSource', hasAlpha: false },
+    duneScenery: { path: 'assets/levels/dune-scenery.png', sourceKey: 'duneScenerySource', hasAlpha: true },
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
     bossVertical: { path: 'assets/boss-vertical.png', sourceKey: 'bossVerticalSource' },
@@ -238,6 +250,76 @@ Object.entries(JUNK_CELLS).forEach(([key, [column, row]]) => {
             : key === 'salvageBulkhead' && variant === 2 ? JUNK_CELLS.salvageHull : [column, row];
         SPRITES[key + '-' + variant] = Object.assign({}, asset, {
             crop: { x: alternate[0] * 512, y: alternate[1] * 512, width: 512, height: 512 }
+        });
+    }
+});
+// Abyssal Relay (L9) terrain cells. Tight crops of dense modules; the rib is
+// decor-only (open arc) and never a solid texture. Source sheets and prompts
+// live under art-candidates/abyssal-relay.
+const ABYSSAL_CELLS = {
+    abyssalWall: [8, 8, 422, 475], abyssalShard: [446, 8, 244, 298],
+    abyssalCoil: [698, 8, 246, 284], abyssalDish: [8, 491, 210, 254],
+    abyssalPod: [454, 491, 180, 278], abyssalRib: [226, 491, 220, 296]
+};
+const ABYSSAL_SOLIDS = ['abyssalWall', 'abyssalShard', 'abyssalCoil', 'abyssalDish', 'abyssalPod'];
+Object.entries(ABYSSAL_CELLS).forEach(([key, [x, y, width, height]]) => {
+    const asset = { path: 'assets/levels/terrain/junk-abyssal.png',
+        sourceKey: 'abyssalJunkSource', hasAlpha: true, atlas: true,
+        crop: { x, y, width, height } };
+    SPRITES[key] = asset;
+    const solidIndex = ABYSSAL_SOLIDS.indexOf(key);
+    if (solidIndex < 0) return;
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = ABYSSAL_SOLIDS[(solidIndex + variant - 1) % ABYSSAL_SOLIDS.length];
+        const [px, py, pw, ph] = ABYSSAL_CELLS[pick];
+        SPRITES[key + '-' + variant] = Object.assign({}, asset, {
+            crop: { x: px, y: py, width: pw, height: ph }
+        });
+    }
+});
+// Storm Spire (L10) terrain cells. Ring and fork are decor-only open shapes.
+// Source sheets and prompts live under art-candidates/storm-spire.
+const STORM_CELLS = {
+    stormWall: [8, 8, 587, 588], stormShard: [603, 8, 178, 358],
+    stormAnchor: [603, 366, 266, 340], stormVane: [8, 596, 184, 364],
+    stormRing: [192, 596, 248, 252], stormFork: [440, 596, 138, 404]
+};
+const STORM_SOLIDS = ['stormWall', 'stormShard', 'stormAnchor', 'stormVane'];
+Object.entries(STORM_CELLS).forEach(([key, [x, y, width, height]]) => {
+    const asset = { path: 'assets/levels/terrain/junk-storm.png',
+        sourceKey: 'stormJunkSource', hasAlpha: true, atlas: true,
+        crop: { x, y, width, height } };
+    SPRITES[key] = asset;
+    const solidIndex = STORM_SOLIDS.indexOf(key);
+    if (solidIndex < 0) return;
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = STORM_SOLIDS[(solidIndex + variant - 1) % STORM_SOLIDS.length];
+        const [px, py, pw, ph] = STORM_CELLS[pick];
+        SPRITES[key + '-' + variant] = Object.assign({}, asset, {
+            crop: { x: px, y: py, width: pw, height: ph }
+        });
+    }
+});
+// Glass Dunes (L11) terrain cells. All six are dense solids; the helm doubles
+// as drifting decor. Source sheets live under art-candidates/glass-dunes.
+const DUNE_CELLS = {
+    duneWall: [8, 8, 889, 365], duneTooth: [8, 373, 214, 406],
+    duneSlab: [222, 373, 214, 408], duneFin: [436, 373, 214, 406],
+    duneHelm: [650, 373, 224, 406], duneTube: [8, 779, 164, 406]
+};
+const DUNE_SOLIDS = ['duneWall', 'duneTooth', 'duneSlab', 'duneFin', 'duneHelm', 'duneTube'];
+Object.entries(DUNE_CELLS).forEach(([key, [x, y, width, height]]) => {
+    const asset = { path: 'assets/levels/terrain/junk-dune.png',
+        sourceKey: 'duneJunkSource', hasAlpha: true, atlas: true,
+        crop: { x, y, width, height } };
+    SPRITES[key] = asset;
+    const solidIndex = DUNE_SOLIDS.indexOf(key);
+    if (solidIndex < 0) return;
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = DUNE_SOLIDS[(solidIndex + variant - 1) % DUNE_SOLIDS.length];
+        const [px, py, pw, ph] = DUNE_CELLS[pick];
+        SPRITES[key + '-' + variant] = Object.assign({}, asset, {
+            crop: { x: px, y: py, width: pw, height: ph }
         });
     }
 });

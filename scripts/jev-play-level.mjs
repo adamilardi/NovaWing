@@ -13,6 +13,41 @@ import { defaultLaunchOptions } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 import { endpointError, jumpControlledSegment, synchronizeControlledLoop } from './rl/controlled-play.mjs';
+import { OBS_VERSION, OBS_SIZE, ACTION_SIZE, OBS_LAYOUT, encodeObservation, toCanonicalAction } from './rl/obs-encode.mjs';
+import { forwardPolicy } from './rl/policy-infer.mjs';
+import { progNorm, stepReward, applyTerminalReward } from './rl/rewards.mjs';
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const DEMO_DIR = path.join(ROOT, 'rl', 'demos');
+// JEV_RECORD_DEMOS=1 persists BC-ready transitions (obs v4) alongside the audit log,
+// so JEV sessions distill directly into rl/weights/bc-policy.json via npm run rl:train.
+// Transitions also carry behavior likelihoods under the current bc-policy, pinned by
+// hash into rl/demos/policy-<sha>.json, so the same files feed PPO via
+// npm run rl:train:rl -- --include-all.
+const RECORD_DEMOS = process.env.JEV_RECORD_DEMOS === '1';
+const BEHAVIOR_POLICY_PATH = path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
+
+/**
+ * Log-likelihood of a taken action under a behavior policy, mirroring the
+ * browser sampler (Gaussian move + Bernoulli buttons) and model.log_prob_actions.
+ */
+function behaviorLogProb(policy, obs, action) {
+    const y = forwardPolicy(policy, obs);
+    const stds = policy.moveLogStd || [Math.log(0.22), Math.log(0.22)];
+    let logp = 0;
+    for (let i = 0; i < 2; i++) {
+        const ls = Math.min(0.5, Math.max(-4, stds[i]));
+        const std = Math.exp(ls);
+        const d = (action[i] - y[i]) / std;
+        logp += -0.5 * (d * d + 2 * ls + Math.log(2 * Math.PI));
+    }
+    for (let j = 2; j < 4; j++) {
+        const p = Math.min(1 - 1e-6, Math.max(1e-6, y[j]));
+        const t = action[j] >= 0.5 ? 1 : 0;
+        logp += Math.log(t ? p : 1 - p);
+    }
+    return logp;
+}
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const LEVEL = Number(process.env.LEVEL || 4);
@@ -129,6 +164,28 @@ async function main() {
         await jumpControlledSegment(page, 'finalBoss');
     }
     console.log('booted', JSON.stringify(boot));
+    // Pin the behavior policy for PPO-grade transitions. BC-only if absent/mismatched.
+    let behaviorPolicy = null;
+    let behaviorPolicyId = null;
+    if (RECORD_DEMOS) {
+        try {
+            const bytes = fs.readFileSync(BEHAVIOR_POLICY_PATH);
+            const candidate = JSON.parse(bytes.toString('utf8'));
+            if (candidate.obsSize === OBS_SIZE && candidate.version === OBS_VERSION) {
+                const { createHash } = await import('node:crypto');
+                behaviorPolicyId = createHash('sha256').update(bytes).digest('hex');
+                behaviorPolicy = candidate;
+                fs.mkdirSync(DEMO_DIR, { recursive: true });
+                const pinned = path.join(DEMO_DIR, `policy-${behaviorPolicyId}.json`);
+                if (!fs.existsSync(pinned)) fs.writeFileSync(pinned, bytes);
+                console.log(`behavior policy pinned: policy-${behaviorPolicyId.slice(0, 12)}…`);
+            } else {
+                console.log('behavior policy contract mismatch — recording BC-only transitions');
+            }
+        } catch {
+            console.log('no behavior policy — recording BC-only transitions');
+        }
+    }
     if (boot.level !== LEVEL) throw new Error('Requested level did not start');
     if (boot.lives !== 3) throw new Error('JEV must start with ordinary player lives');
     fs.writeFileSync(path.join(OUT, 'observations.jsonl'), '');
@@ -138,6 +195,11 @@ async function main() {
     const usage = { input_tokens: 0, output_tokens: 0 };
     let jevDecisions = 0;
     let continuesUsed = 0;
+    // BC distillation buffers (JEV_RECORD_DEMOS=1 only).
+    const transitions = [];
+    let pendingObs = null;
+    let pendingSnap = null;
+    let episodeReturn = 0;
     const started = Date.now();
     let lastLog = '';
     let lastSegment = null;
@@ -208,11 +270,25 @@ async function main() {
                 continuesUsed += 1;
                 await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
                 console.log('accepted continue', continuesUsed);
+                pendingObs = null;
+                pendingSnap = null;
                 continue;
             }
             if (flags.transitioning) {
                 await stepGame(200);
+                pendingObs = null;
+                pendingSnap = null;
                 continue;
+            }
+
+            if (RECORD_DEMOS && observation.snapshot && observation.snapshot.ready && observation.snapshot.player) {
+                try {
+                    pendingObs = Array.from(encodeObservation(observation.snapshot));
+                    pendingSnap = observation.snapshot;
+                } catch {
+                    pendingObs = null;
+                    pendingSnap = null;
+                }
             }
 
             let decision;
@@ -256,6 +332,35 @@ async function main() {
                 model: decision.model,
                 confidence: decision.confidence
             });
+            if (RECORD_DEMOS && pendingObs && pendingSnap && outcome.snapshot && outcome.snapshot.player) {
+                try {
+                    const stick = STICKS[decision.stick] || { x: 0, y: 0 };
+                    const action = Array.from(toCanonicalAction(
+                        { x: stick.x, y: stick.y, fire: true, boost: Boolean(decision.boost) },
+                        pendingSnap));
+                    const nextObs = Array.from(encodeObservation(outcome.snapshot));
+                    const reward = stepReward(pendingSnap, outcome.snapshot);
+                    episodeReturn += reward;
+                    const transition = { obs: pendingObs, action, reward, nextObs,
+                        terminated: false, durationMs: Math.max(16, Math.round(actualDurationMs || decision.durationMs)),
+                        meta: { t: pendingSnap.time, elapsedMs: outcome.elapsedMs, level: observation.level,
+                            phase: observation.phase, segment: observation.segment,
+                            scrollMode: pendingSnap.scrollMode, combatOrientation: pendingSnap.combatOrientation,
+                            score: outcome.score, lives: outcome.lives, progress: progNorm(outcome.snapshot),
+                            levelProgressMs: outcome.snapshot.levelProgressMs,
+                            levelDurationMs: outcome.snapshot.levelDurationMs,
+                            tacticalAssist: false, expert: 'jev' } };
+                    if (behaviorPolicy) {
+                        transition.behaviorAction = action.slice();
+                        transition.behaviorLogProb = behaviorLogProb(behaviorPolicy, pendingObs, action);
+                    }
+                    transitions.push(transition);
+                } catch {
+                    // Unencodable step: audit log keeps the decision, demos skip it.
+                }
+                pendingObs = null;
+                pendingSnap = null;
+            }
             if (actions.length % 20 === 1) {
                 console.log(
                     `decision ${actions.length} sim=${Math.round((elapsed || 0) / 1000)}s ${decision.source} ${decision.stick}` +
@@ -307,6 +412,42 @@ async function main() {
             errorSamples: jevErrors.slice(0, 5)
         };
         fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
+        let demoFile = null;
+        if (RECORD_DEMOS && transitions.length) {
+            const dead = Boolean(finalSnap && finalSnap.flags.ended && !finalSnap.flags.awaitingNext && !finalSnap.flags.continuePending);
+            if (transitions.length) {
+                transitions[transitions.length - 1].terminated = Boolean(beaten || dead);
+                if (!beaten && !dead) transitions[transitions.length - 1].truncated = true;
+            }
+            episodeReturn = applyTerminalReward(transitions, episodeReturn, beaten ? 'win' : (dead ? 'death' : 'timeout'));
+            const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
+            const uniq = Math.random().toString(36).slice(2, 8);
+            const tag = [beaten ? 'win' : null, 'jev', `L${LEVEL}`].filter(Boolean).join('-');
+            demoFile = path.join(DEMO_DIR, `demo-${stamp}-w00000-${uniq}-ep01-${tag}.jsonl`);
+            fs.mkdirSync(DEMO_DIR, { recursive: true });
+            const header = {
+                type: 'header',
+                transitionVersion: 1,
+                policyId: behaviorPolicyId,
+                behaviorPolicy: behaviorPolicyId ? `policy-${behaviorPolicyId}.json` : null,
+                terminal: Boolean(beaten || dead),
+                simulatedMs: Math.round(finalSnap ? (finalSnap.elapsedMs || 0) : 0),
+                continuesUsed, difficultyMode: 'normal', ordinaryCombatRules: true,
+                playtestBot: false, timeScale: 1, unlimitedContinues: true,
+                obsVersion: OBS_VERSION, obsSize: OBS_SIZE, actionSize: ACTION_SIZE,
+                layout: OBS_LAYOUT, canonicalAxes: true, episode: 1, won: beaten,
+                bossPractice: false, maxLevel: finalSnap ? finalSnap.level : LEVEL,
+                peakScore: finalSnap ? finalSnap.score : 0, steps: transitions.length,
+                elapsedSec: finalSnap ? Math.round((finalSnap.elapsedMs || 0) / 1000) : 0,
+                elapsedMs: finalSnap ? Math.round(finalSnap.elapsedMs || 0) : 0,
+                episodeReturn, level: LEVEL,
+                tacticalAssist: false, expert: 'jev', explore: false, workers: 1, workerId: 0,
+                adapterVersion: 2
+            };
+            fs.writeFileSync(demoFile,
+                JSON.stringify(header) + '\n' +
+                transitions.map((t) => JSON.stringify({ type: 'step', ...t })).join('\n') + '\n');
+        }
         console.log(JSON.stringify({
             beaten: report.beaten,
             continuesUsed,
@@ -314,6 +455,8 @@ async function main() {
             jevErrors: jevErrors.length,
             pageErrors: pageErrors.length,
             wallSec: Math.round(report.wallMs / 1000),
+            demoFile: demoFile ? path.basename(demoFile) : null,
+            demoSteps: transitions.length,
             final: report.final,
             flags: report.flags
         }));

@@ -20,6 +20,11 @@ export async function onRequest(context) {
         });
     }
 
+    const db = env ? env.DB : null;
+    if (!db) {
+        return jsonResponse(request, { error: 'Leaderboard unavailable' }, 503);
+    }
+
     let payload;
     try {
         payload = await readJson(request);
@@ -27,8 +32,9 @@ export async function onRequest(context) {
         return jsonResponse(request, { error: err.message || 'Invalid request' }, err.statusCode || 400);
     }
 
+    try {
     if (request.method === 'PATCH') {
-        const completion = await completeRun(env.DB, payload);
+        const completion = await completeRun(db, payload);
         if (!completion.ok) {
             return jsonResponse(request, { error: completion.error }, 400);
         }
@@ -49,13 +55,16 @@ export async function onRequest(context) {
     const clientKey = await getClientKey(request);
     const version = sanitizeGameVersion(payload.version);
     const scope = sanitizeLeaderboardScope(payload.scope);
+    // Pre-check before writing: avoids D1 write amplification from bursts.
+    const preLimit = await checkRunRateLimit(db, clientKey);
+    if (!preLimit.ok) {
+        return jsonResponse(request, { error: 'Too many run requests' }, 429);
+    }
     const runId = crypto.randomUUID();
     const now = Date.now();
     const expiresAt = now + runTokenTtlMs(scope);
 
-    // Insert first, then verify the client is within the window. Concurrent
-    // callers that slip past a pre-check count are pruned back under the limit.
-    await env.DB.prepare(`
+    await db.prepare(`
         INSERT INTO leaderboard_runs (id, game_version, scope, client_key, created_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
     `).bind(
@@ -67,16 +76,16 @@ export async function onRequest(context) {
         new Date(expiresAt).toISOString()
     ).run();
 
-    const rateLimit = await checkRunRateLimit(env.DB, clientKey);
+    const rateLimit = await checkRunRateLimit(db, clientKey);
     if (!rateLimit.ok) {
-        await env.DB.prepare(`
+        await db.prepare(`
             DELETE FROM leaderboard_runs
             WHERE id = ? AND used_at IS NULL AND completed_at IS NULL
         `).bind(runId).run();
         return jsonResponse(request, { error: 'Too many run requests' }, 429);
     }
 
-    await pruneExpiredRuns(env.DB, now);
+    await pruneExpiredRuns(db, now);
 
     return jsonResponse(request, {
         runId,
@@ -85,6 +94,10 @@ export async function onRequest(context) {
         startedAt: new Date(now).toISOString(),
         expiresAt: new Date(expiresAt).toISOString()
     }, 201);
+    } catch (err) {
+        console.error('run endpoint error', err);
+        return jsonResponse(request, { error: 'Server error' }, 500);
+    }
 }
 
 async function readJson(request) {
@@ -270,14 +283,13 @@ async function checkRunRateLimit(db, clientKey) {
 }
 
 async function getClientKey(request) {
-    // Prefer the Cloudflare edge IP; never trust a spoofable X-Forwarded-For alone.
-    const forwardedFor = (request.headers.get('CF-Connecting-IP') ||
-        request.headers.get('X-Forwarded-For') ||
-        'unknown')
+    // Key on edge IP only. Including User-Agent lets an attacker mint
+    // unlimited buckets by rotating UA; X-Forwarded-For is spoofable
+    // outside Cloudflare so it is not trusted as a fallback.
+    const ip = (request.headers.get('CF-Connecting-IP') || 'unknown')
         .split(',')[0]
-        .trim();
-    const userAgent = request.headers.get('User-Agent') || '';
-    const bytes = new TextEncoder().encode(forwardedFor + '\n' + userAgent);
+        .trim() || 'unknown';
+    const bytes = new TextEncoder().encode(ip);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
 
     return Array.from(new Uint8Array(digest))
@@ -300,7 +312,8 @@ function jsonResponse(request, payload, status = 200) {
         headers: {
             ...corsHeaders(request),
             'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'no-store'
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff'
         }
     });
 }

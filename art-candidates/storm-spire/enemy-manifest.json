@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "brief_id": "storm-spire",
+  "kind": "enemy",
+  "brief_path": "enemy-brief.md",
+  "candidates": [
+    {
+      "id": "enemy-storm-petrel-a",
+      "title": "Shearwater striker",
+      "status": "generated",
+      "summary": "Top-down indigo dart facing down, swept wings with brass trim, and one amber spark-coil ahead of the nose.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-storm-petrel-a/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-storm-petrel-a/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "top-down",
+        "facing": "down",
+        "palette": ["indigo", "brass", "amber"],
+        "target_display": "60 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-storm-petrel-a/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "The spark-coil sits just ahead of the metal nose and is joined by short arcs, so this neutral frame includes a small muzzle effect.",
+        "A few tail-fin pixels keep a slight olive cast from the chroma edge. They do not read at about 60 px of body width.",
+        "Silhouette was checked on a flattened preview at about 60 px of body width, on white and near-black, not in the game."
+      ]
+    },
+    {
+      "id": "enemy-storm-jelly-b",
+      "title": "Galvanic jelly floater",
+      "status": "generated",
+      "summary": "Top-down indigo bell facing down, brass rim, amber core, and seven tentacles, with the shorter center tentacle unlit.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-storm-jelly-b/default.png",
+          "width_px": 1024,
+          "height_px": 1024,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-storm-jelly-b/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "top-down",
+        "facing": "down",
+        "palette": ["indigo", "brass", "amber"],
+        "target_display": "60 pixels wide",
+        "anchor": {"space": "normalized", "origin": "top-left", "x": 0.5, "y": 0.5, "estimated": false}
+      },
+      "animation_handoff_path": "enemy-storm-jelly-b/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Seven tentacles were rendered. The center tentacle is shorter and has no tip spark.",
+        "The bell is a flat overhead disk. Dome thickness and the underside are unknown.",
+        "Silhouette was checked on a flattened preview at about 60 px of body width, on white and near-black, not in the game."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "candidateId": "enemy-storm-petrel-a",
+  "canonicalSource": "../default.png",
+  "camera": "top-down orthographic",
+  "facing": "down",
+  "coordinateSpace": "pixels, origin top-left, x right, y down",
+  "logicalCanvas": {
+    "width": 1024,
+    "height": 1024
+  },
+  "rootPivot": {
+    "x": 512,
+    "y": 512,
+    "normalized": [
+      0.5,
+      0.5
+    ]
+  },
+  "bodyBoundsCanonical": {
+    "x": 140,
+    "y": 108,
+    "maxX": 884,
+    "maxY": 914,
+    "width": 745,
+    "height": 807,
+    "opaqueCount": 194030
+  },
+  "display": {
+    "bodyWidthPx": 60,
+    "canvasWidthPx": 82,
+    "note": "Vertical roster body width. Full logical canvas is about 82 px wide at that size."
+  },
+  "packed": false,
+  "trim": null,
+  "previews": [
+    "playback-contact-sheet.png",
+    "playback-idle.gif",
+    "playback-firing.gif"
+  ],
+  "production": {
+    "method": "image_edit from the canonical PNG on every generated pose, then registered back onto the 1024 canvas",
+    "reference": "../default.png",
+    "tool": "image_edit",
+    "aspectRatio": "1:1",
+    "idleNote": "Raw edits did not keep a connected wing. Upward poses detached the wingtips or lifted the tail. The downward pose stayed one piece but thickened the outer wing and dropped the tips by about 150 px. Shipped idle frames keep the canonical drawing. The outer wings are a smooth vertical bend of that drawing, amplitude taken from the downward edit and reduced so the tips travel 72 px. The rest frame is the canonical image so the hull, coil, and panel lines do not crawl.",
+    "firingNote": "Coil and arc pixels are the image_edit frames, flood-filled off the black background and composited onto the canonical hull. The hull, wings, and tail are canonical pixels. The generator returned JPEG, so the coil edges carry compression.",
+    "rejectedEdits": [
+      "Forward wing fold that replaced the swept wing with a narrower inner wing.",
+      "Span widened outward and downward.",
+      "Tailplanes lifted and wings torn on two upward attempts.",
+      "Upward attempt that detached both brass wingtips.",
+      "Downward attempt kept one wing but thickened the tips. Used only as the drift measurement.",
+      "Rest redraw matched the hull within about 2 levels of mean absolute error and was not used, so the rest frame stays pixel-identical to the canonical PNG.",
+      "One coil edit turned the ring into a vertical stack and was discarded.",
+      "One recovery edit dropped the coil to a dull brown and was discarded."
+    ]
+  },
+  "states": [
+    {
+      "id": "idle",
+      "subject": "enemy",
+      "candidateId": "enemy-storm-petrel-a",
+      "method": "referenced-keyframes",
+      "loop": true,
+      "loopPolicy": "ping-pong",
+      "playbackOrder": [
+        "idle-00.png",
+        "idle-01.png",
+        "idle-02.png",
+        "idle-01.png"
+      ],
+      "rootPivot": {
+        "x": 512,
+        "y": 512
+      },
+      "frames": [
+        {
+          "file": "idle-00.png",
+          "phase": "aft",
+          "durationMs": 220,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 914,
+            "width": 745,
+            "height": 807,
+            "opaqueCount": 193771
+          },
+          "wingTips": {
+            "leftX": 140,
+            "leftY": 246,
+            "rightX": 884,
+            "rightY": 236
+          }
+        },
+        {
+          "file": "idle-01.png",
+          "phase": "rest",
+          "durationMs": 220,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 914,
+            "width": 745,
+            "height": 807,
+            "opaqueCount": 194030
+          },
+          "wingTips": {
+            "leftX": 140,
+            "leftY": 318,
+            "rightX": 884,
+            "rightY": 308
+          },
+          "source": "canonical pixels"
+        },
+        {
+          "file": "idle-02.png",
+          "phase": "forward",
+          "durationMs": 220,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 914,
+            "width": 745,
+            "height": 807,
+            "opaqueCount": 194375
+          },
+          "wingTips": {
+            "leftX": 140,
+            "leftY": 390,
+            "rightX": 884,
+            "rightY": 380
+          }
+        }
+      ],
+      "attachments": {
+        "muzzle": {
+          "x": 511,
+          "y": 863
+        }
+      },
+      "events": [],
+      "remainingWork": "Runtime integration is not done. Banking stays code motion of the rigid root."
+    },
+    {
+      "id": "firing",
+      "subject": "enemy",
+      "candidateId": "enemy-storm-petrel-a",
+      "method": "referenced-keyframes",
+      "loop": false,
+      "loopPolicy": "once",
+      "returnsTo": "idle",
+      "rootPivot": {
+        "x": 512,
+        "y": 512
+      },
+      "frames": [
+        {
+          "file": "firing-00.png",
+          "phase": "anticipation",
+          "durationMs": 100,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 924,
+            "width": 745,
+            "height": 817,
+            "opaqueCount": 199076
+          },
+          "coil": {
+            "count": 17332,
+            "centroid": [
+              511.7,
+              840.1
+            ],
+            "maxY": 922,
+            "minY": 748
+          },
+          "edit": "canonical reference; brighter halo and busier arcs on the single coil"
+        },
+        {
+          "file": "firing-01.png",
+          "phase": "active",
+          "durationMs": 140,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 966,
+            "width": 745,
+            "height": 859,
+            "opaqueCount": 236069
+          },
+          "coil": {
+            "count": 49558,
+            "centroid": [
+              513.1,
+              832.5
+            ],
+            "maxY": 964,
+            "minY": 700
+          },
+          "edit": "canonical reference; the one coil enlarges and the arcs run farther, still attached to that coil"
+        },
+        {
+          "file": "firing-02.png",
+          "phase": "recovery",
+          "durationMs": 180,
+          "bounds": {
+            "x": 140,
+            "y": 108,
+            "maxX": 884,
+            "maxY": 935,
+            "width": 745,
+            "height": 828,
+            "opaqueCount": 200413
+          },
+          "coil": {
+            "count": 11239,
+            "centroid": [
+              513.0,
+              844.5
+            ],
+            "maxY": 917,
+            "minY": 722
+          },
+          "edit": "canonical reference; coil smaller and dimmer, arcs shortened, still amber"
+        }
+      ],
+      "attachments": {
+        "muzzle": {
+          "x": 511,
+          "y": 863,
+          "note": "Nominal shot origin on the canonical coil. Glow centroids move a few pixels with the discharge; the hull nose does not."
+        }
+      },
+      "events": [
+        {
+          "name": "projectileRelease",
+          "timeMs": 100,
+          "frame": "firing-01.png",
+          "note": "Intended sync at the start of the active frame. Does not change gameplay timing."
+        }
+      ],
+      "remainingWork": "Runtime integration is not done. A separate muzzle flash and projectile should stay independent of these frames. The active coil is large; a tighter pass can replace firing-01.png without moving the root."
+    }
+  ]
+}

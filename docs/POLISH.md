@@ -11,8 +11,9 @@ Engineering after ship lives in [IMPROVEMENTS.md](../IMPROVEMENTS.md).
 
 Do not re-spend effort here.
 
-- Campaign L1–L3: OPEN SPACE, THE CANYON, SINGULARITY RUN (intro escape →
-  REALITY SHEAR → vertical gauntlet → black-hole final).
+- Core campaign L1–L3: OPEN SPACE, THE CANYON, SINGULARITY RUN (intro escape →
+  REALITY SHEAR → vertical gauntlet → black-hole final), plus bonus L4–L8
+  (L4–L7 arcs + L8 PRISM BATTERY, `bonus=true`, ranked on their own boards).
 - Title with Space Cadet / Hotshot / Supernova, local two-player, Launch.
   Gameplay and run timing start at launch; retry and later levels skip the
   title.

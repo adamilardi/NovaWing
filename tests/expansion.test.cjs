@@ -9,8 +9,8 @@ const Rules = require('../shared/run-rules.cjs');
 test('expansion has four complete reachable encounter arcs and durable selected art', () => {
     const levels = Levels.getEffectiveLevelDefs();
     Flow.validate(levels, { assets: new Set(Object.keys(Assets.sprites)), tracks: new Set(Object.keys(Assets.tracks)) });
-    assert.deepEqual(levels.slice(3).map(l => l.name), ['ORBITAL FOUNDRY', 'AURORA PASSAGE', 'VOID CATHEDRAL', 'ASHEN GRAVEYARD', 'PRISM BATTERY']);
-    assert.equal(new Set(levels.slice(3).map(l => l.art.background)).size, 5);
+    assert.deepEqual(levels.slice(3).map(l => l.name), ['ORBITAL FOUNDRY', 'AURORA PASSAGE', 'VOID CATHEDRAL', 'ASHEN GRAVEYARD', 'PRISM BATTERY', 'ABYSSAL RELAY', 'STORM SPIRE', 'GLASS DUNES']);
+    assert.equal(new Set(levels.slice(3).map(l => l.art.background)).size, 8);
     for (const level of levels.slice(3)) {
         const texture = Assets.sprites[level.art.background];
         assert.ok(fs.existsSync(texture.path));

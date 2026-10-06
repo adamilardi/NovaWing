@@ -12,7 +12,8 @@ Status: `done` · `todo` · `later`
 
 ## Shipped
 
-- Campaign L1–L3 (OPEN SPACE, THE CANYON, SINGULARITY RUN)
+- Core campaign L1–L3 (OPEN SPACE, THE CANYON, SINGULARITY RUN) plus bonus
+  L4–L8 (L4–L7 arcs + L8 PRISM BATTERY, all `bonus=true`; ranked separately)
 - Title, HUD, pause, continues, first-run hint, results + DOM pilot name,
   share, local co-op, mobile touch dock
 - Difficulty: Space Cadet / Hotshot / Supernova (storage IDs `easy` /

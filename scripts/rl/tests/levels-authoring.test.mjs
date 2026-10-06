@@ -11,10 +11,37 @@ const Levels = require('../../../levels.js');
 
 describe('level authoring surface', () => {
     it('ships the campaign plus bonus grounds and exposes live catalog length', () => {
-        assert.equal(Levels.getTotalLevels(), 8);
+        assert.equal(Levels.getTotalLevels(), 11);
         assert.equal(Levels.getLevelDef(1).name, 'OPEN SPACE');
         assert.equal(Levels.getLevelDef(2).hasPathWalls, true);
         assert.ok(Array.isArray(Levels.getLevelDef(3).segments));
+    });
+
+    it('ships level 9 as a bonus stage with its own boss encounter', () => {
+        const def = Levels.getLevelDef(9);
+        assert.equal(def.name, 'ABYSSAL RELAY');
+        assert.equal(def.bonus, true);
+        assert.equal(def.bossEncounters.final.behavior, 'trenchCustodian');
+        assert.equal(def.segments[def.segments.length - 1].id, 'finalBoss');
+    });
+
+    it('ships level 10 as a vertical bonus stage with its own boss encounter', () => {
+        const def = Levels.getLevelDef(10);
+        assert.equal(def.name, 'STORM SPIRE');
+        assert.equal(def.bonus, true);
+        assert.equal(def.scrollMode, 'vertical');
+        assert.equal(def.bossEncounters.final.behavior, 'tempestCondenser');
+        assert.equal(def.segments[def.segments.length - 1].id, 'finalBoss');
+    });
+
+    it('ships level 11 as a mixed-orientation bonus stage with its own boss encounter', () => {
+        const def = Levels.getLevelDef(11);
+        assert.equal(def.name, 'GLASS DUNES');
+        assert.equal(def.bonus, true);
+        assert.equal(def.bossEncounters.final.behavior, 'duneHerald');
+        const modes = new Set(def.segments.map(segment => segment.scrollMode));
+        assert.ok(modes.has('horizontal') && modes.has('vertical'));
+        assert.equal(def.segments[def.segments.length - 1].id, 'finalBoss');
     });
 
     it('fills authoring defaults so a new level only needs id + the fields that matter', () => {
@@ -142,7 +169,7 @@ describe('level authoring surface', () => {
 
     it('campaign rewards exclude the bonus testing stages', () => {
         assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => !level.bonus).map(level => level.id), [1, 2, 3]);
-        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => level.bonus).map(level => level.id), [4, 5, 6, 7, 8]);
+        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => level.bonus).map(level => level.id), [4, 5, 6, 7, 8, 9, 10, 11]);
         assert.equal(Levels.getCampaignBossScore(), 1500 + 1500 + 2500);
         assert.equal(Levels.getCampaignBossKills(), 3);
         assert.equal(Levels.getLevelBossScore(3), 2500);

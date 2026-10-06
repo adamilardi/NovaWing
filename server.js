@@ -29,7 +29,8 @@ function isPublicRequest(requestPath) {
 function sendJson(res, statusCode, payload) {
     res.writeHead(statusCode, {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store'
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
     });
     res.end(JSON.stringify(payload));
 }
@@ -337,11 +338,8 @@ function markRunTokenUsed(runId) {
     if (!run || !run.completedAt) {
         return { ok: false, error: 'Invalid or expired run token' };
     }
-    if (!run.completedAt && Date.now() > run.expiresAt) {
-        activeRuns.delete(runId);
-        return { ok: false, error: 'Run token expired' };
-    }
-
+    // Completed tokens stay usable for the name-submit window; expiry is
+    // enforced by pruneExpiredRuns, not here.
     activeRuns.delete(runId);
     return { ok: true };
 }
@@ -436,12 +434,13 @@ function pruneExpiredRuns() {
     const now = Date.now();
     activeRuns.forEach((run, runId) => {
         // Keep completed-but-unused tokens so the player can still POST a name
-        // after the original start TTL. Drop them one TTL after completion.
+        // after completion. Use the scope's dynamic TTL so long campaigns are
+        // not truncated by the 15-minute default.
         if (!run.completedAt && now > run.expiresAt) {
             activeRuns.delete(runId);
             return;
         }
-        if (run.completedAt && now > run.completedAt + RUN_TOKEN_TTL_MS) {
+        if (run.completedAt && now > run.completedAt + runTokenTtlMs(run.scope)) {
             activeRuns.delete(runId);
         }
     });
@@ -519,7 +518,9 @@ const server = http.createServer((req, res) => {
     if (requestPath === '/api/run') {
         handleRunRequest(req, res).catch(err => {
             if (!res.headersSent) {
-                sendJson(res, err.statusCode || 500, { error: err.message || 'Server error' });
+                const status = err.statusCode || 500;
+                // Avoid leaking filesystem internals on unexpected 500s.
+                sendJson(res, status, { error: status === 500 ? 'Server error' : (err.message || 'Server error') });
             }
         });
         return;
@@ -528,7 +529,8 @@ const server = http.createServer((req, res) => {
     if (requestPath === '/api/leaderboard') {
         handleLeaderboardRequest(req, res).catch(err => {
             if (!res.headersSent) {
-                sendJson(res, err.statusCode || 500, { error: err.message || 'Server error' });
+                const status = err.statusCode || 500;
+                sendJson(res, status, { error: status === 500 ? 'Server error' : (err.message || 'Server error') });
             }
         });
         return;

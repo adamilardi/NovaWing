@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "brief_id": "abyssal-relay",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "level-abyssal-relay-a",
+      "title": "Abyssal relay",
+      "status": "generated",
+      "summary": "Dark teal trench, quiet center, bioluminescent green and magenta on vent towers, a chimney block, and five separated obstacle modules.",
+      "assets": [
+        {
+          "role": "background-far",
+          "path": "abyssal-background-1448.png",
+          "width_px": 1448,
+          "height_px": 1086,
+          "alpha": false,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {"method": "code", "kind": "parallax", "animated_frames": false}
+        },
+        {
+          "role": "scenery-mid",
+          "path": "abyssal-scenery.png",
+          "width_px": 1280,
+          "height_px": 720,
+          "alpha": true,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {"method": "code", "kind": "parallax-nearer", "animated_frames": false}
+        },
+        {
+          "role": "wall-surface",
+          "path": "abyssal-wall.png",
+          "width_px": 488,
+          "height_px": 539,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "rect",
+            "body": "dense mound plus chimney",
+            "openings": "transparent margin around the body; upper-left steps are outside the rock"
+          },
+          "motion": {"method": "code", "kind": "scroll-with-terrain", "animated_frames": false}
+        },
+        {
+          "role": "obstacle-solid",
+          "path": "abyssal-obstacles.png",
+          "width_px": 1280,
+          "height_px": 720,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "separate-rects",
+            "body": "five dense modules",
+            "openings": "gaps between modules stay non-solid; the bent rib is an open arc"
+          },
+          "motion": {"method": "code", "kind": "scroll-with-terrain", "animated_frames": false},
+          "crops": [
+            {"name": "vent-shard", "x": 25, "y": 200, "width_px": 237, "height_px": 290},
+            {"name": "cable-coil", "x": 303, "y": 215, "width_px": 239, "height_px": 276},
+            {"name": "broken-dish", "x": 573, "y": 237, "width_px": 202, "height_px": 247},
+            {"name": "bent-rib", "x": 817, "y": 208, "width_px": 213, "height_px": 287},
+            {"name": "cracked-pod", "x": 1062, "y": 236, "width_px": 188, "height_px": 269}
+          ]
+        }
+      ],
+      "preview_paths": [
+        "previews/abyssal-background-800.jpg",
+        "previews/abyssal-scenery-checker.jpg",
+        "previews/abyssal-wall-checker.jpg",
+        "previews/abyssal-obstacles-checker.jpg"
+      ],
+      "prompt_path": "prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "scroll": "horizontal",
+        "palette": ["near-black teal", "bioluminescent green", "magenta"],
+        "tile_axes": [],
+        "layer_order": ["background-far", "scenery-mid", "wall-surface", "obstacle-solid"],
+        "target_display": "800x600 viewport. Keep the center darker than bullets."
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "unverified"
+      },
+      "limitations": [
+        "Scenery cliffs run off the left, right, and bottom edges. The open center is transparent.",
+        "Wall is one placed module, not a seamless tile. A single rectangle includes empty space beside the upper-left steps. Chimney smoke is decorative.",
+        "The bent rib is an arc. One rectangle across it would cover the opening. Dish and pod cracks are surface holes.",
+        "Far painting is softer than the flatter wall and obstacle sprites. A few warm lamps remain on the right scenery tower.",
+        "background-far was replaced by abyssal-background-1448.png (1448x1086, opaque). abyssal-background.png (1280x720) is unchanged. The new file is the same trench reframed to 4:3 from that painting, then scaled up from the generator JPEG (1152x864). The center stays quiet and the edge lamps remain, with a darker water band added above and below. It is a repaint, so lamp and particle positions drift slightly and the whole frame is a little darker.",
+        "Not placed in a level and not checked in the game viewport."
+      ]
+    }
+  ]
+}

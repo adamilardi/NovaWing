@@ -161,6 +161,7 @@
         let musicStep = 0;
         let musicStarted = false;
         let muted = false;
+        let unlocked = false;
         let styleId = resolveStyleId(initialStyle);
 
         function style() {
@@ -202,10 +203,15 @@
             }
 
             if (context.state === 'suspended') {
-                context.resume();
+                context.resume().catch(() => {});
             }
 
             return context;
+        }
+
+        function unlock() {
+            unlocked = true;
+            return getContext();
         }
 
         function rebuildMixChain() {
@@ -541,7 +547,7 @@
             source.stop(now + duration + 0.02);
         }
 
-        function chord(freqs, duration, volume, type, pan) {
+        function chord(freqs, duration, volume, type, pan, when) {
             freqs.forEach((freq, index) => {
                 tone({
                     frequency: freq,
@@ -550,7 +556,8 @@
                     type: type || 'triangle',
                     volume: volume * (1 - index * 0.12),
                     detune: index * 4,
-                    pan: pan
+                    pan: pan,
+                    when: when == null ? null : when
                 });
             });
         }
@@ -666,9 +673,14 @@
         }
 
         const api = {
-            unlock: getContext,
+            unlock: unlock,
             setMuted: function (nextMuted) {
                 muted = Boolean(nextMuted);
+                if (!unlocked || muted) {
+                    // Do not create an AudioContext just to mute; apply on unlock.
+                    if (context) applyMuteGain();
+                    return;
+                }
                 getContext();
                 applyMuteGain();
             },
@@ -725,6 +737,9 @@
                 }
             },
             setEngine: function (intensity, x) {
+                // No-op until a user gesture unlocks audio; avoids creating a
+                // suspended AudioContext on the first update tick.
+                if (!unlocked) return;
                 const audio = getContext();
                 if (!audio || !engine) return;
                 const amount = clamp(intensity || 0, 0, 1);
@@ -900,15 +915,16 @@
                 noiseBurst({ duration: 0.42, volume: 0.16, filterFreq: 1100, endFilter: 45, pan: pan });
             },
             warning: function () {
+                const audio = getContext();
+                if (!audio) return;
+                if (muted) return;
                 if (styleId === 'arcade') {
                     chord([220, 277], 0.16, 0.045, 'square', 0);
-                    window.setTimeout(function () { chord([196, 247], 0.18, 0.05, 'square', 0); }, 140);
+                    chord([196, 247], 0.18, 0.05, 'square', 0, audio.currentTime + 0.14);
                     return;
                 }
                 tone({ frequency: 155, endFrequency: 138, duration: 0.22, type: 'triangle', volume: 0.05, filterFreq: 500, pan: 0 });
-                window.setTimeout(function () {
-                    tone({ frequency: 138, endFrequency: 116, duration: 0.26, type: 'triangle', volume: 0.055, filterFreq: 480, pan: 0 });
-                }, 180);
+                tone({ frequency: 138, endFrequency: 116, duration: 0.26, type: 'triangle', volume: 0.055, filterFreq: 480, pan: 0, when: audio.currentTime + 0.18 });
             },
             bossPhase: function (phase, x) {
                 const base = phase >= 3 ? 170 : 210;
@@ -966,8 +982,9 @@
         Object.keys(cooldowns).forEach(name => {
             const play = api[name];
             api[name] = function (...args) {
+                if (muted || !unlocked) return;
                 const audio = getContext();
-                if (!audio || muted) return;
+                if (!audio) return;
                 const last = lastEvents[name];
                 if (last != null && audio.currentTime - last < cooldowns[name]) return;
                 lastEvents[name] = audio.currentTime;

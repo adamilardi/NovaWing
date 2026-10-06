@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>enemy-dune-ripper-a animation preview</title>
+<style>
+  body { margin: 0; font: 16px/1.4 sans-serif; background: #1a1a1e; color: #eee; }
+  main { padding: 24px; max-width: 880px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { color: #bbb; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; margin: 16px 0 28px; }
+  figure { margin: 0; }
+  figcaption { margin-bottom: 6px; color: #e6c98a; }
+  .stage { width: 262px; height: 262px; image-rendering: auto; background: #111; }
+  .stage.light { background: #ece8e0; }
+  .stage.pixel { image-rendering: pixelated; width: 131px; height: 131px; }
+  button { margin-right: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>enemy-dune-ripper-a</h1>
+  <p>Idle is a 3-frame sail loop at 240 ms. Dash is a one-shot: anticipation 140 ms, slash 100 ms, recovery 180 ms. Canvas 1024, root (512, 512). Facing left.</p>
+  <div class="row">
+    <figure>
+      <figcaption id="idle-cap">idle</figcaption>
+      <canvas class="stage" id="idle-dark" width="262" height="262"></canvas>
+    </figure>
+    <figure>
+      <figcaption>idle on light</figcaption>
+      <canvas class="stage light" id="idle-light" width="262" height="262"></canvas>
+    </figure>
+    <figure>
+      <figcaption>idle at gameplay size</figcaption>
+      <canvas class="stage pixel" id="idle-pixel" width="131" height="131"></canvas>
+    </figure>
+  </div>
+  <div class="row">
+    <figure>
+      <figcaption id="dash-cap">dash</figcaption>
+      <canvas class="stage" id="dash-dark" width="262" height="262"></canvas>
+    </figure>
+    <figure>
+      <figcaption>dash on light</figcaption>
+      <canvas class="stage light" id="dash-light" width="262" height="262"></canvas>
+    </figure>
+    <figure>
+      <figcaption>dash at gameplay size</figcaption>
+      <canvas class="stage pixel" id="dash-pixel" width="131" height="131"></canvas>
+    </figure>
+  </div>
+  <button id="replay" type="button">Replay dash</button>
+</main>
+<script>
+const idle = ["idle_00.png", "idle_01.png", "idle_02.png"];
+const idleMs = [240, 240, 240];
+const dash = ["dash_00.png", "dash_01.png", "dash_02.png"];
+const dashMs = [140, 100, 180];
+const idleNames = ["ease", "billow", "rake back"];
+const dashNames = ["anticipation", "slash", "recovery"];
+
+function load(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+}
+
+function draw(canvas, image, light) {
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = canvas.width > 131;
+  ctx.fillStyle = light ? "#ece8e0" : "#111111";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+}
+
+(async () => {
+  const idleIm = await Promise.all(idle.map(load));
+  const dashIm = await Promise.all(dash.map(load));
+  const idleDark = document.getElementById("idle-dark");
+  const idleLight = document.getElementById("idle-light");
+  const idlePixel = document.getElementById("idle-pixel");
+  const dashDark = document.getElementById("dash-dark");
+  const dashLight = document.getElementById("dash-light");
+  const dashPixel = document.getElementById("dash-pixel");
+  const idleCap = document.getElementById("idle-cap");
+  const dashCap = document.getElementById("dash-cap");
+  let idleI = 0, dashI = 0, dashTimer = 0;
+
+  function showIdle() {
+    draw(idleDark, idleIm[idleI], false);
+    draw(idleLight, idleIm[idleI], true);
+    draw(idlePixel, idleIm[idleI], false);
+    idleCap.textContent = "idle " + idleI + " " + idleNames[idleI] + " · " + idleMs[idleI] + " ms";
+  }
+  function showDash() {
+    draw(dashDark, dashIm[dashI], false);
+    draw(dashLight, dashIm[dashI], true);
+    draw(dashPixel, dashIm[dashI], false);
+    dashCap.textContent = "dash " + dashI + " " + dashNames[dashI] + " · " + dashMs[dashI] + " ms";
+  }
+  function stepIdle() {
+    showIdle();
+    const wait = idleMs[idleI];
+    idleI = (idleI + 1) % idleIm.length;
+    setTimeout(stepIdle, wait);
+  }
+  function stepDash() {
+    showDash();
+    if (dashI >= dashIm.length - 1) return;
+    const wait = dashMs[dashI];
+    dashI += 1;
+    dashTimer = setTimeout(stepDash, wait);
+  }
+  document.getElementById("replay").onclick = () => {
+    clearTimeout(dashTimer);
+    dashI = 0;
+    stepDash();
+  };
+  stepIdle();
+  stepDash();
+})();
+</script>
+</body>
+</html>

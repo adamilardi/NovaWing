@@ -25,6 +25,8 @@ const HEADLESS = process.env.HEADLESS !== '0';
 const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 if (!Number.isFinite(DURATION_MS) || DURATION_MS < 16) throw new Error('DURATION_MS must be at least 16');
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
+const RECORD_VIDEO = process.env.RECORD_VIDEO === '1';
+const VIDEO_DIR = path.join(ROOT, 'rl', 'weights', 'video');
 const START_LEVEL = process.env.LEVEL ? Math.max(1, Number(process.env.LEVEL) || 1) : null;
 const EVAL_OUT = process.env.EVAL_OUT || path.join(ROOT, 'rl', 'weights', 'last-eval.json');
 // Boss practice: skip waves → boss (same contract as record-demos).
@@ -101,9 +103,11 @@ async function main() {
     );
 
     const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    if (RECORD_VIDEO) fs.mkdirSync(VIDEO_DIR, { recursive: true });
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
-        deviceScaleFactor: 1
+        deviceScaleFactor: 1,
+        recordVideo: RECORD_VIDEO ? { dir: VIDEO_DIR, size: { width: 960, height: 720 } } : undefined
     });
     const page = await context.newPage();
     await page.clock.install();
