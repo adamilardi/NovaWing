@@ -96,7 +96,8 @@ def build_ppo_buffer(
             raise ValueError('PPO requires recorded behavior likelihoods and latent actions')
         last_value = 0.0 if ep.terminal else float(rollout_values(model, ep.last_obs[None, :], device)[0])
         advantages, returns = compute_gae(
-            ep.rewards, values, gamma=gamma, lam=gae_lambda, last_value=last_value
+            ep.rewards, values, gamma=gamma, lam=gae_lambda, last_value=last_value,
+            dt_ms=getattr(ep, 'durations', None),
         )
         old_logp = ep.behavior_logp
         obs_parts.append(ep.obs)
@@ -206,6 +207,18 @@ def ppo_update(
     return {k: mean(v) for k, v in stats.items()}
 
 
+def resolve_ppo_checkpoints(out_arg, checkpoint_arg, default_checkpoint):
+    """Return (init_path, write_path) for the PPO checkpoint.
+
+    An explicitly passed init checkpoint (e.g. a BC .pt) is preserved:
+    PPO weights go next to the exported policy instead of clobbering it.
+    """
+    out_pt = str(Path(out_arg).with_suffix(".pt"))
+    if str(checkpoint_arg) != str(default_checkpoint) and str(checkpoint_arg) != out_pt:
+        return str(checkpoint_arg), out_pt
+    return str(checkpoint_arg), str(checkpoint_arg)
+
+
 def train(args: argparse.Namespace) -> Path:
     demo_dir = Path(args.demos)
     episodes, meta = load_rl_episodes(demo_dir, policy_only=not args.include_all)
@@ -236,7 +249,11 @@ def train(args: argparse.Namespace) -> Path:
     torch.manual_seed(args.seed)
     model = ActorCritic(OBS_SIZE, ACTION_SIZE, hidden).to(device)
 
-    ckpt = Path(args.checkpoint)
+    init_ckpt, write_ckpt = resolve_ppo_checkpoints(
+        args.out, args.checkpoint, DEFAULT_OUT.with_suffix(".pt"))
+    if write_ckpt != str(args.checkpoint):
+        print(f"NOTE: preserving init checkpoint; PPO weights go to {write_ckpt}")
+    ckpt = Path(init_ckpt)
     if ckpt.exists():
         try:
             msg = load_checkpoint_into_actor_critic(model, ckpt, device)
@@ -322,11 +339,11 @@ def train(args: argparse.Namespace) -> Path:
             "action_size": ACTION_SIZE,
             "obs_version": OBS_VERSION,
         },
-        Path(args.checkpoint),
+        Path(write_ckpt),
     )
     # Also keep a pure policy-only snapshot for BC warm-start clarity
     policy_pt = out.with_suffix(".pt")
-    if policy_pt.resolve() != Path(args.checkpoint).resolve():
+    if policy_pt.resolve() != Path(write_ckpt).resolve():
         torch.save(
             {
                 "kind": "bc",
@@ -340,7 +357,7 @@ def train(args: argparse.Namespace) -> Path:
         )
 
     print(f"Wrote policy → {out}")
-    print(f"Wrote checkpoint → {args.checkpoint}")
+    print(f"Wrote checkpoint → {write_ckpt}")
     return out
 
 

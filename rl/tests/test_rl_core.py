@@ -35,7 +35,7 @@ from model import (  # noqa: E402
     load_checkpoint_into_policy,
     log_prob_actions,
 )
-from train_rl import build_ppo_buffer
+from train_rl import build_ppo_buffer, resolve_ppo_checkpoints
 
 
 class TestBehaviorRollouts(unittest.TestCase):
@@ -89,6 +89,35 @@ process.stdin.on('end', () => {
                                     device=torch.device('cpu'))
         self.assertAlmostEqual(float(terminal['ret'][-1]), 1., places=5)
 
+    def test_loader_admits_likelihood_jev_episodes(self):
+        with tempfile.TemporaryDirectory() as td:
+            header = dict(type='header', obsVersion=OBS_VERSION, obsSize=OBS_SIZE,
+                          canonicalAxes=True, expert='jev', transitionVersion=1,
+                          policyId='shared', createdAt='2026-01-01')
+            step = dict(type='step', obs=[0.] * OBS_SIZE, action=[0., 0., 1., 0.],
+                        behaviorAction=[0., 0., 1., 0.], behaviorLogProb=-2.,
+                        reward=0.5, nextObs=[0.] * OBS_SIZE, terminated=False,
+                        durationMs=320)
+            (Path(td) / 'demo-jevlp.jsonl').write_text(
+                '\n'.join(json.dumps(x) for x in [header, step, step]) + '\n')
+            episodes, meta = load_rl_episodes(Path(td))
+            self.assertEqual(len(episodes), 1)
+            self.assertEqual(episodes[0].expert, 'jev')
+            np.testing.assert_allclose(episodes[0].durations, [320.0, 320.0])
+
+    def test_loader_defaults_missing_durations_to_reference_step(self):
+        with tempfile.TemporaryDirectory() as td:
+            header = dict(type='header', obsVersion=OBS_VERSION, obsSize=OBS_SIZE,
+                          canonicalAxes=True, expert='policy', transitionVersion=1,
+                          policyId='p', createdAt='2026-01-01')
+            step = dict(type='step', obs=[0.] * OBS_SIZE, action=[0., 0., 1., 0.],
+                        behaviorAction=[0., 0., 1., 0.], behaviorLogProb=-2.,
+                        reward=0., nextObs=[0.] * OBS_SIZE, terminated=False)
+            (Path(td) / 'demo-nodur.jsonl').write_text(
+                '\n'.join(json.dumps(x) for x in [header, step, step]) + '\n')
+            episodes, _ = load_rl_episodes(Path(td))
+            np.testing.assert_allclose(episodes[0].durations, [64.0, 64.0])
+
     def test_loader_rejects_old_rollouts_and_mixed_policy_cohorts(self):
         with tempfile.TemporaryDirectory() as td:
             header = dict(type='header', obsVersion=OBS_VERSION, obsSize=OBS_SIZE,
@@ -127,6 +156,32 @@ class TestGAE(unittest.TestCase):
         self.assertAlmostEqual(float(ret[-1]), float(1.0 + 0.0), places=4)
         # Advantages + values = returns
         np.testing.assert_allclose(adv + values, ret, rtol=1e-5)
+
+    def test_variable_step_durations_discount_proportionally(self):
+        rewards = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        values = np.zeros(3, dtype=np.float32)
+        uni, _ = compute_gae(rewards, values, gamma=0.99, lam=1.0, last_value=0.0)
+        var, _ = compute_gae(rewards, values, gamma=0.99, lam=1.0, last_value=0.0,
+                             dt_ms=np.array([320.0, 64.0, 64.0]))
+        # Uniform 64ms reference: 0.99^2 at t=0.
+        self.assertAlmostEqual(float(uni[0]), 0.99 ** 2, places=5)
+        # A 320ms first step discounts 5x as much: 0.99^5 * 0.99.
+        self.assertAlmostEqual(float(var[0]), 0.99 ** 6, places=5)
+        self.assertLess(float(var[0]), float(uni[0]))
+
+
+class TestPpoCheckpoints(unittest.TestCase):
+    def test_explicit_init_checkpoint_is_preserved(self):
+        init, out = resolve_ppo_checkpoints('rl/weights/ppo-new.json', 'rl/weights/bc.pt',
+                                            'rl/weights/ppo-policy.pt')
+        self.assertEqual(init, 'rl/weights/bc.pt')
+        self.assertEqual(out, 'rl/weights/ppo-new.pt')
+
+    def test_default_checkpoint_keeps_legacy_path(self):
+        init, out = resolve_ppo_checkpoints('rl/weights/ppo-policy.json', 'rl/weights/ppo-policy.pt',
+                                            'rl/weights/ppo-policy.pt')
+        self.assertEqual(init, 'rl/weights/ppo-policy.pt')
+        self.assertEqual(out, 'rl/weights/ppo-policy.pt')
 
 
 class TestModel(unittest.TestCase):

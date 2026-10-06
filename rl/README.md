@@ -134,6 +134,27 @@ EXPERT=policy EXPLORE=1 EPISODES=10 npm run rl:record:policy
 npm run rl:train:rl
 ```
 
+### JEV teachers (model-distilled demos)
+
+JEV runs record BC-ready v4 demos with frozen, aligned decisions:
+
+```bash
+TYPESAFE_API_KEY=... JEV_RECORD_DEMOS=1 LEVEL=1 node scripts/jev-play-level.mjs
+```
+
+Notes:
+
+- BC consumes `expert=jev` demos with no extra flags (wins weight highest).
+- For PPO cohorts, record with `JEV_BEHAVIOR_POLICY=rl/weights/<policy>.json`
+  so steps carry behavior likelihoods, then train with `--include-all`.
+  The loader admits JEV episodes only under the same validated behavior
+  contract as policy rollouts, and the single-policyId gate keeps the
+  cohort on-policy.
+- JEV holds vary (60–400ms) while the recorder ticks 64ms; GAE discounts
+  by wall time from each step's `durationMs`, so mixed cohorts stay sound.
+- Rewards credit boss HP damage (`scripts/rl/rewards.mjs`), so stalling a
+  boss scores worse than killing it.
+
 ### Tests
 
 ```bash
@@ -347,3 +368,15 @@ bash scripts/rl/status.sh
 Recorders and evaluators opt into `playtestContinues=unlimited`; Bonus Testing Grounds also enables it for manual play. This preserves ordinary damage, movement and collisions while allowing repeated continues. Reports include `unlimitedContinues` and `continuesUsed`; distinguish continued clears from death-free clears. The engine exposes `levelCompleted` for bonus-stage wins.
 
 Collection may freeze simulation while computing actions, then advance a controlled 1x clock. Set `SAMPLE_MS=128` for cheaper collection (actions stay held for 128 simulated milliseconds), and use `WORKERS=3` for concurrent episodes. For PPO, collect fresh policy rollouts into a separate directory for each policy snapshot; old demos lack the validated behavior contract.
+
+## Recommended policy (2026-10-06)
+
+`rl/weights/bc-policy-tactics4.json` in assisted mode (BC proposes, planner has the
+final say) cleared the full campaign 3/3 with **0 continues** (~310/310/321s):
+
+```bash
+POLICY=rl/weights/bc-policy-tactics4.json POLICY_ASSIST=1 DURATION_MS=600000 node scripts/rl/play-policy.mjs
+```
+
+Pure (unassisted) BC4 is brittle (2/1/12 continues across runs) — always evaluate and
+record with `POLICY_ASSIST=1` for reliability.

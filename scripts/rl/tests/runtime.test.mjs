@@ -332,6 +332,24 @@ describe('rewards', () => {
         assert.ok(r < 5.0);
     });
 
+    it('stepReward credits boss damage so stalls are not free', () => {
+        const prev = {
+            score: 0, lives: 3, level: 1, phase: 'boss',
+            levelProgressMs: 60000, levelDurationMs: 60000, isBoosting: false,
+            boss: { health: 200, maxHealth: 200 }
+        };
+        const snap = {
+            score: 0, lives: 3, level: 1, phase: 'boss',
+            levelProgressMs: 60000, levelDurationMs: 60000, isBoosting: false,
+            boss: { health: 150, maxHealth: 200 }
+        };
+        const r = stepReward(prev, snap);
+        // 25% boss HP dealt: 0.25 * 6 - 0.002 time tick.
+        assert.ok(r > 1.0);
+        const idle = stepReward(prev, { ...snap, boss: { health: 200, maxHealth: 200 } });
+        assert.ok(idle < 0);
+    });
+
     it('applyTerminalReward once', () => {
         const steps = [{ reward: 0.1 }];
         let ret = 0.1;

@@ -5,6 +5,10 @@
  * EXPERT=policy     — learned policy self-play (needs rl/weights/bc-policy.json)
  * EXPERT=tactics    — planner pilot (NovaWingTactics.plan, same brain as JEV/simple-bot)
  *
+ * CAMPAIGN=1 records full campaigns (L1 → victory, or LEVEL → victory)
+ * instead of single levels. Covers transitions and cross-level entries
+ * that single-level demos never see.
+ *
  * Policy rollouts store shaped `reward` per step for PPO fine-tuning.
  *
  *   npm run rl:record
@@ -45,7 +49,8 @@ const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HEADLESS = process.env.HEADLESS !== '0';
 const EPISODES = Math.max(1, Number(process.env.EPISODES || 5));
-const DURATION_MS = Number(process.env.DURATION_MS || 360000);
+const CAMPAIGN = process.env.CAMPAIGN === '1';
+const DURATION_MS = Number(process.env.DURATION_MS || (CAMPAIGN ? 480000 : 360000));
 const SAMPLE_MS = Number(process.env.SAMPLE_MS || 64);
 if (!Number.isFinite(DURATION_MS) || DURATION_MS < 16) throw new Error("DURATION_MS must be at least 16");
 if (!Number.isFinite(SAMPLE_MS) || SAMPLE_MS < 16) throw new Error("SAMPLE_MS must be at least 16");
@@ -66,10 +71,11 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
     ? BOSS_RAW
     : (process.env.BOSS_ENCOUNTER || '1');
 const START_SEGMENT = (process.env.SEGMENT || '').trim() || null;
+if (CAMPAIGN && BOSS_SKIP) throw new Error('CAMPAIGN=1 cannot combine with BOSS_SKIP');
 
-/** Level-scoped or campaign victory. */
+/** Level-scoped win, or full campaign victory when CAMPAIGN=1. */
 function isEpisodeWin(snap) {
-    return isRunWin(snap, START_LEVEL);
+    return isRunWin(snap, CAMPAIGN ? null : START_LEVEL);
 }
 function stamp() {
     const d = new Date();
@@ -198,7 +204,8 @@ async function recordEpisode(browser, episodeIndex, policy) {
                 continue;
             }
             if (isEpisodeWin(before)) { won = true; terminal = true; break; }
-            if (await advanceCampaign(page, before, START_LEVEL)) {
+            if (await advanceCampaign(page, before, CAMPAIGN ? null : START_LEVEL)) {
+                console.log(`episode ${episodeIndex}: advanced to L${before.level + 1}`);
                 pendingObs = null;
                 continue;
             }
@@ -250,7 +257,8 @@ async function recordEpisode(browser, episodeIndex, policy) {
                 await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
                 next = await page.evaluate(() => __novawingDebug.getBotSnapshot());
             }
-            if (await advanceCampaign(page, next, START_LEVEL)) {
+            if (await advanceCampaign(page, next, CAMPAIGN ? null : START_LEVEL)) {
+                console.log(`episode ${episodeIndex}: advanced to L${after.level + 1}`);
                 next = await settleLevelStart(page, after.level + 1);
                 simulatedMs += Math.max(0, next.time - after.time);
                 reward += stepReward(after, next);
@@ -340,7 +348,7 @@ async function main() {
         const tag = [
             ep.won ? 'win' : null,
             EXPERT === 'policy' ? 'policy' : EXPERT === 'tactics' ? 'tactics' : null,
-            BOSS_SKIP ? 'boss' : null,
+            CAMPAIGN ? 'campaign' : BOSS_SKIP ? 'boss' : null,
             process.env.LEVEL ? `L${process.env.LEVEL}` : null,
             START_SEGMENT ? START_SEGMENT : null
         ].filter(Boolean).join('-');

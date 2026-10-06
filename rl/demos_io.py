@@ -56,6 +56,7 @@ class EpisodeRecord:
     obs: np.ndarray  # (T, OBS_SIZE)
     act: np.ndarray  # (T, ACTION_SIZE)
     rewards: np.ndarray  # (T,)
+    durations: Optional[np.ndarray] = None  # (T,) step lengths in ms; None = uniform 64ms
     headers: dict = field(default_factory=dict)
     max_progress: float = 0.0
     behavior_logp: Optional[np.ndarray] = None
@@ -200,6 +201,7 @@ def iter_episode_records(
         obs_list: List[np.ndarray] = []
         act_list: List[np.ndarray] = []
         rew_list: List[float] = []
+        dur_list: List[float] = []
         behavior_lp: List[float] = []
         behavior_actions: List[np.ndarray] = []
         if require_rewards and (header.get("transitionVersion") != 1 or
@@ -240,6 +242,10 @@ def iter_episode_records(
             obs_list.append(obs)
             act_list.append(act)
             rew_list.append(float(st.get("reward") or 0.0))
+            try:
+                dur_list.append(max(1.0, float(st.get("durationMs") or 64.0)))
+            except (TypeError, ValueError):
+                dur_list.append(64.0)
 
         if require_rewards and len(obs_list) != len(steps):
             yield EpisodeRecord(str(path), False, expert, None, 0, 1,
@@ -294,6 +300,7 @@ def iter_episode_records(
                 obs=np.stack(obs_list),
                 act=np.stack(act_list),
                 rewards=np.asarray(rew_list, dtype=np.float32),
+                durations=np.asarray(dur_list, dtype=np.float32),
                 headers=header,
                 max_progress=_max_progress(steps),
                 behavior_logp=np.asarray(behavior_lp, dtype=np.float32) if require_rewards else None,
@@ -463,7 +470,11 @@ def load_rl_episodes(
         "skipped_size": 0,
         "skipped_other": 0,
     }
-    expert_filter = ("policy",) if policy_only else None
+    # JEV episodes recorded with behavior likelihoods (JEV_BEHAVIOR_POLICY=1)
+    # satisfy the same validated behavior contract as policy rollouts, so
+    # they join on-policy cohorts; the single-policyId gate below still
+    # enforces cohort purity.
+    expert_filter = ("policy", "jev") if policy_only else None
 
     for ep, reason in iter_episode_records(
         demo_dir,
@@ -481,7 +492,8 @@ def load_rl_episodes(
             meta["skipped_other"] += 1
             continue
         # Prefer policy demos; when policy_only=False, also keep reward-tagged.
-        if policy_only and ep.expert != "policy":
+        # Likelihood-carrying JEV episodes satisfy the behavior contract.
+        if policy_only and ep.expert not in ("policy", "jev"):
             meta["skipped_other"] += 1
             continue
         if ep.steps < 2:
@@ -508,6 +520,9 @@ def load_rl_episodes(
     return episodes, meta
 
 
+REFERENCE_STEP_MS = 64.0
+
+
 def compute_gae(
     rewards: np.ndarray,
     values: np.ndarray,
@@ -515,19 +530,29 @@ def compute_gae(
     gamma: float = 0.995,
     lam: float = 0.95,
     last_value: float = 0.0,
+    dt_ms: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generalized Advantage Estimation.
     rewards, values: (T,)
     returns = advantages + values
+    dt_ms optionally scales the discount per step so mixed-cadence cohorts
+    (64ms recorder ticks + variable JEV holds) discount by wall time instead
+    of step count. None preserves the legacy uniform behavior.
     """
     t_len = len(rewards)
     advantages = np.zeros(t_len, dtype=np.float32)
     last_gae = 0.0
+    scales = None
+    if dt_ms is not None:
+        scales = np.asarray(dt_ms, dtype=np.float64).reshape(-1)
     for t in range(t_len - 1, -1, -1):
+        g = gamma
+        if scales is not None and t < len(scales) and scales[t] > 0:
+            g = gamma ** (scales[t] / REFERENCE_STEP_MS)
         next_v = last_value if t == t_len - 1 else values[t + 1]
-        delta = rewards[t] + gamma * next_v - values[t]
-        last_gae = delta + gamma * lam * last_gae
+        delta = rewards[t] + g * next_v - values[t]
+        last_gae = delta + g * lam * last_gae
         advantages[t] = last_gae
     returns = advantages + values
     return advantages.astype(np.float32), returns.astype(np.float32)

@@ -25,7 +25,8 @@ const DEMO_DIR = path.join(ROOT, 'rl', 'demos');
 // hash into rl/demos/policy-<sha>.json, so the same files feed PPO via
 // npm run rl:train:rl -- --include-all.
 const RECORD_DEMOS = process.env.JEV_RECORD_DEMOS === '1';
-const BEHAVIOR_POLICY_PATH = path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
+const BEHAVIOR_POLICY_PATH = process.env.JEV_BEHAVIOR_POLICY ||
+    path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 
 /**
  * Log-likelihood of a taken action under a behavior policy, mirroring the

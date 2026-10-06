@@ -21,6 +21,12 @@ export function stepReward(prev, snap) {
     if (dp > 0) r += dp * 3.0;
     const ds = (snap.score || 0) - (prev.score || 0);
     if (ds > 0) r += Math.min(ds, 800) / 400;
+    // Boss fights grant no score until the kill; credit HP damage so stalling
+    // the boss is measurably worse than killing it. Full bar = +6.
+    if (prev.boss && snap.boss && snap.boss.maxHealth > 0) {
+        const dealt = (prev.boss.health || 0) - (snap.boss.health || 0);
+        if (dealt > 0) r += Math.min(dealt / snap.boss.maxHealth, 1) * 6.0;
+    }
     const dl = (snap.lives || 0) - (prev.lives || 0);
     if (dl < 0) r += dl * 1.5;
     if ((snap.level || 1) > (prev.level || 1)) r += 4.0;
