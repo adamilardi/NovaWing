@@ -67,12 +67,13 @@ WORKTREE="$(dirname "$MAIN")/$(basename "$MAIN")-val-$SLUG"
 echo "creating worktree $WORKTREE on validation/$SLUG from $BASE"
 git worktree add -b "validation/$SLUG" "$WORKTREE" "$BASE"
 
-# Bootstrap the harness itself when the base predates it (pre-commit runs).
-if [[ ! -f "$WORKTREE/scripts/validation-loop/loop.sh" ]]; then
-  mkdir -p "$WORKTREE/scripts/validation-loop"
-  cp -r "$MAIN/scripts/validation-loop/." "$WORKTREE/scripts/validation-loop/"
-  echo "bootstrapped harness into worktree (uncommitted there until first checkpoint)"
-fi
+# The launcher's harness is source of truth: sync it into the worktree so the
+# loop runs this code even when the base commit predates it (or vice versa).
+mkdir -p "$WORKTREE/scripts/validation-loop"
+cp -r "$MAIN/scripts/validation-loop/." "$WORKTREE/scripts/validation-loop/"
+mkdir -p "$WORKTREE/skills/game-reviewer"
+cp -r "$MAIN/skills/game-reviewer/." "$WORKTREE/skills/game-reviewer/"
+echo "harness synced into worktree (committed there at first checkpoint)"
 
 echo "installing deps in worktree…"
 if ! (cd "$WORKTREE" && npm ci --no-audit --no-fund); then
@@ -81,6 +82,11 @@ if ! (cd "$WORKTREE" && npm ci --no-audit --no-fund); then
     echo "dependency install failed; worktree left at $WORKTREE for inspection, loop NOT launched" >&2
     exit 1
   fi
+fi
+# Browser binaries are shared via ~/.cache/ms-playwright (one-time per version).
+# Without them the playtest gate always FAILs, so install up front.
+if ! (cd "$WORKTREE" && npx playwright install chromium); then
+  echo "WARNING: playwright browser install failed; verify/playtest gate phases will FAIL" >&2
 fi
 
 SLUG="$SLUG" BRIEF="$BRIEF" ITERATIONS="$ITERATIONS" LEVEL_ID="$LEVEL_ID" \
@@ -95,7 +101,9 @@ fs.writeFileSync(e.WORKTREE + '/loop-config.json', JSON.stringify({
 }, null, 2) + '\n');
 "
 
-(cd "$WORKTREE" && nohup bash scripts/validation-loop/loop.sh >>loop.log 2>&1 & disown)
+# setsid: own session/process group so group-targeted kills (including tool
+# runtimes reaping the launcher's tree) cannot reach the overnight loop.
+(cd "$WORKTREE" && setsid -f bash scripts/validation-loop/loop.sh >>loop.log 2>&1)
 echo "loop launched: slug=$SLUG level=$LEVEL_ID port=$PORT iterations=$ITERATIONS"
 echo "  worktree: $WORKTREE"
 echo "  log:      $WORKTREE/loop.log"

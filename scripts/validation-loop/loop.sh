@@ -16,6 +16,7 @@ MODEL="muse-spark-1.3-contributor"
 MAX_STEPS_BUILD="${MAX_STEPS_BUILD:-80}"
 MAX_STEPS_REVIEW="${MAX_STEPS_REVIEW:-40}"
 PHASE_TIMEOUT="${PHASE_TIMEOUT:-7200}"
+GATE_CASES="${GATE_CASES:-boot,content}"
 
 # --- guards: validation branch only, never main ---
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -40,7 +41,8 @@ fi
 echo $$ >"$WORKTREE/loop.pid"
 cleanup() { rm -f "$WORKTREE/loop.pid"; }
 trap cleanup EXIT
-trap 'exit 0' INT TERM
+trap 'echo "[$(date -Iseconds)] loop received SIGTERM (parent=$PPID) — exiting" >>"$WORKTREE/loop.log"; exit 0' TERM
+trap 'echo "[$(date -Iseconds)] loop received SIGINT — exiting" >>"$WORKTREE/loop.log"; exit 0' INT
 
 # --- config ---
 LEVEL_ID="$(node -e "console.log(require('$WORKTREE/loop-config.json').levelId)")"
@@ -116,7 +118,7 @@ run_gate() {
     echo "## gate iter $ITER slug=$SLUG level=$LEVEL_ID"
     echo "### npm run check" && npm run check 2>&1 &&
     echo "### npm test" && npm test 2>&1 &&
-    echo "### verify boot,content" && node scripts/verify-novawing.mjs --case=boot,content 2>&1
+    echo "### verify $GATE_CASES" && node scripts/verify-novawing.mjs --case="$GATE_CASES" 2>&1
   } >"$log" 2>&1
 }
 
