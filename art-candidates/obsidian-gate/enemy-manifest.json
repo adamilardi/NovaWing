@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "brief_id": "obsidian-gate",
+  "kind": "enemy",
+  "brief_path": "enemy-brief.md",
+  "candidates": [
+    {
+      "id": "enemy-gate-acolyte-a",
+      "title": "Gate acolyte",
+      "status": "generated",
+      "summary": "Shard-hulled dart facing down, swept glass wings, gold rune prow at the front, ember tail fins.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-gate-acolyte-a/default.png",
+          "width_px": 1600,
+          "height_px": 1600,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-gate-acolyte-a/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "top-down",
+        "facing": "down",
+        "palette": [
+          "black glass",
+          "gold rune",
+          "ember orange"
+        ],
+        "target_display": "60 pixels wide",
+        "anchor": {
+          "space": "normalized",
+          "origin": "top-left",
+          "x": 0.5,
+          "y": 0.5,
+          "estimated": false
+        }
+      },
+      "animation_handoff_path": "enemy-gate-acolyte-a/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Silhouette checked on a dark composite at full size, not in the game."
+      ]
+    },
+    {
+      "id": "enemy-gate-lantern-b",
+      "title": "Rune lantern",
+      "status": "generated",
+      "summary": "Floating octahedron cage with pulsing rune core, three trailing chain tendrils, vented gold bands.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-gate-lantern-b/default.png",
+          "width_px": 1600,
+          "height_px": 1600,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-gate-lantern-b/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "top-down",
+        "facing": "down",
+        "palette": [
+          "black glass",
+          "gold rune",
+          "ember orange"
+        ],
+        "target_display": "60 pixels wide",
+        "anchor": {
+          "space": "normalized",
+          "origin": "top-left",
+          "x": 0.5,
+          "y": 0.5,
+          "estimated": false
+        }
+      },
+      "animation_handoff_path": "enemy-gate-lantern-b/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Silhouette checked on a dark composite at full size, not in the game."
+      ]
+    }
+  ]
+}

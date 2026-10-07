@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "brief_id": "verdant-hulk",
+  "kind": "level",
+  "brief_path": "brief.md",
+  "candidates": [
+    {
+      "id": "level-verdant-hulk-a",
+      "title": "Verdant Hulk",
+      "status": "generated",
+      "summary": "Overgrown derelict hulk interior; rib-arch scenery with hanging moss; dense moss-hull wall block; five separated obstacle modules (rib, spore pod, grate, cable roots, dome).",
+      "assets": [
+        {
+          "role": "background-far",
+          "path": "hulk-background-1448.png",
+          "width_px": 1448,
+          "height_px": 1086,
+          "alpha": false,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {
+            "method": "code",
+            "kind": "parallax",
+            "animated_frames": false
+          }
+        },
+        {
+          "role": "scenery-mid",
+          "path": "hulk-scenery.png",
+          "width_px": 1920,
+          "height_px": 1280,
+          "alpha": true,
+          "readiness": "verified",
+          "collision": null,
+          "motion": {
+            "method": "code",
+            "kind": "parallax-nearer",
+            "animated_frames": false
+          }
+        },
+        {
+          "role": "wall-surface",
+          "path": "hulk-wall.png",
+          "width_px": 2240,
+          "height_px": 1120,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "rect",
+            "body": "dense moss-hull block",
+            "openings": "transparent margin around the body; moss fringe is decorative"
+          },
+          "motion": {
+            "method": "code",
+            "kind": "scroll-with-terrain",
+            "animated_frames": false
+          }
+        },
+        {
+          "role": "obstacle-solid",
+          "path": "hulk-obstacles.png",
+          "width_px": 2736,
+          "height_px": 912,
+          "alpha": true,
+          "readiness": "concept",
+          "collision": {
+            "shape": "separate-rects",
+            "body": "five dense modules",
+            "openings": "gaps between modules stay non-solid; grate and dome holes are surface openings"
+          },
+          "motion": {
+            "method": "code",
+            "kind": "scroll-with-terrain",
+            "animated_frames": false
+          },
+          "crops": [
+            {
+              "name": "hull-rib",
+              "x": 76,
+              "y": 97,
+              "width_px": 516,
+              "height_px": 699
+            },
+            {
+              "name": "spore-pod",
+              "x": 656,
+              "y": 99,
+              "width_px": 381,
+              "height_px": 615
+            },
+            {
+              "name": "broken-grate",
+              "x": 1146,
+              "y": 195,
+              "width_px": 403,
+              "height_px": 529
+            },
+            {
+              "name": "cable-roots",
+              "x": 1602,
+              "y": 157,
+              "width_px": 487,
+              "height_px": 622
+            },
+            {
+              "name": "shattered-dome",
+              "x": 2115,
+              "y": 248,
+              "width_px": 600,
+              "height_px": 426
+            }
+          ]
+        }
+      ],
+      "preview_paths": [
+        "previews/hulk-background-800.jpg",
+        "previews/hulk-scenery-dark.jpg",
+        "previews/hulk-wall-dark.jpg",
+        "previews/hulk-obstacles-dark.jpg"
+      ],
+      "prompt_path": "prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "scroll": "horizontal",
+        "palette": [
+          "moss green",
+          "rust orange",
+          "pale spore glow"
+        ],
+        "tile_axes": [],
+        "layer_order": [
+          "background-far",
+          "scenery-mid",
+          "wall-surface",
+          "obstacle-solid"
+        ],
+        "target_display": "800x600 viewport. Keep the center darker than bullets."
+      },
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "seams": "not-applicable",
+        "gameplay_readability": "unverified"
+      },
+      "limitations": [
+        "Glow areas picked up a faint pink cast from the magenta key background; reads as spore glow at concept size.",
+        "Not placed in a level and not checked in the game viewport.",
+        "background-far is hulk-background-1448.png (1448x1086, Lanczos downscale of the 1792x1344 generator original)."
+      ]
+    }
+  ]
+}

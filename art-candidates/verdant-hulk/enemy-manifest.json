@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "brief_id": "verdant-hulk",
+  "kind": "enemy",
+  "brief_path": "enemy-brief.md",
+  "candidates": [
+    {
+      "id": "enemy-hulk-tick-a",
+      "title": "Hull tick",
+      "status": "generated",
+      "summary": "Squat moss-armored burrower facing left, paired drill mandibles, six gripping legs, rust-orange segmented underside.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-hulk-tick-a/default.png",
+          "width_px": 2240,
+          "height_px": 1120,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-hulk-tick-a/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "facing": "left",
+        "palette": [
+          "moss green",
+          "rust orange",
+          "pale spore glow"
+        ],
+        "target_display": "112 pixels wide",
+        "anchor": {
+          "space": "normalized",
+          "origin": "top-left",
+          "x": 0.5,
+          "y": 0.5,
+          "estimated": false
+        }
+      },
+      "animation_handoff_path": "enemy-hulk-tick-a/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Silhouette checked on a dark composite at full size, not in the game."
+      ]
+    },
+    {
+      "id": "enemy-hulk-spore-b",
+      "title": "Spore lobber",
+      "status": "generated",
+      "summary": "Bulbous translucent sac facing left, three glowing vent stacks, trailing root tendrils, rust-orange clasps.",
+      "assets": [
+        {
+          "role": "canonical-default-view",
+          "path": "enemy-hulk-spore-b/default.png",
+          "width_px": 2240,
+          "height_px": 1120,
+          "alpha": true,
+          "readiness": "concept"
+        }
+      ],
+      "preview_paths": [],
+      "prompt_path": "enemy-hulk-spore-b/prompt.md",
+      "reference_paths": [],
+      "spec": {
+        "camera": "side-view",
+        "facing": "left",
+        "palette": [
+          "moss green",
+          "rust orange",
+          "pale spore glow"
+        ],
+        "target_display": "112 pixels wide",
+        "anchor": {
+          "space": "normalized",
+          "origin": "top-left",
+          "x": 0.5,
+          "y": 0.5,
+          "estimated": false
+        }
+      },
+      "animation_handoff_path": "enemy-hulk-spore-b/animation-handoff.md",
+      "checks": {
+        "dimensions": "pass",
+        "alpha": "pass",
+        "orientation": "pass",
+        "silhouette": "pass"
+      },
+      "limitations": [
+        "Concept art only. Not registered in the runtime.",
+        "Silhouette checked on a dark composite at full size, not in the game."
+      ]
+    }
+  ]
+}
