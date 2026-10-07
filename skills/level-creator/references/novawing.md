@@ -33,7 +33,7 @@ Each new level adds at least one of these (reuse-only levels need an explicit us
 - **New wave pattern.** Add an `ENEMY_WAVE_PATTERNS` entry in `game.js` plus its `function spawnXWave(scene)` spawner. Reference enemy types with literal `type: 'name'` strings (ternaries are fine) so static checks see them; handle the level's orientation explicitly; add the key to the level's `wavePatternKeys` (or schedules/escorts).
 - **New boss attack.** See [boss-creator](../../boss-creator/SKILL.md): a `boss-director` catalog entry plus a `plan()` branch returning a NEW attack kind, with matching dispatch in `game.js`. New parameters on an existing kind fail the novelty check as kind-reuse.
 
-Verify with `node scripts/check-level-novelty.mjs --level N` (catalog uniqueness) or, on a branch, `--validation ID --base <ref>` (requires branch additions the level uses). Then playtest: the new enemy must spawn, fire its weapon, die, and award correctly; the new boss attack must telegraph, fire, and clean up.
+Verify with `node scripts/check-level-novelty.mjs --level N` (catalog uniqueness) or, on a branch, `--validation ID --base <ref>` (requires branch additions the level uses). Then prove the showcase in the browser gate: export the new-type list from the novelty JSON (`VALIDATION_NEW_TYPES`) and run the validation cases — the new enemy must spawn and fire (`validation`), the boss must attack under boss-skip (`validation-boss`), plus clean `validation-mobile`, `validation-content` (authored art, rewards), `validation-flows` (pause/resume/restart), and `validation-perf` runs. Then playtest: the new enemy must spawn, fire its weapon, die, and award correctly; the new boss attack must telegraph, fire, and clean up.
 
 ## Validation
 

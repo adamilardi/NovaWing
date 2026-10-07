@@ -20,12 +20,13 @@ while read -r wt; do
   if [[ -f "$wt/LOOP_DONE.txt" ]]; then state="done"; fi
   if [[ -f "$wt/loop.pid" ]] && loop_alive "$(cat "$wt/loop.pid")"; then state="running"; fi
   reviews="$(ls "$wt/docs/level-builds/validation-$slug"/review-*.json 2>/dev/null | wc -l)"
+  panels="$(ls "$wt/docs/level-builds/validation-$slug"/panel-*.json 2>/dev/null | wc -l)"
   last_verdict="-"
   last="$(ls "$wt/docs/level-builds/validation-$slug"/review-*.json 2>/dev/null | sort -V | tail -n 1)"
   if [[ -n "$last" ]]; then
     last_verdict="$(LAST="$last" node -e "console.log(require(process.env.LAST).verdict)" 2>/dev/null || echo bad-json)"
   fi
-  echo "== $slug [$state] iters_with_review=$reviews last_verdict=$last_verdict"
+  echo "== $slug [$state] iters_with_review=$reviews iters_with_panel=$panels last_verdict=$last_verdict"
   echo "   worktree: $wt"
   if [[ -f "$wt/LOOP_DONE.txt" ]]; then tr '\n' ' ' <"$wt/LOOP_DONE.txt"; echo; fi
   if [[ -f "$wt/loop.log" ]]; then tail -n 3 "$wt/loop.log" | sed 's/^/   | /'; fi

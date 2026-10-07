@@ -16,6 +16,9 @@ import net from 'net';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 import { defaultHeadless, defaultLaunchOptions, appendPlaytestTimeScale } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
@@ -849,7 +852,16 @@ async function drivePilotUntil(page, durationMs, startLevel) {
         segments: new Set(),
         phases: new Set(),
         maxWalls: 0,
-        maxEnemies: 0
+        maxEnemies: 0,
+        enemyTypes: new Set(),
+        armedTypes: new Set(),
+        firedTypes: new Set(),
+        maxEnemyBullets: 0,
+        sawTelegraphs: false,
+        sawBoss: false,
+        bossBehaviors: new Set(),
+        bossFired: false,
+        maxPowerups: 0
     };
     let last = { snap: t0, outcome: null, err: null };
     while (Date.now() - started < durationMs) {
@@ -860,6 +872,26 @@ async function drivePilotUntil(page, durationMs, startLevel) {
             if (snap.phase) seen.phases.add(snap.phase);
             seen.maxWalls = Math.max(seen.maxWalls, (snap.walls && snap.walls.length) || 0);
             seen.maxEnemies = Math.max(seen.maxEnemies, (snap.enemies && snap.enemies.length) || 0);
+            // Showcase attribution: enemy bullets seen while a type is present
+            // count as that type firing (during boss phases the boss case owns
+            // fire attribution instead).
+            const bullets = (snap.enemyBullets && snap.enemyBullets.length) || 0;
+            seen.maxEnemyBullets = Math.max(seen.maxEnemyBullets, bullets);
+            for (const enemy of snap.enemies || []) {
+                if (!enemy || !enemy.type) continue;
+                seen.enemyTypes.add(enemy.type);
+                if (enemy.canShoot) seen.armedTypes.add(enemy.type);
+                if (bullets > 0) seen.firedTypes.add(enemy.type);
+            }
+            const telegraphs = snap.combatHazards && snap.combatHazards.telegraphs
+                ? snap.combatHazards.telegraphs.length : 0;
+            if (telegraphs > 0) seen.sawTelegraphs = true;
+            if (snap.boss) {
+                seen.sawBoss = true;
+                if (snap.boss.behavior) seen.bossBehaviors.add(snap.boss.behavior);
+                if (bullets > 0) seen.bossFired = true;
+            }
+            seen.maxPowerups = Math.max(seen.maxPowerups, (snap.powerups && snap.powerups.length) || 0);
         }
         if (last.err) break;
         const outcome = classifyPilotOutcome(last, false, startLevel);
@@ -897,13 +929,39 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
             (snap && Number(snap.level) >= options.requireLevel);
         const exactOk = !options.requireExactLevel ||
             (snap && Number(snap.level) === options.requireExactLevel);
+        // Showcase proof: every tracked new type must spawn, and armed types
+        // must demonstrably fire while present. Unarmed types (blockers,
+        // pacers) only need to show up.
+        const showcaseTypes = (options.trackShowcase || []).filter(Boolean);
+        const showcaseDetail = [];
+        let showcaseOk = true;
+        for (const type of showcaseTypes) {
+            const seenType = run.seen.enemyTypes.has(type);
+            const armed = run.seen.armedTypes.has(type);
+            const fired = run.seen.firedTypes.has(type);
+            showcaseDetail.push(`${type}:seen=${seenType} armed=${armed} fired=${fired}`);
+            if (!seenType || (armed && !fired)) showcaseOk = false;
+        }
+        // Boss proof: the boss must appear and put ordnance or telegraphs out.
+        const bossAttackOk = !options.requireBossAttack ||
+            (run.seen.sawBoss && (run.seen.bossFired || run.seen.sawTelegraphs));
+        // Boss identity: when the def declares behavior bosses, at least one
+        // of them must be the one fought (not a silent standard fallback).
+        const expectBoss = options.expectBossBehaviors || [];
+        const bossIdentityOk = !expectBoss.length ||
+            expectBoss.some(behavior => run.seen.bossBehaviors.has(behavior));
         const wallsOk = !options.requireWalls || run.seen.maxWalls > 0;
         const orientOk = !options.requireVertical ||
             (snap && snap.scrollMode === 'vertical' && snap.combatOrientation === 'up');
-        const ok = Boolean(snap && snap.ready) && moved && levelOk && exactOk && wallsOk && orientOk && !crashed;
+        const ok = Boolean(snap && snap.ready) && moved && levelOk && exactOk && wallsOk && orientOk &&
+            showcaseOk && bossAttackOk && bossIdentityOk && !crashed;
         const segments = [...run.seen.segments];
+        const showcaseText = showcaseTypes.length ? ` showcase=[${showcaseDetail.join(' ')}]` : '';
+        const bossText = options.requireBossAttack
+            ? ` boss=[${[...run.seen.bossBehaviors].join(',') || 'none'}] fired=${run.seen.bossFired} telegraphs=${run.seen.sawTelegraphs}` +
+              (expectBoss.length ? ` expected=[${expectBoss.join(',')}]` : '') : '';
         const detail = ok
-            ? `t=${(run.elapsedMs / 1000).toFixed(1)}s outcome=${run.outcome} score=${snap.score} lives=${snap.lives} seg=${snap.segment || '-'} seen=[${segments.join(',')}]`
+            ? `t=${(run.elapsedMs / 1000).toFixed(1)}s outcome=${run.outcome} score=${snap.score} lives=${snap.lives} seg=${snap.segment || '-'} seen=[${segments.join(',')}]${showcaseText}${bossText}`
             : JSON.stringify({
                 outcome: run.outcome,
                 err: run.last.err,
@@ -915,7 +973,13 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
                 walls: run.seen.maxWalls,
                 scrollMode: snap && snap.scrollMode,
                 combatOrientation: snap && snap.combatOrientation,
-                segments
+                segments,
+                showcase: showcaseDetail,
+                bossSeen: run.seen.sawBoss,
+                bossBehaviors: [...run.seen.bossBehaviors],
+                bossFired: run.seen.bossFired,
+                sawTelegraphs: run.seen.sawTelegraphs,
+                expectedBossBehaviors: expectBoss
             });
         return result(name, ok, detail, {
             screenshot: shot,
@@ -928,9 +992,30 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
     }
 }
 
-async function caseValidation(browser, base, evidenceDir) {
+function validationId() {
     const id = Math.floor(Number(process.env.VALIDATION_LEVEL_ID));
-    if (!Number.isFinite(id)) {
+    return Number.isFinite(id) ? id : null;
+}
+
+function validationNewTypes() {
+    return (process.env.VALIDATION_NEW_TYPES || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function validationBossBehaviors(id) {
+    const Levels = require('../levels.js');
+    require('../levels.validation.js');
+    const def = Levels.getValidationLevelDef(id);
+    if (!def) return null;
+    const out = [];
+    for (const profile of Object.values(def.bossEncounters || {})) {
+        if (profile && typeof profile.behavior === 'string') out.push(profile.behavior);
+    }
+    return out;
+}
+
+async function caseValidation(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
         return result('validation', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
     }
     const durationMs = Number(process.env.VERIFY_VALIDATION_MS) || 30000;
@@ -939,8 +1024,233 @@ async function caseValidation(browser, base, evidenceDir) {
         search: `?validation=1&level=${id}&bot=1`,
         durationMs,
         requireExactLevel: id,
+        trackShowcase: validationNewTypes(),
         shotName: 'validation.png'
     });
+}
+
+async function caseValidationBoss(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
+        return result('validation-boss', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    const durationMs = Number(process.env.VERIFY_VALIDATION_BOSS_MS) || 45000;
+    let expected;
+    try {
+        expected = validationBossBehaviors(id);
+    } catch (error) {
+        return result('validation-boss', false, 'cannot load validation def: ' + error.message);
+    }
+    if (expected == null) {
+        return result('validation-boss', false, `unknown validation level id ${id}`);
+    }
+    return playLevelWithBot(browser, base, evidenceDir, id, {
+        name: 'validation-boss',
+        search: `?validation=1&level=${id}&boss=1&bot=1`,
+        durationMs,
+        requireExactLevel: id,
+        requireBossAttack: true,
+        expectBossBehaviors: expected,
+        shotName: 'validation-boss.png'
+    });
+}
+
+async function openValidationPage(browser, base, id, search, contextOptions) {
+    const context = await browser.newContext(contextOptions);
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    page.on('dialog', dialog => dialog.dismiss());
+    await page.goto(new URL(search || `?validation=1&level=${id}&bot=1`, base).href);
+    await waitForGame(page);
+    return { context, page, pageErrors };
+}
+
+async function caseValidationMobile(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
+        return result('validation-mobile', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    const durationMs = Number(process.env.VERIFY_VALIDATION_MOBILE_MS) || 20000;
+    const session = await openValidationPage(browser, base, id, null,
+        { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+        await session.page.evaluate(installInPagePilot);
+        const run = await drivePilotUntil(session.page, durationMs, id);
+        const shot = path.join(evidenceDir, 'validation-mobile.png');
+        await session.page.screenshot({ path: shot });
+        const snap = run.last.snap;
+        const crashed = session.pageErrors.length > 0 || Boolean(run.last.err);
+        const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
+        const exact = snap && Number(snap.level) === id;
+        const ok = Boolean(snap && snap.ready) && moved && exact && !crashed;
+        return result('validation-mobile', ok, ok
+            ? `mobile viewport boot+drive t=${(run.elapsedMs / 1000).toFixed(1)}s outcome=${run.outcome}`
+            : JSON.stringify({
+                outcome: run.outcome, err: run.last.err, pageErrors: session.pageErrors,
+                ready: snap && snap.ready, level: snap && snap.level
+            }), { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
+async function caseValidationContent(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
+        return result('validation-content', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    const durationMs = Number(process.env.VERIFY_VALIDATION_CONTENT_MS) || 40000;
+    const session = await openValidationPage(browser, base, id, null, { viewport: { width: 960, height: 720 } });
+    try {
+        const art = await session.page.evaluate((levelId) => {
+            const scene = getActiveScene();
+            const def = getValidationLevelDef(levelId);
+            const bags = [def.art].concat((def.segments || []).map(seg => seg.art).filter(Boolean));
+            const keys = new Set();
+            for (const bag of bags) {
+                if (!bag) continue;
+                for (const value of Object.values(bag)) {
+                    if (typeof value === 'string') keys.add(value);
+                }
+            }
+            const checked = [];
+            for (const key of keys) {
+                const asset = NovaWingAssets.sprites[key];
+                if (!asset || !asset.sourceKey) continue;
+                const texture = scene.textures.get(key);
+                const source = scene.textures.get(asset.sourceKey).getSourceImage();
+                if (key === 'wall') {
+                    if (texture.novaWallSource !== source) {
+                        throw new Error('authored wall art replaced by procedural fallback');
+                    }
+                } else if (texture.getSourceImage() !== source) {
+                    throw new Error('authored art replaced by procedural fallback: ' + key);
+                }
+                checked.push(key);
+            }
+            const music = window.__novawingDebug.getMusicState();
+            const schedulesPowerups = (def.powerups && def.powerups.length > 0) ||
+                (def.segments || []).some(seg => seg.powerups && seg.powerups.length > 0);
+            return { checked, music: music.playing, schedulesPowerups };
+        }, id);
+        await session.page.evaluate(installInPagePilot);
+        const run = await drivePilotUntil(session.page, durationMs, id);
+        const shot = path.join(evidenceDir, 'validation-content.png');
+        await session.page.screenshot({ path: shot });
+        const snap = run.last.snap;
+        const crashed = session.pageErrors.length > 0 || Boolean(run.last.err);
+        const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
+        const exact = snap && Number(snap.level) === id;
+        const rewardsOk = !art.schedulesPowerups || run.seen.maxPowerups > 0;
+        const ok = Boolean(snap && snap.ready) && moved && exact && rewardsOk && !crashed;
+        const segments = [...run.seen.segments];
+        return result('validation-content', ok, ok
+            ? `art=[${art.checked.join(',') || 'none'}] music=${art.music} seg=[${segments.join(',') || '-'}] powerups=${run.seen.maxPowerups}`
+            : JSON.stringify({
+                outcome: run.outcome, err: run.last.err, pageErrors: session.pageErrors,
+                ready: snap && snap.ready, level: snap && snap.level,
+                art, rewardsOk, maxPowerups: run.seen.maxPowerups, segments
+            }), { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
+async function caseValidationFlows(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
+        return result('validation-flows', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    // Real player session: pause is deliberately disabled for bot sessions.
+    const session = await openValidationPage(browser, base, id, `?validation=1&level=${id}`,
+        { viewport: { width: 960, height: 720 } });
+    try {
+        const before = await session.page.evaluate(() => window.__novawingDebug.getPlayerState());
+        await session.page.keyboard.press('KeyP');
+        await session.page.waitForTimeout(80);
+        const paused = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
+        await session.page.keyboard.down('ArrowDown');
+        await session.page.waitForTimeout(250);
+        const frozen = await session.page.evaluate(() => window.__novawingDebug.getPlayerState());
+        await session.page.keyboard.up('ArrowDown');
+        await session.page.keyboard.press('Escape');
+        await session.page.waitForTimeout(80);
+        const resumed = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().paused);
+        const progressBefore = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().levelProgressMs);
+        await session.page.waitForTimeout(2000);
+        const progressAfter = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot().levelProgressMs);
+        await session.page.evaluate(() => { getActiveScene().scene.restart(); });
+        await session.page.waitForFunction(() => window.__novawingDebug?.getBotSnapshot()?.ready);
+        const reboot = await session.page.evaluate(() => window.__novawingDebug.getBotSnapshot());
+        const shot = path.join(evidenceDir, 'validation-flows.png');
+        await session.page.screenshot({ path: shot });
+        const stayed = before && frozen && Math.abs(frozen.y - before.y) < 3 && Math.abs(frozen.vy) < 8;
+        const advancing = progressAfter > progressBefore;
+        const rebootOk = reboot && reboot.ready && Number(reboot.level) === id;
+        const ok = paused && stayed && resumed === false && advancing && rebootOk && session.pageErrors.length === 0;
+        return result('validation-flows', ok, ok
+            ? 'paused, frozen, resumed, advancing, restart clean'
+            : JSON.stringify({ paused, stayed, resumed, advancing, rebootOk, pageErrors: session.pageErrors }),
+            { screenshot: shot });
+    } finally {
+        await session.context.close();
+    }
+}
+
+async function sampleFrameTimes(page, count) {
+    const frames = await page.evaluate((total) => new Promise(resolve => {
+        const samples = [];
+        let previous = performance.now();
+        function frame(now) {
+            samples.push(now - previous);
+            previous = now;
+            if (samples.length >= total) resolve(samples);
+            else requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+    }), count);
+    frames.sort((a, b) => a - b);
+    return {
+        median: frames[Math.floor(frames.length / 2)],
+        p95: frames[Math.floor(frames.length * 0.95)]
+    };
+}
+
+async function caseValidationPerf(browser, base, evidenceDir) {
+    const id = validationId();
+    if (id == null) {
+        return result('validation-perf', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    // Relative comparison: headless wall-clock frame times vary wildly with
+    // host load (parallel loops share cores, background throttling), so the
+    // validation level must render within 3x of shipped L1 in the same run.
+    // Absolute numbers are reported for humans; only relative jank fails.
+    const baseSession = await openValidationPage(browser, base, 1, '?level=1&bot=1',
+        { viewport: { width: 960, height: 720 } });
+    try {
+        await baseSession.page.evaluate(installInPagePilot);
+        const baseline = await sampleFrameTimes(baseSession.page, 90);
+        const session = await openValidationPage(browser, base, id, null,
+            { viewport: { width: 960, height: 720 } });
+        try {
+            await session.page.evaluate(installInPagePilot);
+            const subject = await sampleFrameTimes(session.page, 90);
+            const shot = path.join(evidenceDir, 'validation-perf.png');
+            await session.page.screenshot({ path: shot });
+            const errors = baseSession.pageErrors.concat(session.pageErrors);
+            const ratio = subject.median / Math.max(baseline.median, 0.01);
+            const ok = ratio <= 3 && errors.length === 0;
+            return result('validation-perf', ok, ok
+                ? `validation median ${subject.median.toFixed(1)}ms p95 ${subject.p95.toFixed(1)}ms vs L1 median ${baseline.median.toFixed(1)}ms p95 ${baseline.p95.toFixed(1)}ms (ratio ${ratio.toFixed(2)}x; headless software rendering)`
+                : JSON.stringify({ baseline, subject, ratio, pageErrors: errors }),
+                { screenshot: shot });
+        } finally {
+            await session.context.close();
+        }
+    } finally {
+        await baseSession.context.close();
+    }
 }
 
 async function caseL1Bot(browser, base, evidenceDir) {
@@ -1047,6 +1357,11 @@ const CASES = {
     content: caseContent,
     performance: casePerformance,
     validation: caseValidation,
+    'validation-boss': caseValidationBoss,
+    'validation-mobile': caseValidationMobile,
+    'validation-content': caseValidationContent,
+    'validation-flows': caseValidationFlows,
+    'validation-perf': caseValidationPerf,
     boot: caseBoot,
     'desktop-move': caseDesktopMove,
     laser: caseLaser,

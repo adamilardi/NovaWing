@@ -26,6 +26,9 @@ server URL — never from screenshots alone:
   the gate: cite its result, and confirm the NEW enemy type, weapon, or boss
   attack actually appears in play and behaves distinctly from existing content.
   A stat-clone or kind-reuse the static check missed still caps showcase at 2.
+- When a persona-panel report is provided, read it and fold its top findings
+  into the verdict: persona blockers become `bugs` and `requiredChanges` where
+  you agree with them; say explicitly where you disagree and why.
 
 ## Score five axes, 1-5
 
@@ -43,6 +46,8 @@ server URL — never from screenshots alone:
 
 ## Deliver the verdict
 
+Log every play session behind the verdict (`sessions`: entry route, minutes played, what you covered). A verdict without session evidence is rejected; sessions you did not play must never appear.
+
 - `ship_it`: gate green (including the novelty step), no blocker/major bugs, every axis 3+, showcase 4+.
 - `iterate`: fixable problems. List every mandatory fix in `requiredChanges`
   as concrete observable outcomes ("gate 2 leaves a 120px safe lane during the
@@ -50,6 +55,6 @@ server URL — never from screenshots alone:
 - `kill`: concept unworkable (unfair core, unfun showcase, unfixable scope).
   Say why in `summary` so the loop stops instead of polishing.
 
-Report bugs with severity (`blocker` > `major` > `minor`). Any blocker or an
+Cite the deterministic showcase proofs from the gate log (new enemy types seen and firing, boss attacks observed, mobile/content/flows/perf results) and confirm the standout ones in your own play. Report bugs with severity (`blocker` > `major` > `minor`). Any blocker or an
 unfair section is never `ship_it`. Distinguish verified findings (played) from
 inferred ones (screenshots/log only).

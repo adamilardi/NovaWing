@@ -5,8 +5,9 @@
 #   bash scripts/validation-loop/loop.sh
 #
 # Phases per iteration: generate/iterate (agent) -> playtest gate (deterministic:
-# build + check + test + verify, including the validation-level smoke case)
-# -> expert review (agent, JSON verdict) -> checkpoint commit.
+# build + check + test + novelty + verify, including the validation-level
+# smoke case) -> persona panel (agent, JSON panel report) -> expert review
+# (agent, JSON verdict) -> checkpoint commit.
 # Agent is ALWAYS `muse exec --model muse-spark-1.3-contributor`. No override.
 set -u
 cd "$(dirname "$0")/../.."
@@ -15,6 +16,7 @@ WORKTREE="$(pwd)"
 # --- pinned agent (no override; this loop runs on muse-spark only) ---
 MODEL="muse-spark-1.3-contributor"
 MAX_STEPS_BUILD="${MAX_STEPS_BUILD:-80}"
+MAX_STEPS_PANEL="${MAX_STEPS_PANEL:-60}"
 MAX_STEPS_REVIEW="${MAX_STEPS_REVIEW:-40}"
 PHASE_TIMEOUT="${PHASE_TIMEOUT:-7200}"
 # Overall wall-clock budget for the whole loop (default 8h: a night).
@@ -74,7 +76,7 @@ PORT="$(node -e "console.log(require('$WORKTREE/loop-config.json').port)")"
 BASE="$(node -e "console.log(require('$WORKTREE/loop-config.json').base||'main')" 2>/dev/null || echo main)"
 ALLOW_REUSE="$(node -e "console.log(require('$WORKTREE/loop-config.json').allowReuse||false)" 2>/dev/null || echo false)"
 CONFIG_GATE_CASES="$(node -e "console.log(require('$WORKTREE/loop-config.json').gateCases||'')" 2>/dev/null || true)"
-GATE_CASES="${GATE_CASES:-${CONFIG_GATE_CASES:-boot,content,validation}}"
+GATE_CASES="${GATE_CASES:-${CONFIG_GATE_CASES:-boot,content,validation,validation-boss,validation-mobile,validation-content,validation-flows,validation-perf}}"
 if [[ ! "$ITERATIONS" =~ ^[0-9]+$ || "$ITERATIONS" -lt 1 ]]; then
   echo "loop-config.json iterations must be a positive integer (got '$ITERATIONS')" >&2
   exit 1
@@ -95,6 +97,19 @@ REPORT_DIR="$WORKTREE/docs/level-builds/validation-$SLUG"
 mkdir -p "$REPORT_DIR"
 MAIN_LOG="$WORKTREE/loop.log"
 exec >>"$MAIN_LOG" 2>&1
+
+# CPU cap: keep validation compute on LOOP_CORES (default 0-3) so interactive
+# work keeps headroom. Affinity is inherited, so this one pin covers agents,
+# the loop server, gate builds, and headless browsers. Empty disables.
+CONFIG_CORES="$(node -e "console.log(require('$WORKTREE/loop-config.json').cores||'')" 2>/dev/null || true)"
+LOOP_CORES="${LOOP_CORES:-${CONFIG_CORES:-0-3}}"
+if [[ -n "$LOOP_CORES" ]]; then
+  if command -v taskset >/dev/null 2>&1 && taskset -pc "$LOOP_CORES" $$ >/dev/null 2>&1; then
+    echo "[$(date -Iseconds)] cpu cap: pinned loop tree to cores $LOOP_CORES"
+  else
+    echo "[$(date -Iseconds)] cpu cap: taskset unavailable or cores '$LOOP_CORES' invalid — running uncapped"
+  fi
+fi
 
 LOOP_START="$(date +%s)"
 echo "[$(date -Iseconds)] loop start slug=$SLUG level=$LEVEL_ID iterations=$ITERATIONS port=$PORT model=$MODEL cases=$GATE_CASES deadline_s=$LOOP_DEADLINE_S"
@@ -180,7 +195,9 @@ render_prompt() {
     --set "WORKTREE=$WORKTREE" --set "SLUG=$SLUG" --set "LEVEL_ID=$LEVEL_ID"
     --set "BASE=$BASE" --set "BRIEF=$BRIEF" --set "NOVAWING_URL=$NOVAWING_URL"
     --set "ITERATION=$ITER" --set "PREV_ITERATION=$((ITER - 1))"
-    --set "GATE_RESULT=${GATE_RESULT:-unknown}")
+    --set "GATE_RESULT=${GATE_RESULT:-unknown}"
+    --set "GATE_CASES=$GATE_CASES"
+    --set "PANEL_STATUS=${PANEL_STATUS:-pending}")
   if [[ -n "$prev_review" ]]; then args+=(--prev-review "$prev_review"); fi
   node "$WORKTREE/scripts/validation-loop/loop-lib.mjs" "${args[@]}"
 }
@@ -224,17 +241,70 @@ run_gate() {
     echo "### npm test" && npm test 2>&1 &&
     { if [[ "$ALLOW_REUSE" == "true" ]]; then
         echo "### novelty SKIPPED (allowReuse)"
+        export VALIDATION_NEW_TYPES=""
       else
         echo "### novelty $LEVEL_ID vs $BASE" &&
-        node scripts/check-level-novelty.mjs --validation "$LEVEL_ID" --base "$BASE" 2>&1
+        node scripts/check-level-novelty.mjs --validation "$LEVEL_ID" --base "$BASE" 2>&1 &&
+        node scripts/check-level-novelty.mjs --validation "$LEVEL_ID" --base "$BASE" --json \
+          >"$REPORT_DIR/novelty-$ITER.json" 2>&1 &&
+        new_types_csv="$(NOVELTY_JSON="$REPORT_DIR/novelty-$ITER.json" node -e "
+          const r = require(process.env.NOVELTY_JSON);
+          if (!r || !r.used || !Array.isArray(r.used.types)) process.exit(1);
+          console.log(r.used.types.join(','));
+        ")" &&
+        export VALIDATION_NEW_TYPES="$new_types_csv" &&
+        echo "### new enemy types: ${VALIDATION_NEW_TYPES:-none}"
       fi; } &&
     echo "### verify $GATE_CASES" && node scripts/verify-novawing.mjs --case="$GATE_CASES" 2>&1
   } >"$log" 2>&1
 }
 
+preflight_schemas() {
+  # Live acceptance probe for both structured-output schemas. An API-rejected
+  # schema fails every panel/review phase, so prove acceptance before burning
+  # iterations. One retry each; persistent rejection aborts the loop.
+  for schema in review panel; do
+    local prompt="$WORKTREE/.probe-$schema.md"
+    node "$WORKTREE/scripts/validation-loop/loop-lib.mjs" probe --schema "$schema" --out "$prompt" || return 1
+    local attempt=0 accepted=""
+    while (( attempt < 2 )); do
+      if timeout 180 muse exec --model "$MODEL" --workspace "$WORKTREE" --yolo \
+          --max-model-steps 2 --prompt-file "$prompt" \
+          --output-schema "$WORKTREE/scripts/validation-loop/$schema-schema.json" \
+          >"$WORKTREE/.probe-$schema.out" 2>"$WORKTREE/.probe-$schema.stderr"; then
+        accepted="1"
+        break
+      fi
+      attempt=$((attempt + 1))
+      echo "[$(date -Iseconds)] preflight: schema $schema probe attempt $attempt failed — retrying in 30s"
+      sleep 30
+    done
+    rm -f "$prompt" "$WORKTREE/.probe-$schema.out" "$WORKTREE/.probe-$schema.stderr"
+    if [[ -z "$accepted" ]]; then
+      echo "[$(date -Iseconds)] preflight: schema $schema rejected twice — aborting loop before iteration 1"
+      return 1
+    fi
+    echo "[$(date -Iseconds)] preflight: schema $schema accepted"
+  done
+}
+
+finish() {
+  {
+    echo "slug=$SLUG branch=$BRANCH level=$LEVEL_ID"
+    echo "iterations_completed=${ITER:-0}/$ITERATIONS final_verdict=$FINAL_VERDICT stop_reason=$STOP_REASON"
+    echo "report_dir=$REPORT_DIR"
+  } >"$WORKTREE/LOOP_DONE.txt"
+  echo "[$(date -Iseconds)] loop done: $FINAL_VERDICT ($STOP_REASON)"
+  exit "$1"
+}
+
 FINAL_VERDICT="unfinished"
 STOP_REASON="iterations-exhausted"
 SERVER_FAILED=""
+if ! preflight_schemas; then
+  STOP_REASON="preflight-failed"
+  finish 1
+fi
 for ITER in $(seq 1 "$ITERATIONS"); do
   echo "[$(date -Iseconds)] ======== iter $ITER/$ITERATIONS ========"
   if (( $(date +%s) - LOOP_START > LOOP_DEADLINE_S )); then
@@ -262,7 +332,8 @@ for ITER in $(seq 1 "$ITERATIONS"); do
   if run_agent "$PROMPT_TMP" "$MAX_STEPS_BUILD" "" "$BUILD_OUT"; then
     echo "[$(date -Iseconds)] phase $PHASE ok"
   else
-    echo "[$(date -Iseconds)] phase $PHASE FAILED (exit $?) — continuing to gate"
+    phase_code=$?
+    echo "[$(date -Iseconds)] phase $PHASE FAILED (exit $phase_code) — continuing to gate"
   fi
   rm -f "$PROMPT_TMP"
   checkpoint "$PHASE"
@@ -276,7 +347,30 @@ for ITER in $(seq 1 "$ITERATIONS"); do
   echo "[$(date -Iseconds)] gate: $GATE_RESULT"
   checkpoint "gate-$GATE_RESULT"
 
-  # Phase C: expert review with structured verdict.
+  # Phase C: persona panel (advisory; the expert verdict stays decisive).
+  PANEL_PROMPT="$WORKTREE/.prompt-panel$ITER.md"
+  render_prompt "$WORKTREE/scripts/validation-loop/prompts/panel.md" "$PANEL_PROMPT"
+  PANEL_OUT="$REPORT_DIR/panel-$ITER.json"
+  if run_agent "$PANEL_PROMPT" "$MAX_STEPS_PANEL" \
+      "$WORKTREE/scripts/validation-loop/panel-schema.json" "$PANEL_OUT"; then
+    if PANEL_CHECK="$(node "$WORKTREE/scripts/validation-loop/loop-lib.mjs" check-panel \
+        --file "$PANEL_OUT" --slug "$SLUG" --iteration "$ITER" --level-id "$LEVEL_ID" \
+        2>"$PANEL_OUT.stderr")"; then
+      PANEL_STATUS="ok ($PANEL_CHECK)"
+    else
+      echo "[$(date -Iseconds)] panel output failed validation: $(cat "$PANEL_OUT.stderr")"
+      PANEL_STATUS="invalid"
+    fi
+  else
+    phase_code=$?
+    echo "[$(date -Iseconds)] panel phase FAILED (exit $phase_code)"
+    PANEL_STATUS="panel-failed"
+  fi
+  rm -f "$PANEL_PROMPT"
+  echo "[$(date -Iseconds)] panel: $PANEL_STATUS"
+  checkpoint "panel"
+
+  # Phase D: expert review with structured verdict.
   REVIEW_PROMPT="$WORKTREE/.prompt-review$ITER.md"
   render_prompt "$WORKTREE/scripts/validation-loop/prompts/review.md" "$REVIEW_PROMPT"
   REVIEW_OUT="$REPORT_DIR/review-$ITER.json"
@@ -291,7 +385,8 @@ for ITER in $(seq 1 "$ITERATIONS"); do
       VERDICT="review-invalid"
     fi
   else
-    echo "[$(date -Iseconds)] review phase FAILED (exit $?)"
+    phase_code=$?
+    echo "[$(date -Iseconds)] review phase FAILED (exit $phase_code)"
     VERDICT="review-failed"
   fi
   rm -f "$REVIEW_PROMPT"
@@ -312,10 +407,4 @@ for ITER in $(seq 1 "$ITERATIONS"); do
   sleep 15
 done
 
-{
-  echo "slug=$SLUG branch=$BRANCH level=$LEVEL_ID"
-  echo "iterations_completed=$ITER/$ITERATIONS final_verdict=$FINAL_VERDICT stop_reason=$STOP_REASON"
-  echo "report_dir=$REPORT_DIR"
-} >"$WORKTREE/LOOP_DONE.txt"
-echo "[$(date -Iseconds)] loop done: $FINAL_VERDICT ($STOP_REASON)"
-if [[ -n "$SERVER_FAILED" ]]; then exit 1; fi
+if [[ -n "$SERVER_FAILED" ]]; then finish 1; else finish 0; fi

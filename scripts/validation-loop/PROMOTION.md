@@ -11,8 +11,9 @@ bash scripts/validation-loop/status.sh   # one line per loop; promotable ships a
 For each `done` loop, read in the worktree (NOT on main):
 
 - `LOOP_DONE.txt` — final verdict + `stop_reason` (`ship`, `kill`,
-  `iterations-exhausted`, `deadline`, `server-failed`).
+  `iterations-exhausted`, `deadline`, `server-failed`, `preflight-failed`).
 - `docs/level-builds/validation-<slug>/iter<N>.md` — build reports.
+- `docs/level-builds/validation-<slug>/panel-<N>.json` — persona panel (kid/teen/adult-casual/adult-veteran).
 - `docs/level-builds/validation-<slug>/review-<N>.json` — structured verdicts.
 - `docs/level-builds/validation-<slug>/gate-<N>.log` — deterministic gate logs.
 - `docs/level-builds/validation-<slug>/evidence/iter<N>/` — screenshots.

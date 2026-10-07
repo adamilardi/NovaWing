@@ -17,7 +17,8 @@ import {
     snapshotCombat,
     defTypes,
     evaluateBranch,
-    evaluateCatalog
+    evaluateCatalog,
+    runCli
 } from '../scripts/check-level-novelty.mjs';
 
 const GAME_FIXTURE = `const ENEMY_TYPES = {
@@ -307,5 +308,27 @@ describe('evaluateCatalog', () => {
             workShot, target: other, others: [other], targetLabel: 'reuse level'
         });
         assert.equal(reuse.pass, false);
+    });
+});
+
+describe('runCli --json', () => {
+    it('emits a machine-readable verdict with used sets (real tree, catalog mode)', () => {
+        const root = new URL('..', import.meta.url).pathname;
+        const { code, output } = runCli(['--level', '9', '--json', '--root', root], root);
+        assert.equal(code, 0);
+        const verdict = JSON.parse(output);
+        assert.equal(verdict.pass, true);
+        assert.equal(verdict.mode, 'catalog');
+        assert.deepEqual(verdict.used.behaviors, ['trenchCustodian']);
+        assert.deepEqual(verdict.errors, []);
+    });
+
+    it('emits failures as JSON too', () => {
+        const root = new URL('..', import.meta.url).pathname;
+        const { code, output } = runCli(['--level', '1', '--json', '--root', root], root);
+        assert.equal(code, 1);
+        const verdict = JSON.parse(output);
+        assert.equal(verdict.pass, false);
+        assert.ok(verdict.errors.length > 0);
     });
 });

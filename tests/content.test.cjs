@@ -39,6 +39,22 @@ test('multi-boss levels award each defeated encounter and follow authored succes
     assert.equal(Rules.isPlausibleCompletedRun({ scope: 'campaign', score: totalScore, kills: totalKills, timeMs: 200000 }, catalog), true);
 });
 
+test('standard boss triggers resolve a classic final encounter', () => {
+    const classic = Levels.defineLevel({ id: Levels.getTotalLevels() + 1,
+        bossEncounters: { final: { behavior: 'foundryWarden', health: 111 } } });
+    const profile = Flow.encounter(classic, 'standard');
+    assert.equal(profile.behavior, 'foundryWarden');
+    assert.equal(profile.health, 111);
+    assert.equal(profile.key, 'standard');
+    // An explicit standard entry still wins; levels without encounters are unchanged.
+    const explicit = Levels.defineLevel({ id: Levels.getTotalLevels() + 2,
+        bossEncounters: { standard: { health: 222 }, final: { health: 111 } } });
+    assert.equal(Flow.encounter(explicit, 'standard').health, 222);
+    const bare = Levels.defineLevel({ id: Levels.getTotalLevels() + 3 });
+    assert.equal(Flow.encounter(bare, 'standard').behavior, undefined);
+    assert.equal(Flow.encounter(bare, 'standard').health, bare.bossHealth);
+});
+
 test('authoring validation rejects missing links, cycles, unreachable segments and content keys', () => {
     const level = Levels.defineLevel({ id: 1, segments: [{ id: 'a', kind: 'waves', next: 'missing' }] });
     assert.throws(() => Flow.validate([level]), /missing next segment/);

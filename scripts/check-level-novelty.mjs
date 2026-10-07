@@ -291,12 +291,14 @@ export function evaluateBranch({ baseShot, workShot, baseDirector, workDirector,
             errors.push(`unknown escort enemy type '${type}' (no ENEMY_TYPES entry)`);
         }
     }
-    if (errors.length) return { pass: false, errors, notes };
+    const added = { waves: addedWaves, types: addedTypes, behaviors: addedBehaviors };
+    if (errors.length) return { pass: false, errors, notes, added, used: { waves: [], types: [], behaviors: [] } };
 
     const { keys: targetKeys, types: targetTypes } = defTypes(target, workShot);
     const usedAddedWaves = targetKeys.filter(k => addedWaves.includes(k));
     const usedAddedTypes = [...targetTypes].filter(t => addedTypes.includes(t));
     const usedAddedBehaviors = [...target.behaviors].filter(b => addedBehaviors.includes(b));
+    const used = { waves: usedAddedWaves, types: usedAddedTypes, behaviors: usedAddedBehaviors };
 
     // Genuineness: used additions must be genuinely new combat, not clones.
     for (const type of usedAddedTypes) {
@@ -336,7 +338,7 @@ export function evaluateBranch({ baseShot, workShot, baseDirector, workDirector,
     }
 
     const usedAny = usedAddedWaves.length + usedAddedTypes.length + usedAddedBehaviors.length > 0;
-    if (errors.length) return { pass: false, errors, notes };
+    if (errors.length) return { pass: false, errors, notes, added, used };
     if (!usedAny) {
         return {
             pass: false,
@@ -349,7 +351,9 @@ export function evaluateBranch({ baseShot, workShot, baseDirector, workDirector,
                 'Add a new enemy type (SPRITES + ENEMY_TYPES + spawner), wave pattern, ' +
                 'or boss attack, and use it from the level.'
             ],
-            notes
+            notes,
+            added,
+            used
         };
     }
     return {
@@ -360,7 +364,9 @@ export function evaluateBranch({ baseShot, workShot, baseDirector, workDirector,
             `new waves used: [${usedAddedWaves.join(', ') || 'none'}]`,
             `new enemy types used: [${usedAddedTypes.join(', ') || 'none'}]`,
             `new boss behaviors used: [${usedAddedBehaviors.join(', ') || 'none'}]`
-        ]
+        ],
+        added,
+        used
     };
 }
 
@@ -377,7 +383,9 @@ export function evaluateCatalog({ workShot, target, others, targetLabel }) {
             errors.push(`unknown boss behavior '${behavior}' (no boss-director catalog entry)`);
         }
     }
-    if (errors.length) return { pass: false, errors, notes };
+    if (errors.length) {
+        return { pass: false, errors, notes, used: { waves: [], types: [], behaviors: [] } };
+    }
 
     const allKeys = workShot.patterns.map(p => p.key);
     const targetKeys = new Set(target.usesAllWaves ? allKeys : [...target.waveKeys]);
@@ -406,12 +414,14 @@ export function evaluateCatalog({ workShot, target, others, targetLabel }) {
     const newWaves = [...targetKeys].filter(k => !otherKeys.has(k));
     const newTypes = [...targetTypes].filter(t => !otherTypes.has(t));
     const newBehaviors = [...target.behaviors].filter(b => !otherBehaviors.has(b));
+    const used = { waves: newWaves, types: newTypes, behaviors: newBehaviors };
     if (newWaves.length + newTypes.length + newBehaviors.length === 0) {
         return {
             pass: false,
             errors: [`${targetLabel} uses no wave pattern, enemy type or boss behavior ` +
                 'that other shipped levels do not already use.'],
-            notes
+            notes,
+            used
         };
     }
     return {
@@ -422,7 +432,8 @@ export function evaluateCatalog({ workShot, target, others, targetLabel }) {
             `waves unique to this level: [${newWaves.join(', ') || 'none'}]`,
             `enemy types unique to this level: [${newTypes.join(', ') || 'none'}]`,
             `boss behaviors unique to this level: [${newBehaviors.join(', ') || 'none'}]`
-        ]
+        ],
+        used
     };
 }
 
@@ -469,6 +480,8 @@ function parseArgs(argv) {
         const arg = argv[i];
         if (arg === '--level' || arg === '--validation' || arg === '--base' || arg === '--root') {
             args[arg.slice(2)] = argv[++i];
+        } else if (arg === '--json') {
+            args.json = true;
         } else if (arg === '-h' || arg === '--help') {
             args.help = true;
         } else {
@@ -480,12 +493,13 @@ function parseArgs(argv) {
 
 function usage() {
     return [
-        'usage: node scripts/check-level-novelty.mjs (--level N | --validation ID) [--base REF] [--root DIR]',
+        'usage: node scripts/check-level-novelty.mjs (--level N | --validation ID) [--base REF] [--root DIR] [--json]',
         '',
         '  --level N        shipped campaign position (catalog mode without --base)',
         '  --validation ID  validation level id from levels.validation.js',
         '  --base REF       branch mode: require catalog additions vs REF used by the level',
-        '  --root DIR       game root (default: current directory)'
+        '  --root DIR       game root (default: current directory)',
+        '  --json           machine-readable verdict (used/added sets for the loop gate)'
     ].join('\n');
 }
 
@@ -546,6 +560,7 @@ export function runCli(argv, cwd) {
         (args.base ? ` vs base ${args.base}` : ' (catalog uniqueness)')];
 
     let result;
+    const mode = args.base ? 'branch' : 'catalog';
     if (args.base) {
         let baseGame, baseDirector;
         try {
@@ -564,6 +579,21 @@ export function runCli(argv, cwd) {
         result = evaluateBranch({ baseShot, workShot, baseDirector, workDirector, target: targetCombat, targetLabel });
     } else {
         result = evaluateCatalog({ workShot, target: targetCombat, others, targetLabel });
+    }
+    if (args.json) {
+        return {
+            code: result.pass ? 0 : 1,
+            output: JSON.stringify({
+                pass: result.pass,
+                target: targetLabel,
+                mode,
+                base: args.base || null,
+                used: result.used,
+                added: result.added || null,
+                errors: result.errors,
+                notes: result.notes
+            }, null, 2)
+        };
     }
     for (const note of result.notes) lines.push('  note: ' + note);
     if (result.pass) {

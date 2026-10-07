@@ -13,7 +13,9 @@ Create a `defineLevel(...)` entry in `levels.js` and append it to
 `LEVEL_DEFS_SHIPPED`. IDs must be consecutive campaign positions starting at 1.
 For classic waves followed by one boss, omit `segments` and set `durationMs`,
 `wavePatternKeys`, `powerups`, `bossHealth`, `bossScore` and `bossKills` as needed.
-Omitted values use `defineLevel` defaults.
+Omitted values use `defineLevel` defaults. To give a classic boss custom behavior,
+add `bossEncounters: { final: { behavior, ... } }` — standard triggers (natural
+completion and boss-skip) resolve `final` when no `standard` encounter exists.
 
 For multiple encounters, use an explicit segment chain. This example can follow
 the three shipped levels:
@@ -162,5 +164,11 @@ ships empty on main; loops author entries on `validation/*` branches.
 
 `VALIDATION_LEVEL_ID=<id> node scripts/verify-novawing.mjs --case=validation`
 smoke-tests one in the browser (boots the entry route, requires the exact
-level, fails on page errors). Promotion to the campaign is a human copy into
-`levels.js`; see `scripts/validation-loop/PROMOTION.md`.
+level, fails on page errors). The full validation suite adds `validation-boss`
+(boss appears and fires under boss-skip), `validation-mobile` (phone viewport
+boot and drive), `validation-content` (authored art intact, rewards drop),
+`validation-flows` (pause/resume/restart), and `validation-perf` (frame-time
+report with a catastrophic bound); with `VALIDATION_NEW_TYPES` exported from
+the novelty JSON, the base case also proves each new enemy type spawns and
+fires. Promotion to the campaign is a human copy into `levels.js`; see
+`scripts/validation-loop/PROMOTION.md`.

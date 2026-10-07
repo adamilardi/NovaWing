@@ -10,10 +10,15 @@
     }
 
     function encounter(level, key = 'standard') {
+        // Classic levels author one boss as `final`; standard triggers (natural
+        // completion, boss-skip) resolve it. Segmented levels address encounters
+        // by explicit key and never hit the fallback.
+        const authored = level.bossEncounters &&
+            (level.bossEncounters[key] || (key === 'standard' ? level.bossEncounters.final : undefined));
         return Object.assign({
             key, health: level.bossHealth, maxPhase: 3, outcome: 'defeat',
             escapeHpRatio: null, timeoutMs: null, entry: 'horizontal', arena: 'flat'
-        }, level.bossEncounters && level.bossEncounters[key]);
+        }, authored);
     }
 
     function reward(level, key = 'standard') {

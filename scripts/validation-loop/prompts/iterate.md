@@ -36,10 +36,13 @@ Game server: {{NOVAWING_URL}}.
   required change is observable in play.
 - Refresh screenshots under
   `docs/level-builds/validation-{{SLUG}}/evidence/iter{{ITERATION}}/`.
-- Run the deterministic gate yourself before finishing:
-  `npm run build && npm run check && npm test`,
-  `node scripts/check-level-novelty.mjs --validation {{LEVEL_ID}} --base {{BASE}}`, and
-  `VALIDATION_LEVEL_ID={{LEVEL_ID}} node scripts/verify-novawing.mjs --case=validation`.
+- Run the deterministic gate yourself before finishing (same commands the
+  harness runs): `npm run build && npm run check && npm test`, then
+  `node scripts/check-level-novelty.mjs --validation {{LEVEL_ID}} --base {{BASE}}`,
+  then `node scripts/check-level-novelty.mjs --validation {{LEVEL_ID}} --base {{BASE}} --json > /tmp/novelty.json`
+  plus `export VALIDATION_NEW_TYPES="$(node -e "console.log(require('/tmp/novelty.json').used.types.join(','))")"`
+  (the browser cases need the new-type list), then
+  `VALIDATION_LEVEL_ID={{LEVEL_ID}} node scripts/verify-novawing.mjs --case={{GATE_CASES}}`.
   Fix failures in scope; the harness re-runs the full gate after your phase.
 
 ## Deliver

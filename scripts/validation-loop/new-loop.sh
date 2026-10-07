@@ -2,7 +2,7 @@
 # Create one overnight validation loop: new worktree + branch + config, then launch.
 # Run from the MAIN repo (never inside a validation worktree).
 #
-#   bash scripts/validation-loop/new-loop.sh <slug> --brief "..." [--iterations 3] [--level-id 90] [--base main] [--gate-cases boot,content,validation] [--allow-reuse]
+#   bash scripts/validation-loop/new-loop.sh <slug> --brief "..." [--iterations 3] [--level-id 90] [--base main] [--gate-cases boot,content,validation] [--allow-reuse] [--cores 0-3]
 set -eu
 cd "$(dirname "$0")/../.."
 MAIN="$(pwd)"
@@ -13,7 +13,7 @@ if [[ "$BRANCH" == validation/* ]]; then
 fi
 
 usage() {
-  echo "usage: new-loop.sh <slug> --brief \"...\" [--iterations N] [--level-id ID] [--base REF] [--gate-cases a,b,c] [--allow-reuse]" >&2
+  echo "usage: new-loop.sh <slug> --brief \"...\" [--iterations N] [--level-id ID] [--base REF] [--gate-cases a,b,c] [--allow-reuse] [--cores 0-3]" >&2
   exit 1
 }
 [[ $# -ge 1 ]] || usage
@@ -22,7 +22,10 @@ if [[ ! "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
   echo "slug must match [a-z0-9][a-z0-9-]*" >&2
   exit 1
 fi
-BRIEF=""; ITERATIONS=3; LEVEL_ID=""; BASE="main"; GATE_CASES="boot,content,validation"; ALLOW_REUSE="false"
+BRIEF=""; ITERATIONS=3; LEVEL_ID=""; BASE="main"
+GATE_CASES="boot,content,validation,validation-boss,validation-mobile,validation-content,validation-flows,validation-perf"
+ALLOW_REUSE="false"
+CORES="${LOOP_CORES:-0-3}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --brief) BRIEF="$2"; shift 2 ;;
@@ -31,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --base) BASE="$2"; shift 2 ;;
     --gate-cases) GATE_CASES="$2"; shift 2 ;;
     --allow-reuse) ALLOW_REUSE="true"; shift ;;
+    --cores) CORES="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "unknown arg: $1" >&2; usage ;;
   esac
@@ -42,8 +46,19 @@ fi
 if [[ -n "$LEVEL_ID" && ! "$LEVEL_ID" =~ ^[0-9]+$ ]]; then
   echo "--level-id must be an integer" >&2; exit 1
 fi
+# Static preflight: the loop burns hours on a broken harness, so prove the
+# harness unit tests (schema strictness, templating, verdict validation) pass
+# on the launcher before creating anything.
+echo "preflight: harness unit tests…"
+if ! (cd "$MAIN" && node --test scripts/validation-loop/tests/loop-lib.test.mjs >/dev/null 2>&1); then
+  echo "preflight FAILED: loop harness unit tests are red — fix main before launching" >&2
+  exit 1
+fi
 if [[ ! "$GATE_CASES" =~ ^[A-Za-z0-9_,-]+$ ]]; then
   echo "--gate-cases must be a comma-separated case list" >&2; exit 1
+fi
+if [[ -n "$CORES" && ! "$CORES" =~ ^[0-9,-]+$ ]]; then
+  echo "--cores must look like 0-3 or 0,1 (empty disables the cap)" >&2; exit 1
 fi
 
 validation_worktrees() {
@@ -134,7 +149,7 @@ fi
 # loop runs this code even when the base commit predates it (or vice versa).
 mkdir -p "$WORKTREE/scripts/validation-loop"
 cp -r "$MAIN/scripts/validation-loop/." "$WORKTREE/scripts/validation-loop/"
-for skill in game-reviewer level-creator boss-creator weapon-creator; do
+for skill in game-reviewer persona-panel level-creator boss-creator weapon-creator; do
   if [[ -d "$MAIN/skills/$skill" ]]; then
     mkdir -p "$WORKTREE/skills/$skill"
     cp -r "$MAIN/skills/$skill/." "$WORKTREE/skills/$skill/"
@@ -155,14 +170,14 @@ if ! (cd "$WORKTREE" && npx playwright install chromium); then
 fi
 
 SLUG="$SLUG" BRIEF="$BRIEF" ITERATIONS="$ITERATIONS" LEVEL_ID="$LEVEL_ID" \
-PORT="$PORT" BASE="$BASE" GATE_CASES="$GATE_CASES" ALLOW_REUSE="$ALLOW_REUSE" WORKTREE="$WORKTREE" node -e "
+PORT="$PORT" BASE="$BASE" GATE_CASES="$GATE_CASES" ALLOW_REUSE="$ALLOW_REUSE" CORES="$CORES" WORKTREE="$WORKTREE" node -e "
 const fs = require('fs');
 const e = process.env;
 fs.writeFileSync(e.WORKTREE + '/loop-config.json', JSON.stringify({
   slug: e.SLUG, brief: e.BRIEF,
   iterations: Number(e.ITERATIONS), levelId: Number(e.LEVEL_ID), port: Number(e.PORT),
   model: 'muse-spark-1.3-contributor', base: e.BASE, gateCases: e.GATE_CASES,
-  allowReuse: e.ALLOW_REUSE === 'true',
+  allowReuse: e.ALLOW_REUSE === 'true', cores: e.CORES,
   createdAt: new Date().toISOString()
 }, null, 2) + '\n');
 "
@@ -171,7 +186,7 @@ fs.writeFileSync(e.WORKTREE + '/loop-config.json', JSON.stringify({
 # runtimes reaping the launcher's tree) cannot reach the overnight loop —
 # and so stop-all.sh can reap the loop's whole tree by process group.
 (cd "$WORKTREE" && setsid -f bash scripts/validation-loop/loop.sh >>loop.log 2>&1)
-echo "loop launched: slug=$SLUG level=$LEVEL_ID port=$PORT iterations=$ITERATIONS cases=$GATE_CASES"
+echo "loop launched: slug=$SLUG level=$LEVEL_ID port=$PORT iterations=$ITERATIONS cases=$GATE_CASES cores=${CORES:-none}"
 echo "  worktree: $WORKTREE"
 echo "  log:      $WORKTREE/loop.log"
 echo "  status:   bash scripts/validation-loop/status.sh"
