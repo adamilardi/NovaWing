@@ -24,6 +24,17 @@ Wall art may require atlas preparation: inspect the current `installWallTexture`
 
 Game asset URLs follow the current source catalog and direct Pages hosting conventions; do not introduce cross-game or landing-router prefixes. This skill does not require a Cloudflare operation to build a level locally.
 
+## Combat novelty recipe
+
+Each new level adds at least one of these (reuse-only levels need an explicit user opt-out):
+
+- **New enemy type.** Add a `SPRITES` row in `src/assets.js` (art, body rect, display width) plus an `ENEMY_TYPES` row in `game.js` (speed, health, and the weapon: `canShootDefault`, `usesMissile`, `shotSpeed`, `shotCooldownMin/Max`, `shotAimScale`, `shotMaxDy/Dx`, `tracksPlayer`, `splitsOnDeath`). The type must differ from every existing type in at least one non-art field — new art on identical stats fails the novelty check as a stat-clone. Animate per the enemy-animation skills.
+- **New enemy weapon.** Either a new type's shot profile, or a new shared projectile behavior (texture, motion, damage rule) used through the existing fire path. Do not add a second place that spawns enemy attacks.
+- **New wave pattern.** Add an `ENEMY_WAVE_PATTERNS` entry in `game.js` plus its `function spawnXWave(scene)` spawner. Reference enemy types with literal `type: 'name'` strings (ternaries are fine) so static checks see them; handle the level's orientation explicitly; add the key to the level's `wavePatternKeys` (or schedules/escorts).
+- **New boss attack.** See [boss-creator](../../boss-creator/SKILL.md): a `boss-director` catalog entry plus a `plan()` branch returning a NEW attack kind, with matching dispatch in `game.js`. New parameters on an existing kind fail the novelty check as kind-reuse.
+
+Verify with `node scripts/check-level-novelty.mjs --level N` (catalog uniqueness) or, on a branch, `--validation ID --base <ref>` (requires branch additions the level uses). Then playtest: the new enemy must spawn, fire its weapon, die, and award correctly; the new boss attack must telegraph, fire, and clean up.
+
 ## Validation
 
 The documented project checks are `npm run check`, `npm test`, and `npm run build`. The authoring test is `scripts/rl/tests/levels-authoring.test.mjs`; it currently includes shipped-level count assertions that must evolve when a new level is added without losing earlier-level checks.

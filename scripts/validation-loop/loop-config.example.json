@@ -6,5 +6,7 @@
   "port": 4123,
   "model": "muse-spark-1.3-contributor",
   "base": "main",
+  "gateCases": "boot,content,validation",
+  "allowReuse": false,
   "createdAt": "2026-10-06T12:00:00.000Z"
 }

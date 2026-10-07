@@ -1188,8 +1188,23 @@
         }
     }
 
+    /**
+     * True when URL requests validation-mode entry (?validation=1).
+     * The level id still comes from ?level=<id> (90+).
+     */
+    function wantsValidationMode() {
+        try {
+            if (typeof window === 'undefined' || !window.location) return false;
+            const q = new URLSearchParams(window.location.search || '');
+            return q.get('validation') === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
     function getEffectiveLevelDefs() {
         // L3 is permanently in LEVEL_DEFS_SHIPPED (PR6+).
+        // Validation defs stay out: campaign math never sees experiments.
         return LEVEL_DEFS_SHIPPED;
     }
 
@@ -1197,7 +1212,30 @@
         return getEffectiveLevelDefs().length;
     }
 
+    /**
+     * Branch-local validation levels (levels.validation.js), or [] on main.
+     * Read lazily: this file loads before levels.validation.js.
+     */
+    function getValidationLevelDefs() {
+        const defs = root.LEVEL_DEFS_VALIDATION;
+        return Array.isArray(defs) ? defs : [];
+    }
+
+    function getValidationLevelDef(levelId) {
+        const id = Math.floor(Number(levelId));
+        if (!Number.isFinite(id)) return null;
+        const defs = getValidationLevelDefs();
+        for (let i = 0; i < defs.length; i++) {
+            if (defs[i] && defs[i].id === id) return defs[i];
+        }
+        return null;
+    }
+
     function getLevelDef(levelId) {
+        // Exact validation-id match first (ids >= 90 never collide with the
+        // positional 1..N catalog); otherwise positional as before.
+        const validation = getValidationLevelDef(levelId);
+        if (validation) return validation;
         const defs = getEffectiveLevelDefs();
         const index = (levelId || 1) - 1;
         return defs[index] || defs[0];
@@ -1282,6 +1320,9 @@
         getCampaignBossKills: getCampaignBossKills,
         getEffectiveLevelDefs: getEffectiveLevelDefs,
         getTotalLevels: getTotalLevels,
+        getValidationLevelDefs: getValidationLevelDefs,
+        getValidationLevelDef: getValidationLevelDef,
+        wantsValidationMode: wantsValidationMode,
         wantsDebugLevel3: wantsDebugLevel3,
         setLevel3Def: setLevel3Def,
         getLevel3Def: function () { return LEVEL_3; }
@@ -1312,6 +1353,9 @@
     root.getCampaignBossKills = getCampaignBossKills;
     root.getEffectiveLevelDefs = getEffectiveLevelDefs;
     root.getTotalLevels = getTotalLevels;
+    root.getValidationLevelDefs = getValidationLevelDefs;
+    root.getValidationLevelDef = getValidationLevelDef;
+    root.wantsValidationMode = wantsValidationMode;
     root.wantsDebugLevel3 = wantsDebugLevel3;
     root.setLevel3Def = setLevel3Def;
     root.LEVEL_DURATION_MS = DEFAULT_DURATION_MS;

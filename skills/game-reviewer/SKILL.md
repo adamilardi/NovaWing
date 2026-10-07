@@ -22,7 +22,10 @@ server URL — never from screenshots alone:
 - Check pause/resume, death/retry, segment cleanup, boss/end completion, and
   the next-level or victory route as applicable.
 - Read the deterministic gate result and its log; a FAIL gate caps the verdict
-  at `iterate` no matter how fun the level feels.
+  at `iterate` no matter how fun the level feels. The novelty step is part of
+  the gate: cite its result, and confirm the NEW enemy type, weapon, or boss
+  attack actually appears in play and behaves distinctly from existing content.
+  A stat-clone or kind-reuse the static check missed still caps showcase at 2.
 
 ## Score five axes, 1-5
 
@@ -40,7 +43,7 @@ server URL — never from screenshots alone:
 
 ## Deliver the verdict
 
-- `ship_it`: gate green, no blocker/major bugs, every axis 3+, showcase 4+.
+- `ship_it`: gate green (including the novelty step), no blocker/major bugs, every axis 3+, showcase 4+.
 - `iterate`: fixable problems. List every mandatory fix in `requiredChanges`
   as concrete observable outcomes ("gate 2 leaves a 120px safe lane during the
   sweep"), not methods. Empty only for `ship_it`.

@@ -695,6 +695,7 @@ let openingActive = false;
 let openingShownThisSession = false;
 let openingStartCallback = null;
 let bonusTestingLevel = null;
+let validationTestingLevel = null;
 let openingBonusNodes = null;
 let tutorialOverlay = null;
 let pauseRestartArmed = false;
@@ -1242,7 +1243,11 @@ function createPowerupTextures(scene) {
 
 function create() {
     segmentScope.reset();
-    levelFlow.validate(LEVEL_DEFS, {
+    // Validation defs (when present) must satisfy the same catalog or the
+    // boot fails loudly here instead of mid-playtest.
+    const validationDefs = (typeof getValidationLevelDefs === 'function')
+        ? getValidationLevelDefs() : [];
+    levelFlow.validate(LEVEL_DEFS.concat(validationDefs), {
         waves: new Set(ENEMY_WAVE_PATTERNS.map(pattern => pattern.key)),
         bosses: new Set(Object.keys(NovaWingBosses.catalog)),
         assets: new Set(Object.keys(SPRITES)),
@@ -6005,9 +6010,9 @@ function completeLevel() {
         return;
     }
 
-    if (bonusTestingLevel) {
+    if (bonusTestingLevel || validationTestingLevel) {
         levelTransitioning = false;
-        endLevel.call(scene, 'BONUS STAGE CLEAR', '#55ffaa', {
+        endLevel.call(scene, validationTestingLevel ? 'VALIDATION STAGE CLEAR' : 'BONUS STAGE CLEAR', '#55ffaa', {
             completed: true, completionTimeMs: levelTimeMs, skipLeaderboard: true
         });
         return;
@@ -6080,6 +6085,10 @@ function beginNextLevel() {
 function debugSkipToLevel(levelId) {
     if (levelEnded || victoryPending || awaitingNextLevel) return;
     const target = Phaser.Math.Clamp(levelId, 1, totalLevels());
+    // Debug skips address the shipped catalog only: leaving validation mode.
+    if (typeof getValidationLevelDef === 'function' && !getValidationLevelDef(target)) {
+        validationTestingLevel = null;
+    }
     if (target === currentLevel && gamePhase === 'waves' && !levelTransitioning && !levelSegment) return;
     markSessionLeaderboardIneligible();
     startLevel.call(this, target, { fromClear: false, debugSkip: true });
@@ -6095,8 +6104,12 @@ function startLevel(levelId, options = {}) {
     this.cameras.main.setZoom(1);
     this.cameras.main.setRotation(0);
     levelTransitioning = true;
-    currentLevel = Phaser.Math.Clamp(levelId, 1, totalLevels());
-    const levelDef = getLevelDef(currentLevel);
+    // Validation ids (90+) live outside the positional 1..N catalog: resolve
+    // the def directly instead of clamping into the shipped range.
+    const validationDef = (typeof getValidationLevelDef === 'function')
+        ? getValidationLevelDef(levelId) : null;
+    currentLevel = validationDef ? validationDef.id : Phaser.Math.Clamp(levelId, 1, totalLevels());
+    const levelDef = validationDef || getLevelDef(currentLevel);
     applyLevelArt(this, currentLevel);
     applyBackgroundTheme(this, currentLevel);
     levelAttemptStartTime = playtestNow(this);
@@ -6775,9 +6788,21 @@ function drawBlackHoleVisuals(scene, time) {
 
 function getDebugStartLevel() {
     if (bonusTestingLevel) return bonusTestingLevel;
+    if (validationTestingLevel) return validationTestingLevel;
     try {
         const params = new URLSearchParams(window.location.search || '');
         const raw = Number(params.get('level'));
+        if (typeof getValidationLevelDef === 'function' &&
+            typeof wantsValidationMode === 'function' && wantsValidationMode()) {
+            const validationDef = getValidationLevelDef(Math.floor(raw));
+            if (validationDef) {
+                validationTestingLevel = validationDef.id;
+                return validationDef.id;
+            }
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn('[NovaWing] ?validation=1 but no validation level matches id ' + params.get('level'));
+            }
+        }
         if (Number.isFinite(raw) && raw >= 1 && raw <= totalLevels()) {
             if (getLevelDef(Math.floor(raw)).bonus) bonusTestingLevel = Math.floor(raw);
             return Math.floor(raw);
@@ -6816,6 +6841,7 @@ function getDebugBossSkip() {
 /** Debug, bot, co-op, and query-tainted sessions never write public scores. */
 function isLeaderboardEligibleSession() {
     if (bonusTestingLevel) return false;
+    if (validationTestingLevel) return false;
     if (coopEnabled) return false;
     if (leaderboardDebugTainted) return false;
     try {
@@ -6827,7 +6853,7 @@ function isLeaderboardEligibleSession() {
         return ![
             'bot', 'demo', 'expert', 'policy', 'playtest',
             'boss', 'skip', 'phase', 'level', 'level3', 'speedrun', 'debug',
-            'diff', 'difficulty', 'playtestContinues'
+            'diff', 'difficulty', 'playtestContinues', 'validation'
         ].some(key => params.has(key));
     } catch (error) {
         return true;
@@ -8219,6 +8245,7 @@ function updatePauseHud() {
 
 function hasUnlimitedPlaytestContinues() {
     if (bonusTestingLevel) return true;
+    if (validationTestingLevel) return true;
     try {
         return new URLSearchParams(window.location.search || '').get('playtestContinues') === 'unlimited';
     } catch (error) { return false; }
@@ -11852,7 +11879,8 @@ function endLevel(title, color, options = {}) {
         shareScoreResult(submittedEntry, resultLineText, heldRecord);
     });
 
-    const restartX = continueToNext || bonusTestingLevel ? 275 : 400;
+    const isolatedTestingLevel = bonusTestingLevel || validationTestingLevel;
+    const restartX = continueToNext || isolatedTestingLevel ? 275 : 400;
     const restartBg = this.add.rectangle(restartX, 558, 210, 42, 0x252d43, 1)
         .setStrokeStyle(2, 0x8aa4ff, 0.9).setDepth(11).setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
@@ -11869,12 +11897,13 @@ function endLevel(title, color, options = {}) {
         .setInteractive({ useHandCursor: true });
     actionText.setDepth(12);
     actionText.setInteractive({ useHandCursor: true });
-    actionBg.setVisible(continueToNext || Boolean(bonusTestingLevel));
-    actionText.setVisible(continueToNext || Boolean(bonusTestingLevel));
-    if (bonusTestingLevel) {
+    actionBg.setVisible(continueToNext || Boolean(isolatedTestingLevel));
+    actionText.setVisible(continueToNext || Boolean(isolatedTestingLevel));
+    if (isolatedTestingLevel) {
         const returnToMain = () => {
             cleanupResults();
             bonusTestingLevel = null;
+            validationTestingLevel = null;
             openingShownThisSession = false;
             this.scene.restart();
         };

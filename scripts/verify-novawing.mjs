@@ -895,10 +895,12 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
         const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
         const levelOk = !options.requireLevel ||
             (snap && Number(snap.level) >= options.requireLevel);
+        const exactOk = !options.requireExactLevel ||
+            (snap && Number(snap.level) === options.requireExactLevel);
         const wallsOk = !options.requireWalls || run.seen.maxWalls > 0;
         const orientOk = !options.requireVertical ||
             (snap && snap.scrollMode === 'vertical' && snap.combatOrientation === 'up');
-        const ok = Boolean(snap && snap.ready) && moved && levelOk && wallsOk && orientOk && !crashed;
+        const ok = Boolean(snap && snap.ready) && moved && levelOk && exactOk && wallsOk && orientOk && !crashed;
         const segments = [...run.seen.segments];
         const detail = ok
             ? `t=${(run.elapsedMs / 1000).toFixed(1)}s outcome=${run.outcome} score=${snap.score} lives=${snap.lives} seg=${snap.segment || '-'} seen=[${segments.join(',')}]`
@@ -924,6 +926,21 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
     } finally {
         await session.context.close();
     }
+}
+
+async function caseValidation(browser, base, evidenceDir) {
+    const id = Math.floor(Number(process.env.VALIDATION_LEVEL_ID));
+    if (!Number.isFinite(id)) {
+        return result('validation', false, 'VALIDATION_LEVEL_ID env must be set to the validation level id');
+    }
+    const durationMs = Number(process.env.VERIFY_VALIDATION_MS) || 30000;
+    return playLevelWithBot(browser, base, evidenceDir, id, {
+        name: 'validation',
+        search: `?validation=1&level=${id}&bot=1`,
+        durationMs,
+        requireExactLevel: id,
+        shotName: 'validation.png'
+    });
 }
 
 async function caseL1Bot(browser, base, evidenceDir) {
@@ -1029,6 +1046,7 @@ const CASES = {
     'graphics-polish': caseGraphicsPolish,
     content: caseContent,
     performance: casePerformance,
+    validation: caseValidation,
     boot: caseBoot,
     'desktop-move': caseDesktopMove,
     laser: caseLaser,

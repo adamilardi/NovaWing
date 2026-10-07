@@ -71,6 +71,21 @@ of `levels.js` for the supported knobs. Corridor geometry uses level-wide
 `paths`, `pathEvents` and `hasPathWalls`; `pathHelpers` and `buildPathEvents` build
 those schedules.
 
+## New levels must add new combat
+
+Every new level introduces at least one new enemy type (distinct behavior and
+weapon), wave pattern, or boss attack; reuse-only levels need an explicit user
+opt-out. New art on identical combat stats (stat-clone) and new boss parameters
+on an existing attack kind (kind-reuse) do not count. The recipe is
+`SPRITES` + `ENEMY_TYPES` + spawner + `wavePatternKeys` for enemies, and a
+`boss-director` catalog entry + `plan()` branch returning a new kind + game
+dispatch for boss attacks; see the level-creator reference for details.
+
+Check it with `node scripts/check-level-novelty.mjs --level N` (uniqueness
+against shipped levels) or, on a branch, `--validation ID --base <ref>`
+(requires branch additions the level uses). The overnight loop runs the branch
+form as part of its deterministic gate.
+
 ## Add or replace art
 
 Place source files under `assets/` and register them in `src/assets.js`. Prefer
@@ -135,3 +150,17 @@ actual ID). `npm run verify -- --case content` checks segment transitions, rewar
 art metadata and music in the browser. Startup validation rejects unknown art,
 music, wave and powerup keys, broken successor chains, and unsorted drops. Test
 both orientations, boss exits and restarts when adding those features.
+
+## Validation levels (overnight experiments)
+
+Branch-local levels for the overnight loop live in `levels.validation.js` via
+`defineValidationLevel({...})` — the same `defineLevel` shape, but ids >= 90
+and OUT of `LEVEL_DEFS_SHIPPED`, so campaign math, saves, leaderboards and
+existing tests never see them. Entry route: `?validation=1&level=<id>`
+(unranked, unlimited continues, no campaign advance). `levels.validation.js`
+ships empty on main; loops author entries on `validation/*` branches.
+
+`VALIDATION_LEVEL_ID=<id> node scripts/verify-novawing.mjs --case=validation`
+smoke-tests one in the browser (boots the entry route, requires the exact
+level, fails on page errors). Promotion to the campaign is a human copy into
+`levels.js`; see `scripts/validation-loop/PROMOTION.md`.

@@ -17,14 +17,17 @@ Accept either a selection manifest from the art selection workflow or explicit a
 
 Honor prior user choices and explicit delegation to choose; do not require a separate confirmation when the current request already settles the inputs. A draft recommendation alone is not a user choice. If art choices remain ambiguous, ask a focused question while inspecting the code and preparing the enemy roster and level structure. Do not silently substitute art or commit unresolved choices to the level.
 
-## Establish the working enemy roster and boss
+## Establish the enemy roster, with one new combat element
 
-Find enemy identifiers in the runtime catalog and trace their spawn, movement, attacks, collision, damage/death, and asset/animation paths. Choose types and existing wave patterns that support the level's orientation. Confirm that the actual implementation works through available tests and gameplay inspection; a catalog entry by itself is not proof.
+Find enemy identifiers in the runtime catalog and trace their spawn, movement, attacks, collision, damage/death, and asset/animation paths. Choose types and wave patterns that support the level's orientation. Confirm that the actual implementation works through available tests and gameplay inspection; a catalog entry by itself is not proof.
 
-- Reuse working enemies with their existing behavior, textures, animations, and collision metadata. If the user supplies a roster, keep it and report any incompatibilities.
-- A canonical enemy image or animation handoff is a design artifact, not a working enemy implementation. Do not treat it as a spawnable enemy or build new behaviors to fill the roster without a request to do so.
-- If selected enemy concepts appear in an art selection manifest, identify them separately from the runtime roster. Use existing working enemies for this task and record any concept-to-runtime mismatch rather than pretending the concepts were implemented. Clarify only if the user requires those specific concepts in the playable level.
-- Compose existing behaviors into new placements, timings, formations, and encounters. Prefer supported configuration; add a small encounter composition hook only if the existing surface cannot express the requested sequence. Preserve shared enemy behavior and global tuning.
+Every new level introduces at least one NEW combat element — a new enemy type with distinct behavior and weapon, a new wave pattern showcasing it, or a new boss attack. A level that only recombines the existing roster is not done, unless the user explicitly asked for a reuse-only level. Build the roster as proven working enemies plus the new element, and feature the new element with a teaching moment plus a payoff.
+
+- If the user supplies a roster, keep it and report any incompatibilities; the novelty requirement still applies unless they explicitly opt out.
+- A canonical enemy image or animation handoff is a design artifact, not a working enemy implementation. Implement the new element for real (behavior, weapon, art, collision, spawner registration) and prove it in play; do not treat the concept art as the implementation.
+- If selected enemy concepts appear in an art selection manifest, they are candidates for the new element: implement at most what you can verify, and record any concept-to-runtime mismatch rather than pretending unimplemented concepts shipped. Clarify only if the user requires specific concepts in the playable level.
+- Compose existing behaviors into new placements, timings, formations, and encounters for the rest of the roster. Prefer supported configuration; add a small encounter composition hook only if the existing surface cannot express the requested sequence. Preserve shared enemy behavior and global tuning.
+- Ordinary-enemy attacks and weapons are part of this task. Boss weapons belong to [boss-creator](../boss-creator/SKILL.md); player weapons belong to [weapon-creator](../weapon-creator/SKILL.md).
 - Each newly authored level must have a distinct boss with its own art, animation and defining combat mechanic. Reuse common combat helpers, but a different label, palette or health total on a shared boss is insufficient. Use [boss-creator](../boss-creator/SKILL.md) to create a missing boss or integrate a working boss unique to this level; keep ordinary enemy reuse separate. Check boss behavior, encounter cleanup and end conditions just as carefully as ordinary enemies. Updating an existing level does not automatically authorize replacing its boss; honor the user's requested scope.
 
 ## Author a level that can be played through
@@ -64,7 +67,7 @@ If a required art role has no rendering hook, add the smallest level-scoped hook
 
 Make the level reachable through the existing game flow or the explicitly requested entry route. Follow the project's level ID and registry rules. Check campaign progression, terminal victory conditions, rewards, save/unlock data, and any server-side completion validation affected by adding a level. Reuse shared definitions and derived totals where available. Preserve old IDs and saves rather than renumbering earlier levels.
 
-Run relevant project checks and a production build. Add or update meaningful checks for new level data, registry references, progression, and rewards as needed. When campaign length legitimately changes, update assertions to cover the new level while retaining coverage of earlier levels; do not simply remove failing assertions.
+Run relevant project checks and a production build. Run the novelty check for the new level and fix reuse, stat-clone, or attack-reuse failures: new art on identical combat stats is not a new enemy. Add or update meaningful checks for new level data, registry references, progression, and rewards as needed. When campaign length legitimately changes, update assertions to cover the new level while retaining coverage of earlier levels; do not simply remove failing assertions.
 
 Playtest the actual new level using available browser, engine, or automation tools. Verify:
 

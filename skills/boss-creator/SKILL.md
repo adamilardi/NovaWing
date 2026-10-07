@@ -23,6 +23,8 @@ Each level should introduce a new boss. Make the distinctive mechanic change how
 
 For NovaWing's expansion themes, possible directions are a foundry machine with exposed reactor shutters (4), an ice-rift creature with crystal armor breaks (5), an alien cathedral guardian with rotating sigils (6), and a wreckage-built leviathan with independently damaged turrets (7). These are design seeds, not existing implementations or confirmed art selections.
 
+For NovaWing, the new boss must introduce at least one NEW attack kind: a `boss-director` catalog entry plus a `plan()` branch returning a kind no existing boss uses, with matching dispatch, telegraphs, and cleanup in the game. New parameters (lanes, angles, timing, color) on an existing kind are a reskin, not a new weapon, and fail the novelty gate as kind-reuse. Reusing the shared projectile helpers for the new kind's implementation is fine; reusing another boss's kind identity is not.
+
 Design an approachable first phase that teaches the mechanic, then escalation that recombines it. Preserve reaction time and clear recovery windows. Avoid stacking attacks whose combined swept areas cover every legal player position. Account for actual movement speeds, ship dimensions, arena boundaries, terrain and any co-op pilot. Keep pickups and any required weak point reachable. Scope health, tempo and damage tuning to the encounter and preserve supported difficulty modes.
 
 ## Create production art and animation
