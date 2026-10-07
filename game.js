@@ -105,6 +105,8 @@ const REGULAR_ENEMY_SPEED = -155;
 const INTERCEPTOR_ENEMY_SPEED = -245;
 const INTERCEPTOR_TRACK_SPEED = 175;
 const INTERCEPTOR_TRACK_RESPONSE = 2.35;
+// Flank-entry divers/risers steer their nose toward the player at this rate.
+const ENEMY_FACE_TURN_DEG_PER_SEC = 300;
 const REGULAR_ENEMY_HEALTH = 2;
 const INTERCEPTOR_ENEMY_HEALTH = 3;
 // Default type mix when a wave doesn't specify: fewer trackers early.
@@ -874,22 +876,55 @@ function createSoftLightTexture(scene, key, size, color) {
 function createWorldTextures(scene) {
     if (scene.textures.exists('obstacle') && scene.textures.exists('bossShip') &&
         scene.textures.exists('wall') && scene.textures.exists('pathHazard')) return;
+    // Tumbling rock: jagged silhouette with lit/shadow facets, never a flat disc.
     const obstacleGfx = scene.add.graphics();
-    obstacleGfx.fillStyle(0x2a3140, 1);
-    obstacleGfx.fillCircle(36, 32, 30);
-    obstacleGfx.fillStyle(0x5f6673, 1);
-    obstacleGfx.fillCircle(34, 30, 26);
-    obstacleGfx.fillStyle(0x7a8494, 0.9);
-    obstacleGfx.fillCircle(28, 24, 10);
-    obstacleGfx.fillStyle(0x38404c, 1);
-    obstacleGfx.fillCircle(24, 20, 7);
-    obstacleGfx.fillCircle(48, 38, 9);
-    obstacleGfx.fillCircle(30, 48, 5);
-    obstacleGfx.fillCircle(44, 22, 4);
-    obstacleGfx.lineStyle(3, 0xc0cce0, 0.55);
-    obstacleGfx.strokeCircle(36, 32, 30);
-    obstacleGfx.lineStyle(1, 0xffffff, 0.2);
-    obstacleGfx.strokeCircle(30, 26, 12);
+    const rockOutline = [[30, 3], [42, 5], [52, 10], [60, 19], [63, 30], [59, 41],
+        [51, 51], [40, 58], [28, 59], [17, 54], [10, 45], [6, 34], [9, 23], [17, 12], [24, 6]];
+    obstacleGfx.fillStyle(0x414b5e, 1);
+    obstacleGfx.beginPath();
+    obstacleGfx.moveTo(rockOutline[0][0], rockOutline[0][1]);
+    for (let i = 1; i < rockOutline.length; i++) obstacleGfx.lineTo(rockOutline[i][0], rockOutline[i][1]);
+    obstacleGfx.closePath();
+    obstacleGfx.fillPath();
+    // Sunlit facet, upper left.
+    obstacleGfx.fillStyle(0x7c8698, 1);
+    obstacleGfx.beginPath();
+    obstacleGfx.moveTo(9, 23);
+    obstacleGfx.lineTo(24, 6);
+    obstacleGfx.lineTo(42, 5);
+    obstacleGfx.lineTo(38, 22);
+    obstacleGfx.lineTo(20, 30);
+    obstacleGfx.closePath();
+    obstacleGfx.fillPath();
+    // Shadow mass, lower right.
+    obstacleGfx.fillStyle(0x232b3a, 1);
+    obstacleGfx.beginPath();
+    obstacleGfx.moveTo(38, 22);
+    obstacleGfx.lineTo(59, 41);
+    obstacleGfx.lineTo(51, 51);
+    obstacleGfx.lineTo(40, 58);
+    obstacleGfx.lineTo(28, 59);
+    obstacleGfx.lineTo(24, 48);
+    obstacleGfx.lineTo(30, 34);
+    obstacleGfx.closePath();
+    obstacleGfx.fillPath();
+    // Craters: dark bowls with a lit upper-left lip.
+    const rockCraters = [[26, 36, 8, 6], [46, 30, 6, 5], [36, 48, 5, 4]];
+    rockCraters.forEach(([cx, cy, rx, ry]) => {
+        obstacleGfx.fillStyle(0x1a212e, 1);
+        obstacleGfx.fillEllipse(cx, cy, rx * 2, ry * 2);
+        obstacleGfx.lineStyle(2, 0x9aa4b8, 0.8);
+        obstacleGfx.beginPath();
+        obstacleGfx.arc(cx, cy, Math.max(rx, ry) - 1, Math.PI * 0.9, Math.PI * 1.7);
+        obstacleGfx.strokePath();
+    });
+    // Cracks and a catching rim light on the lit edges.
+    obstacleGfx.lineStyle(1, 0x141a26, 0.9);
+    obstacleGfx.lineBetween(30, 12, 34, 24);
+    obstacleGfx.lineBetween(20, 38, 30, 44);
+    obstacleGfx.lineStyle(2, 0xc0cce0, 0.6);
+    obstacleGfx.lineBetween(10, 22, 18, 12);
+    obstacleGfx.lineBetween(25, 7, 33, 4);
     obstacleGfx.generateTexture('obstacle', 72, 64);
     obstacleGfx.destroy();
 
@@ -912,34 +947,92 @@ function createWorldTextures(scene) {
     mineGfx.generateTexture('mine', 60, 60);
     mineGfx.destroy();
 
+    // Crystal cluster: three leaning hex shards, no longer a flat square.
     const crystalGfx = scene.add.graphics();
-    crystalGfx.fillStyle(0x0a3a6a, 0.55);
-    crystalGfx.fillTriangle(38, 2, 74, 34, 38, 74);
-    crystalGfx.fillStyle(0x35d7ff, 0.9);
-    crystalGfx.fillTriangle(38, 0, 72, 32, 38, 76);
-    crystalGfx.fillStyle(0x1968b8, 0.95);
-    crystalGfx.fillTriangle(38, 0, 4, 34, 38, 76);
-    crystalGfx.fillStyle(0xd7ffff, 0.55);
-    crystalGfx.fillTriangle(38, 10, 54, 32, 38, 54);
-    crystalGfx.lineStyle(3, 0xffffff, 0.75);
-    crystalGfx.strokeTriangle(38, 0, 72, 32, 38, 76);
-    crystalGfx.strokeTriangle(38, 0, 4, 34, 38, 76);
+    const shard = (points, dark, light) => {
+        crystalGfx.fillStyle(dark, 1);
+        crystalGfx.beginPath();
+        crystalGfx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) crystalGfx.lineTo(points[i][0], points[i][1]);
+        crystalGfx.closePath();
+        crystalGfx.fillPath();
+        const mid = Math.floor(points.length / 2);
+        crystalGfx.fillStyle(light, 1);
+        crystalGfx.beginPath();
+        crystalGfx.moveTo(points[mid][0], points[mid][1]);
+        for (let i = mid + 1; i < points.length; i++) crystalGfx.lineTo(points[i][0], points[i][1]);
+        crystalGfx.closePath();
+        crystalGfx.fillPath();
+    };
+    // Rear shards first so the main shard overlaps them.
+    shard([[12, 68], [17, 46], [26, 30], [32, 42], [30, 68]], 0x0d3f78, 0x1e7fd0);
+    shard([[50, 70], [55, 54], [65, 40], [68, 54], [63, 70]], 0x0d3f78, 0x2aa8e8);
+    // Dark seams where the rear shards meet the main one.
+    crystalGfx.fillStyle(0x06263f, 1);
+    crystalGfx.fillTriangle(28, 44, 33, 42, 30, 70);
+    crystalGfx.fillTriangle(48, 52, 53, 50, 50, 70);
+    // Main upright shard with a bright ridge.
+    shard([[29, 73], [29, 34], [38, 8], [47, 34], [47, 73]], 0x1968b8, 0x35d7ff);
+    crystalGfx.fillStyle(0x0a2c52, 1);
+    crystalGfx.fillTriangle(29, 73, 47, 73, 38, 62);
+    crystalGfx.lineStyle(2, 0xd7ffff, 0.85);
+    crystalGfx.lineBetween(38, 12, 38, 58);
+    // Glints on the tips and a rock foot grounding the cluster.
+    crystalGfx.fillStyle(0xffffff, 0.9);
+    crystalGfx.fillTriangle(38, 8, 41, 18, 35, 18);
+    crystalGfx.fillTriangle(26, 30, 29, 37, 23, 37);
+    crystalGfx.fillStyle(0x2a3342, 1);
+    crystalGfx.fillTriangle(24, 77, 52, 77, 38, 68);
+    crystalGfx.lineStyle(1, 0x9adfff, 0.5);
+    crystalGfx.lineBetween(24, 77, 38, 68);
     crystalGfx.generateTexture('crystal', 76, 78);
     crystalGfx.destroy();
 
+    // Wreckage: a split rock shard, a bent girder, and a glowing crack.
     const debrisGfx = scene.add.graphics();
     debrisGfx.fillStyle(0x4a3224, 1);
-    debrisGfx.fillTriangle(4, 12, 72, 0, 58, 36);
-    debrisGfx.fillTriangle(12, 56, 58, 36, 70, 82);
+    debrisGfx.beginPath();
+    debrisGfx.moveTo(6, 22);
+    debrisGfx.lineTo(30, 6);
+    debrisGfx.lineTo(58, 10);
+    debrisGfx.lineTo(70, 30);
+    debrisGfx.lineTo(52, 52);
+    debrisGfx.lineTo(24, 60);
+    debrisGfx.lineTo(8, 44);
+    debrisGfx.closePath();
+    debrisGfx.fillPath();
     debrisGfx.fillStyle(0x8f6b4b, 1);
-    debrisGfx.fillTriangle(10, 16, 62, 8, 52, 34);
+    debrisGfx.fillTriangle(10, 22, 32, 9, 52, 13);
+    debrisGfx.fillTriangle(10, 22, 52, 13, 30, 30);
+    debrisGfx.fillStyle(0x241812, 1);
+    debrisGfx.fillTriangle(30, 30, 52, 52, 24, 60);
+    debrisGfx.fillTriangle(52, 13, 70, 30, 30, 30);
+    // Molten crack across the shard.
+    debrisGfx.lineStyle(4, 0xff9a3c, 0.3);
+    debrisGfx.lineBetween(20, 32, 34, 27);
+    debrisGfx.lineBetween(34, 27, 45, 37);
+    debrisGfx.lineStyle(2, 0xffc46b, 0.9);
+    debrisGfx.lineBetween(20, 32, 34, 27);
+    debrisGfx.lineBetween(34, 27, 45, 37);
+    // Bent hull girder with rivets and rust.
+    debrisGfx.fillStyle(0x3a4149, 1);
+    debrisGfx.fillTriangle(46, 58, 74, 50, 76, 58);
+    debrisGfx.fillTriangle(46, 58, 76, 58, 48, 68);
+    debrisGfx.fillStyle(0x7a4a22, 0.85);
+    debrisGfx.fillTriangle(58, 56, 66, 54, 62, 60);
+    debrisGfx.lineStyle(2, 0x8a94a8, 0.8);
+    debrisGfx.lineBetween(47, 58, 73, 51);
+    debrisGfx.fillStyle(0x141a22, 1);
+    debrisGfx.fillCircle(54, 59, 2);
+    debrisGfx.fillCircle(62, 57, 2);
+    debrisGfx.fillCircle(69, 56, 2);
+    // Small companion shard.
     debrisGfx.fillStyle(0x5f4431, 1);
-    debrisGfx.fillTriangle(12, 14, 48, 12, 42, 36);
-    debrisGfx.fillStyle(0xc59c75, 0.55);
-    debrisGfx.fillTriangle(18, 18, 40, 16, 34, 28);
-    debrisGfx.lineStyle(3, 0xe8c9a0, 0.55);
-    debrisGfx.strokeTriangle(4, 12, 72, 0, 58, 36);
-    debrisGfx.strokeTriangle(12, 56, 58, 36, 70, 82);
+    debrisGfx.fillTriangle(10, 62, 27, 64, 20, 81);
+    debrisGfx.fillTriangle(10, 62, 20, 81, 8, 78);
+    debrisGfx.lineStyle(2, 0xe8c9a0, 0.4);
+    debrisGfx.lineBetween(30, 6, 46, 8);
+    debrisGfx.lineBetween(6, 22, 8, 34);
     debrisGfx.generateTexture('debris', 78, 86);
     debrisGfx.destroy();
 
@@ -3582,6 +3675,7 @@ function spawnSkyDiveWave(scene) {
                 canShoot: true,
                 nextShotDelay: 550 + i * 220,
                 skipPathClamp: true,
+                facePlayer: true,
                 // Middle diver fires vertically down the camp column.
                 fireMode: i === 1 ? 'plunge' : undefined,
                 shotMaxDx: i === 1 ? 140 : undefined
@@ -3613,6 +3707,7 @@ function spawnFloorRiseWave(scene) {
                 canShoot: true,
                 nextShotDelay: 550 + i * 220,
                 skipPathClamp: true,
+                facePlayer: true,
                 // Middle riser fires vertically up the camp column.
                 fireMode: i === 1 ? 'plunge' : undefined,
                 shotMaxDx: i === 1 ? 140 : undefined
@@ -3951,10 +4046,13 @@ function spawnEnemy(options = {}) {
     );
     applyEnemyTypeProfile.call(this, enemy, type, typeDef, options, x);
     applyShotOverrides(enemy, options);
+    // Flank-entry divers/risers aim their nose (and non-plunge shots) at the player.
+    enemy.facePlayer = Boolean(options.facePlayer);
     const levelMotions = getLevelDef(currentLevel).enemyMotions;
     enemy.animationId = levelMotions && levelMotions[type] ? levelMotions[type] : null;
     applyDifficultyToEnemy(enemy);
     applyEnemyOrientation(enemy);
+    if (enemy.facePlayer && !isVerticalScroll()) snapEnemyFaceAngle(enemy);
     playEnemyIdleAnimation(enemy);
 
     if (Number.isFinite(options.convergeVx)) {
@@ -7248,6 +7346,20 @@ function getEnemyFireVector(enemy, options) {
             vy: speedMag * vySign
         };
     }
+    // Flank divers/risers point their nose at the player, so non-plunge shots
+    // fly straight down the nose instead of flat leftward past the target.
+    if (!isVerticalScroll() && enemy.facePlayer) {
+        const aimDx = target.x - enemy.x;
+        const aimDy = target.y - enemy.y;
+        const aimDist = Math.hypot(aimDx, aimDy) || 1;
+        const noseRange = Math.max(enemy.displayWidth || 0, enemy.displayHeight || 0) * muzzleScale;
+        return {
+            x: enemy.x + (aimDx / aimDist) * noseRange,
+            y: enemy.y + (aimDy / aimDist) * noseRange,
+            vx: (aimDx / aimDist) * speedMag,
+            vy: (aimDy / aimDist) * speedMag
+        };
+    }
     let dy = Phaser.Math.Clamp(
         (target.y - enemy.y) * aimScale,
         -maxDy,
@@ -7455,6 +7567,7 @@ function updateEnemyMovement(enemy, frameDelta) {
         trackSpeed
     );
     enemy.setVelocityY(targetVelocityY);
+    if (enemy.facePlayer) updateEnemyFaceAngle(enemy, target, dt);
 }
 
 // Visual-only banking, engine pulses and attack cues. Arcade bodies stay unscaled.
@@ -7478,7 +7591,8 @@ function updateEnemyAnimation(enemy, time, frameDelta) {
     enemy.enemyAnimationBank += (targetBank - enemy.enemyAnimationBank) * (1 - Math.exp(-9 * dt));
     const sinceShot = time - enemy.enemyAnimationFiredAt;
     const recoil = sinceShot >= 0 && sinceShot < 180 ? Math.sin(sinceShot / 180 * Math.PI) * 2.2 : 0;
-    enemy.setAngle(enemy.enemyAnimationBank + recoil);
+    const faceBase = enemy.facePlayer && !isVerticalScroll() ? (enemy.faceAngle || 0) : 0;
+    enemy.setAngle(faceBase + enemy.enemyAnimationBank + recoil);
 
     const fx = enemy.enemyAnimationFx;
     fx.clear();
@@ -7525,7 +7639,9 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
     }
     const type = enemy.enemyType;
     const upright = Boolean(SPRITES[enemy.texture.key]?.upright || ENEMY_TYPES[type].upright);
-    const baseAngle = upright || !isVerticalScroll() ? 0 : 90;
+    const baseAngle = enemy.facePlayer && !isVerticalScroll()
+        ? (enemy.faceAngle || 0)
+        : (upright || !isVerticalScroll() ? 0 : 90);
     const dt = Math.min(Math.max(frameDelta, 0), 100) / 1000;
     const phase = time * 0.006 + enemy.enemyAnimationPhase;
     const lateral = enemy.body ? (upright || isVerticalScroll() ? enemy.body.velocity.x : -enemy.body.velocity.y) : 0;
@@ -7640,6 +7756,63 @@ function approachValue(current, target, maxStep) {
     if (current < target) return Math.min(target, current + maxStep);
     if (current > target) return Math.max(target, current - maxStep);
     return target;
+}
+
+function normalizeAngleDegrees(angle) {
+    let a = angle % 360;
+    if (a > 180) a -= 360;
+    if (a < -180) a += 360;
+    return a;
+}
+
+/**
+ * Nose angle (degrees, Phaser clockwise-positive) that points a ship from
+ * (fromX, fromY) toward (toX, toY). Side-view hulls rest nose-left;
+ * upright hulls rest nose-down. Pure math — no scene access.
+ */
+function faceAngleToward(fromX, fromY, toX, toY, upright) {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const deg = upright
+        ? Math.atan2(-dx, dy) * 180 / Math.PI
+        : Math.atan2(dy, dx) * 180 / Math.PI + 180;
+    return normalizeAngleDegrees(deg);
+}
+
+/** Shortest-arc step from current toward target, capped at maxStep degrees. */
+function turnAngleToward(current, target, maxStep) {
+    const delta = normalizeAngleDegrees(target - current);
+    if (delta > maxStep) return current + maxStep;
+    if (delta < -maxStep) return current - maxStep;
+    return current + delta;
+}
+
+/** True when the enemy's art rests nose-down (vertical-roster sprites). */
+function enemyUsesUprightArt(enemy) {
+    if (!enemy) return false;
+    const texKey = enemy.texture && enemy.texture.key;
+    const spriteDef = texKey ? SPRITES[texKey] : null;
+    const typeDef = ENEMY_TYPES[enemy.enemyType];
+    return Boolean((spriteDef && spriteDef.upright) || (typeDef && typeDef.upright));
+}
+
+/** Snap a flank-entry enemy's nose onto the player (spawn pose). */
+function snapEnemyFaceAngle(enemy) {
+    if (!enemy) return;
+    const target = getEnemyTarget(enemy);
+    if (!target) return;
+    enemy.faceAngle = faceAngleToward(
+        enemy.x, enemy.y, target.x, target.y, enemyUsesUprightArt(enemy));
+}
+
+/** Steer a flank-entry enemy's nose toward the player at the capped rate. */
+function updateEnemyFaceAngle(enemy, target, dt) {
+    if (!enemy || !target) return;
+    const goal = faceAngleToward(
+        enemy.x, enemy.y, target.x, target.y, enemyUsesUprightArt(enemy));
+    const current = Number.isFinite(enemy.faceAngle) ? enemy.faceAngle : 0;
+    const step = ENEMY_FACE_TURN_DEG_PER_SEC * Math.max(0, dt || 0);
+    enemy.faceAngle = turnAngleToward(current, goal, step);
 }
 
 function isEditableInputTarget(target) {
@@ -10268,6 +10441,8 @@ function resetPooledEnemyState(sprite) {
     sprite.orbitOmega = null;
     sprite.orbitRadiusTarget = null;
     sprite.fireMode = null;
+    sprite.facePlayer = false;
+    sprite.faceAngle = 0;
 }
 
 function deactivateGroup(group, releaseChild = releaseSprite) {
