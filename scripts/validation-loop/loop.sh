@@ -255,7 +255,9 @@ run_gate() {
         export VALIDATION_NEW_TYPES="$new_types_csv" &&
         echo "### new enemy types: ${VALIDATION_NEW_TYPES:-none}"
       fi; } &&
-    echo "### verify $GATE_CASES" && node scripts/verify-novawing.mjs --case="$GATE_CASES" 2>&1
+    echo "### verify $GATE_CASES" && node scripts/verify-novawing.mjs --case="$GATE_CASES" 2>&1 &&
+    echo "### jev playtests level $LEVEL_ID" &&
+    LEVEL_IDS="$LEVEL_ID" JEV_OUT="$REPORT_DIR/jev-$ITER" node scripts/verify-jev-playtests.mjs 2>&1
   } >"$log" 2>&1
 }
 

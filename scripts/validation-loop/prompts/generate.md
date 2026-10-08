@@ -41,7 +41,9 @@ Worktree: {{WORKTREE}}. Branch: validation/{{SLUG}}. Game server: {{NOVAWING_URL
   then `node scripts/check-level-novelty.mjs --validation {{LEVEL_ID}} --base {{BASE}} --json > /tmp/novelty.json`
   plus `export VALIDATION_NEW_TYPES="$(node -e "console.log(require('/tmp/novelty.json').used.types.join(','))")"`
   (the browser cases need the new-type list), then
-  `VALIDATION_LEVEL_ID={{LEVEL_ID}} node scripts/verify-novawing.mjs --case={{GATE_CASES}}`.
+  `VALIDATION_LEVEL_ID={{LEVEL_ID}} node scripts/verify-novawing.mjs --case={{GATE_CASES}}`,
+  then `LEVEL_IDS={{LEVEL_ID}} node scripts/verify-jev-playtests.mjs` (5 JEV
+  playtests: boot, waves-audit, movement, tour, boss).
   Fix failures in scope; the harness re-runs the full gate after your phase.
 
 ## Deliver
