@@ -181,6 +181,10 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
+// Bottom edge of the fixed HUD panels (max hudPanel fillRoundedRect bottom
+// across solo and co-op layouts). Ships clamp below scrollY + this + half
+// their hull so the nose never hides.
+const HUD_PANEL_BOTTOM = 90;
 // Base touch layout (game coords 800×600). getTouchLayout() may enlarge for phones/tablets.
 const TOUCH_JOYSTICK = {
     x: 118,
@@ -538,6 +542,7 @@ let player;
 // established solo campaign code stays deterministic; P2 has its own ship and
 // combat state while score, waves, and progression remain shared.
 let playerTwo = null;
+let shipGlide = null;
 let coopEnabled = false;
 let coopState = null;
 let requestedCoopEnabled = null;
@@ -759,15 +764,16 @@ function createCombatTextures(scene) {
     bolt.fillTriangle(12, 4, 30, 7, 12, 10);
     bolt.generateTexture('heavyBullet', 34, 14);
     bolt.clear();
-    // Hostile rounds are warm, compact diamonds, distinct from friendly lances.
-    bolt.fillStyle(0xff385d, 0.25);
+    // Hostile rounds are hot magenta diamonds: instant read against red mines,
+    // red boss beams and friendly cyan lances. Same 22x12 frame, same body.
+    bolt.fillStyle(0xff3fd4, 0.35);
     bolt.fillEllipse(11, 6, 22, 12);
-    bolt.fillStyle(0xff4966, 1);
-    bolt.fillTriangle(3, 6, 11, 1, 19, 6);
-    bolt.fillTriangle(3, 6, 11, 11, 19, 6);
-    bolt.fillStyle(0xffedb3, 1);
-    bolt.fillTriangle(7, 6, 11, 3, 15, 6);
-    bolt.fillTriangle(7, 6, 11, 9, 15, 6);
+    bolt.fillStyle(0xff54da, 1);
+    bolt.fillTriangle(2, 6, 11, 0, 20, 6);
+    bolt.fillTriangle(2, 6, 11, 11, 20, 6);
+    bolt.fillStyle(0xffe6fa, 1);
+    bolt.fillTriangle(6, 6, 11, 2, 16, 6);
+    bolt.fillTriangle(6, 6, 11, 10, 16, 6);
     bolt.generateTexture('enemyBullet', 22, 12);
     bolt.destroy();
 
@@ -1766,6 +1772,9 @@ function update(time, delta) {
     const isMoving = axes.x !== 0 || axes.y !== 0;
     let wantsBoost = isBoostHeld();
     if (!player || !player.active) { axes = { x: 0, y: 0 }; wantsBoost = false; }
+    const gliding = shipGlide && simTime < shipGlide.until;
+    if (!gliding) shipGlide = null;
+    else { axes = { x: 0, y: 0 }; wantsBoost = false; }
     const wasBoosting = isBoosting;
 
     if (boostLocked && boostEnergy >= BOOST_REENGAGE_THRESHOLD) {
@@ -1795,13 +1804,22 @@ function update(time, delta) {
     boostIntensity = approachValue(boostIntensity, boostTarget, boostRate * (frameDelta / 1000));
     updatePlayerAnimation(this, simTime);
 
+    if (player && player.active && axes.y < 0 &&
+        player.y + axes.y * BOOST_PLAYER_SPEED * (frameDelta / 1000) <= shipHudMinY(player, this.cameras.main.scrollY)) axes.y = 0;
     const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity);
     player.setVelocity(axes.x * speed, axes.y * speed);
+    clampShipBelowHud(player, this.cameras.main.scrollY);
     // P2 uses arrow keys, Enter to fire and right Shift to boost. Their boost,
     // shield, weapon and spare ships are independent; the mission score is not.
     if (coopEnabled && playerTwo && playerTwo.active) {
         updateCoopPilot.call(this, playerTwo, coopState.p2, simTime, frameDelta);
+        clampShipBelowHud(playerTwo, this.cameras.main.scrollY);
         keepCoopShipsOnScreen();
+    }
+    if (gliding) {
+        driveGlideShip(player, shipGlide.p1);
+        driveGlideShip(playerTwo, shipGlide.p2);
+        if (glideArrived(player, shipGlide.p1) && glideArrived(playerTwo, shipGlide.p2)) shipGlide = null;
     }
     if (coopEnabled && coopState) { coopState.boostEnergy = boostEnergy; coopState.hasShield = hasShield; coopState.weaponLevel = weaponLevel; coopState.lives = lives; updateCoopText(); }
     updateBoostUi();
@@ -1947,8 +1965,54 @@ function update(time, delta) {
         if (p.aura && p.aura.active) {
             p.aura.setPosition(p.x, p.y);
         }
-        if (isOffscreen(p, 40)) releasePowerup(this, p);
+        // Pad 90 matches the wall sweep: terrain-riding drops spawn at x=910
+        // and must survive until they scroll in with their gate row.
+        if (isOffscreen(p, 90)) releasePowerup(this, p);
     }
+}
+
+// Lowest legal ship-center Y in world coords: the fixed HUD strip (screen
+// space: camera scroll plus the panel bottom) plus half the hull so the nose
+// never tucks behind a panel. Walls and lanes are world space, so only the
+// ships — the one element the player must always see — clamp here.
+function shipHudMinY(ship, scrollY) {
+    return (Number.isFinite(scrollY) ? scrollY : 0) + HUD_PANEL_BOTTOM + ((ship && ship.displayHeight) || 0) / 2;
+}
+
+// Backstop for teleports and debug placement: repair goes through body.reset
+// (sprite and body move together); nudging the sprite alone desyncs the
+// offset hitbox and the ship rebounds past the strip.
+function clampShipBelowHud(ship, scrollY) {
+    if (!ship || !ship.active || !ship.body) return;
+    const top = shipHudMinY(ship, scrollY);
+    if (ship.y < top) {
+        const vx = ship.body.velocity ? ship.body.velocity.x : 0;
+        ship.body.reset(ship.x, top);
+        ship.body.setVelocity(vx, 0);
+    }
+}
+
+// Section-transition glide: ships ease home on boss/wave entry instead of
+// teleporting. Velocity-driven (never a position tween) so arcade physics
+// stays authoritative; the advance clears all hostiles and the first wave or
+// volley is >1s out, so the ~650ms handoff is always safe.
+function beginShipGlide(p1Home, p2Home) {
+    // Completion is arrival-based (physics pacing varies under load); the
+    // timeout is a pure backstop so input can never stick off.
+    shipGlide = { until: playtestClockMs + 5000, p1: p1Home, p2: p2Home };
+}
+
+function glideArrived(ship, home) {
+    if (!ship || !ship.active || !home) return true;
+    return Math.abs(home.x - ship.x) < 3 && Math.abs(home.y - ship.y) < 3;
+}
+
+function driveGlideShip(ship, home) {
+    if (!ship || !ship.active || !ship.body || !home) return;
+    const dx = home.x - ship.x;
+    const dy = home.y - ship.y;
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) { ship.setVelocity(0, 0); return; }
+    ship.setVelocity(Phaser.Math.Clamp(dx * 12, -1000, 1000), Phaser.Math.Clamp(dy * 12, -1000, 1000));
 }
 
 function keepCoopShipsOnScreen() {
@@ -2766,7 +2830,7 @@ function isCoopFireHeld() {
 }
 
 function updateCoopPilot(ship, state, time, frameDelta) {
-    const axes = getCoopMovementAxes();
+    const axes = (shipGlide && time < shipGlide.until) ? { x: 0, y: 0 } : getCoopMovementAxes();
     // Browser key events expose left/right shift through code; use the held input
     // set so P1's Left Shift never accelerates P2.
     const wantsBoost = heldBoostInputs.has('ShiftRight') || isGamepadBoostHeld(2);
@@ -2777,6 +2841,10 @@ function updateCoopPilot(ship, state, time, frameDelta) {
     state.boostIntensity = approachValue(state.boostIntensity, boosting ? 1 : 0,
         (boosting ? BOOST_RAMP_UP_PER_SECOND : BOOST_FADE_OUT_PER_SECOND) * frameDelta / 1000);
     const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, state.boostIntensity);
+    // Predicted gate: stop before crossing the HUD strip, never a frame past.
+    const p2Scene = getActiveScene();
+    const p2ScrollY = p2Scene && p2Scene.cameras ? p2Scene.cameras.main.scrollY : 0;
+    if (axes.y < 0 && ship.y + axes.y * speed * (frameDelta / 1000) <= shipHudMinY(ship, p2ScrollY)) axes.y = 0;
     ship.setVelocity(axes.x * speed, axes.y * speed);
     updateCoopPilotAnimation(ship, state);
 }
@@ -3292,6 +3360,7 @@ function applyLevelArt(scene, levelId, segment = null) {
     }
     currentLevelArt = {
         background: pick('background', null),
+        backgroundDim: Number.isFinite(art.backgroundDim) ? art.backgroundDim : 1,
         scenery: pick('scenery', null),
         wall: pick('wall', 'wall'),
         boss: pick('boss', 'bossShip'),
@@ -3303,7 +3372,7 @@ function applyLevelArt(scene, levelId, segment = null) {
         createAtmosphereTextures(scene, theme);
         nebulaGraphics.setTexture(currentLevelArt.background || ('deepSpace-' + theme))
             .setDisplaySize(960, 720)
-            .setAlpha(currentLevelArt.background ? 0.86 : 1);
+            .setAlpha((currentLevelArt.background ? 0.86 : 1) * currentLevelArt.backgroundDim);
     }
     if (scene.distantPlanet && currentLevelArt.background) scene.distantPlanet.setVisible(false);
 }
@@ -4316,71 +4385,35 @@ function spawnScheduledPathWalls() {
 }
 
 function openBandsSignature(bands) {
-    if (!bands || !bands.length) return '';
-    return bands
-        .map(band => Math.round(band[0]) + ':' + Math.round(band[1]))
-        .sort()
-        .join('|');
+    return window.NovaWingCorridor.openBandsSignature(bands);
 }
 
 function openBandsRoughlyEqual(a, b) {
-    return openBandsSignature(a) === openBandsSignature(b);
+    return window.NovaWingCorridor.openBandsRoughlyEqual(a, b);
 }
 
 function yOverlapsBand(y, band, pad = 0) {
-    return y >= band[0] + pad && y <= band[1] - pad;
+    return window.NovaWingCorridor.yOverlapsBand(y, band, pad);
 }
 
 function yInOpenBands(y, bands, pad = 0) {
-    if (!bands || !bands.length) return true;
-    return bands.some(band => yOverlapsBand(y, band, pad));
+    return window.NovaWingCorridor.yInOpenBands(y, bands, pad);
 }
 
 function bandHasSignificantOverlap(fromBand, toBands, minOverlap = 90) {
-    if (!toBands || !toBands.length) return false;
-    return toBands.some(toBand => {
-        const overlap = Math.min(fromBand[1], toBand[1]) - Math.max(fromBand[0], toBand[0]);
-        return overlap >= minOverlap;
-    });
+    return window.NovaWingCorridor.bandHasSignificantOverlap(fromBand, toBands, minOverlap);
 }
 
 function getClosingRegions(fromBands, toBands) {
-    if (!fromBands || !fromBands.length) return [];
-    if (!toBands || !toBands.length) {
-        return fromBands.map(band => [band[0], band[1]]);
-    }
-    return fromBands
-        .filter(fromBand => !bandHasSignificantOverlap(fromBand, toBands))
-        .map(band => [band[0], band[1]])
-        .filter(band => band[1] - band[0] >= PATH_WARNING_MIN_CLOSE_HEIGHT);
+    return window.NovaWingCorridor.getClosingRegions(fromBands, toBands, PATH_WARNING_MIN_CLOSE_HEIGHT);
 }
 
 function getEscapeDirection(closingBand, safeBands) {
-    if (!safeBands || !safeBands.length) return null;
-    const closeMid = (closingBand[0] + closingBand[1]) * 0.5;
-    let bestDir = null;
-    let bestDist = Infinity;
-    safeBands.forEach(band => {
-        const mid = (band[0] + band[1]) * 0.5;
-        const dist = Math.abs(mid - closeMid);
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestDir = mid < closeMid ? 'up' : 'down';
-        }
-    });
-    return bestDir;
+    return window.NovaWingCorridor.getEscapeDirection(closingBand, safeBands);
 }
 
 function findNextBandLayoutChange(pathEvents, fromIndex, referenceBands) {
-    if (!pathEvents || !pathEvents.length) return null;
-    const start = Math.max(0, fromIndex);
-    for (let i = start; i < pathEvents.length; i++) {
-        const event = pathEvents[i];
-        if (!openBandsRoughlyEqual(event.openBands, referenceBands)) {
-            return { event, index: i };
-        }
-    }
-    return null;
+    return window.NovaWingCorridor.findNextBandLayoutChange(pathEvents, fromIndex, referenceBands);
 }
 
 function updatePathDeadEndWarnings(frameDelta) {
@@ -4637,23 +4670,7 @@ function clearPathDeadEndWarnings(scene) {
 }
 
 function blockedRangesFromOpenBands(openBands, playHeight = GAME_HEIGHT) {
-    const sorted = (openBands || [])
-        .map(band => [band[0], band[1]])
-        .filter(band => band[1] > band[0])
-        .sort((a, b) => a[0] - b[0]);
-
-    const blocked = [];
-    let cursor = 0;
-    sorted.forEach(([openTop, openBottom]) => {
-        if (openTop > cursor + 1) {
-            blocked.push([cursor, openTop]);
-        }
-        cursor = Math.max(cursor, openBottom);
-    });
-    if (cursor < playHeight - 1) {
-        blocked.push([cursor, playHeight]);
-    }
-    return blocked;
+    return window.NovaWingCorridor.blockedRangesFromOpenBands(openBands, playHeight);
 }
 
 // Authored geometry uses the same solid bodies and bullet occlusion as canyon walls.
@@ -4769,8 +4786,11 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     wall.setFlip(false, false);
     const sourceW = Math.max(1, wall.frame ? wall.frame.width : WALL_TEXTURE_FALLBACK_SIZE);
     const sourceH = Math.max(1, wall.frame ? wall.frame.height : WALL_TEXTURE_FALLBACK_SIZE);
-    // Scale the crystal tile to the authored corridor block size.
-    wall.setScale(width / sourceW, height / sourceH);
+    // Fill the block by center-cropping (never stretching) so atlas cells keep
+    // their authored proportions at any block size; collision is unchanged.
+    const cover = Math.max(width / sourceW, height / sourceH);
+    wall.setScale(cover, cover);
+    wall.setCrop((sourceW - width / cover) / 2, (sourceH - height / cover) / 2, width / cover, height / cover);
     wall.setDepth(1);
     // Normal walls keep full art color; sealing dead-end walls warm up as a danger cue.
     if (options.danger) {
@@ -5079,28 +5099,14 @@ function startBossFight(encounterKey) {
         ? levelDef.bossArenaY
         : (Number.isFinite(levelDef.startY) ? levelDef.startY : 300);
     const verticalBoss = combatOrientation === 'up' || profile.entry === 'warpCenter';
-    if (player && player.active) {
-        if (verticalBoss) {
-            player.setPosition(400, 480);
-            player.setVelocity(0, 0);
-            applyPlayerOrientation(player, 'up');
-        } else {
-            player.setPosition(120, bossArenaY);
-            player.setVelocity(0, 0);
-            applyPlayerOrientation(player, 'right');
-        }
-    }
-    if (playerTwo && playerTwo.active) {
-        if (verticalBoss) {
-            playerTwo.setPosition(500, 480);
-            playerTwo.setVelocity(0, 0);
-            applyPlayerOrientation(playerTwo, 'up');
-        } else {
-            playerTwo.setPosition(120, Phaser.Math.Clamp(bossArenaY + 78, Math.max(54, bossArenaY - 240), bossArenaY + 240));
-            playerTwo.setVelocity(0, 0);
-            applyPlayerOrientation(playerTwo, 'right');
-        }
-    }
+    const bossP1Home = verticalBoss ? { x: 400, y: 480 } : { x: 120, y: bossArenaY };
+    const bossP2Home = verticalBoss ? { x: 500, y: 480 } : { x: 120,
+        y: Phaser.Math.Clamp(bossArenaY + 78, Math.max(54, bossArenaY - 240), bossArenaY + 240) };
+    if (player && player.active) applyPlayerOrientation(player, verticalBoss ? 'up' : 'right');
+    if (playerTwo && playerTwo.active) applyPlayerOrientation(playerTwo, verticalBoss ? 'up' : 'right');
+    // Glide home inside the safe window (field cleared above, first volley at
+    // +1400ms) instead of teleporting.
+    beginShipGlide(bossP1Home, bossP2Home);
     // Flatten camera to a single screen around the arena for the boss.
     const arenaCenterY = verticalBoss ? 300 : bossArenaY;
     this.physics.world.setBounds(
@@ -5115,7 +5121,12 @@ function startBossFight(encounterKey) {
         GAME_WIDTH,
         GAME_HEIGHT
     );
-    this.cameras.main.setScroll(0, Math.max(0, arenaCenterY - GAME_HEIGHT * 0.5));
+    const arenaTop = Math.max(0, arenaCenterY - GAME_HEIGHT * 0.5);
+    if (levelDef.cameraFollowY) {
+        this.cameras.main.pan(GAME_WIDTH * 0.5, arenaTop + GAME_HEIGHT * 0.5, 800, 'Sine.easeInOut');
+    } else {
+        this.cameras.main.setScroll(0, 0);
+    }
 
     const warningLabel = profile.label
         || (currentLevel >= totalLevels()
@@ -6162,6 +6173,7 @@ function startLevel(levelId, options = {}) {
     nextTerrainEventIndex = 0;
     nextPowerupIndex = 0;
     nextPathEventIndex = 0;
+    shipGlide = null;
     currentOpenBands = null;
     previousOpenBands = null;
     clearPathDeadEndWarnings(this);
@@ -6315,7 +6327,7 @@ function advanceLevelSegment(scene, nextId, reason) {
     } else if (kind === 'transition') {
         enterTransition(scene, segDef);
     } else {
-        enterProgressWaves(scene, segDef);
+        enterProgressWaves(scene, segDef, reason);
     }
 }
 
@@ -6356,7 +6368,7 @@ function enterIntroBoss(scene, segDef) {
     enterBossSegment(scene, segDef);
 }
 
-function enterProgressWaves(scene, segDef) {
+function enterProgressWaves(scene, segDef, reason) {
     levelTransitioning = false;
     gamePhase = 'waves';
     levelProgressMs = 0;
@@ -6387,17 +6399,27 @@ function enterProgressWaves(scene, segDef) {
     // Debug setSegment(finalBoss→topdown) must not keep arena gravity.
     clearBlackHoleState();
 
+    // Level boot ('create'/'startLevel') places ships instantly — the screen is
+    // fresh. Later segments glide home so the ship never visibly jumps.
+    const openingPlunge = reason === 'create' || reason === 'startLevel';
     if (player && player.active && combatOrientation === 'up') {
-        player.setPosition(400, 460);
-        player.setVelocity(0, 0);
         applyPlayerOrientation(player, 'up');
+        if (openingPlunge) {
+            player.body.reset(400, 460);
+            player.setVelocity(0, 0);
+        } else {
+            beginShipGlide({ x: 400, y: 460 },
+                playerTwo && playerTwo.active ? { x: 500, y: 460 } : null);
+        }
     } else if (player && player.active) {
         applyPlayerOrientation(player, 'right');
     }
     if (playerTwo && playerTwo.active && combatOrientation === 'up') {
-        playerTwo.setPosition(500, 460);
-        playerTwo.setVelocity(0, 0);
         applyPlayerOrientation(playerTwo, 'up');
+        if (openingPlunge) {
+            playerTwo.body.reset(500, 460);
+            playerTwo.setVelocity(0, 0);
+        }
     } else if (playerTwo && playerTwo.active) {
         applyPlayerOrientation(playerTwo, 'right');
     }
@@ -7220,7 +7242,7 @@ function getWeaponName(level, topId) {
 // ---------------------------------------------------------------------------
 
 function isVerticalScroll() {
-    return scrollMode === 'vertical';
+    return window.NovaWingEnemyMath.isVerticalScrollMode(scrollMode);
 }
 
 function isOffscreen(sprite, pad) {
@@ -7322,101 +7344,19 @@ function enemyInFireRange(enemy) {
  * @param {{ muzzleScale?: number, leadPerpendicular?: boolean, speed?: number }} [options]
  */
 function getEnemyFireVector(enemy, options) {
-    const target = getEnemyTarget(enemy);
-    if (!target) return { x: enemy.x, y: enemy.y, vx: 0, vy: 0 };
-    const opts = options || {};
-    const muzzleScale = Number.isFinite(opts.muzzleScale) ? opts.muzzleScale : 0.46;
-    const speed = Number.isFinite(opts.speed)
-        ? opts.speed
-        : (enemy.shotSpeed || ENEMY_SHOT_SPEED);
-    const speedMag = Math.abs(speed);
-    const aimScale = Number.isFinite(enemy.shotAimScale) ? enemy.shotAimScale : 1.1;
-
-    if (isVerticalScroll()) {
-        const maxDx = Number.isFinite(enemy.shotMaxDx)
-            ? enemy.shotMaxDx
-            : (Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150);
-        let dx = Phaser.Math.Clamp(
-            (target.x - enemy.x) * aimScale,
-            -maxDx,
-            maxDx
-        );
-        if (opts.leadPerpendicular && target.body) {
-            dx = Phaser.Math.Clamp(
-                dx + target.body.velocity.x * 0.12,
-                -maxDx,
-                maxDx
-            );
-        }
-        // Fire toward the player on the approach axis (risers climb from below → shoot up).
-        const vySign = target.y < enemy.y - 4 ? -1 : 1;
-        return {
-            x: enemy.x,
-            y: enemy.y + enemy.displayHeight * muzzleScale * vySign,
-            vx: dx,
-            vy: speedMag * vySign
-        };
-    }
-
-    const maxDy = Number.isFinite(enemy.shotMaxDy) ? enemy.shotMaxDy : 150;
-    // Plungers (top/bottom divers) fire vertically down/up the camp column,
-    // forcing horizontal movement instead of another flat leftward shot.
-    if (!isVerticalScroll() && enemy.fireMode === 'plunge') {
-        const vySign = target.y < enemy.y - 4 ? -1 : 1;
-        const maxDx = Number.isFinite(enemy.shotMaxDx) ? enemy.shotMaxDx : 120;
-        const vx = Phaser.Math.Clamp((target.x - enemy.x) * 0.3, -maxDx, maxDx);
-        return {
-            x: enemy.x,
-            y: enemy.y + enemy.displayHeight * muzzleScale * vySign,
-            vx: vx,
-            vy: speedMag * vySign
-        };
-    }
-    // Flank divers/risers point their nose at the player, so non-plunge shots
-    // fly straight down the nose instead of flat leftward past the target.
-    if (!isVerticalScroll() && enemy.facePlayer) {
-        const aimDx = target.x - enemy.x;
-        const aimDy = target.y - enemy.y;
-        const aimDist = Math.hypot(aimDx, aimDy) || 1;
-        const noseRange = Math.max(enemy.displayWidth || 0, enemy.displayHeight || 0) * muzzleScale;
-        return {
-            x: enemy.x + (aimDx / aimDist) * noseRange,
-            y: enemy.y + (aimDy / aimDist) * noseRange,
-            vx: (aimDx / aimDist) * speedMag,
-            vy: (aimDy / aimDist) * speedMag
-        };
-    }
-    let dy = Phaser.Math.Clamp(
-        (target.y - enemy.y) * aimScale,
-        -maxDy,
-        maxDy
-    );
-    if (opts.leadPerpendicular && target.body) {
-        dy = Phaser.Math.Clamp(
-            dy + target.body.velocity.y * 0.12,
-            -maxDy,
-            maxDy
-        );
-    }
-    // Preserve signed shotSpeed (negative = left) for horizontal identity.
-    const vx = Number.isFinite(opts.speed) ? opts.speed : (enemy.shotSpeed || ENEMY_SHOT_SPEED);
-    return {
-        x: enemy.x - enemy.displayWidth * muzzleScale,
-        y: enemy.y,
-        vx: vx,
-        vy: dy
-    };
+    return window.NovaWingEnemyMath.fireVector(enemy, getEnemyTarget(enemy), options, {
+        vertical: isVerticalScroll(),
+        fallbackSpeed: ENEMY_SHOT_SPEED,
+        clamp: (value, lo, hi) => Phaser.Math.Clamp(value, lo, hi)
+    });
 }
 
 function getEnemyTarget(enemy) {
-    const ships = [player, playerTwo].filter(ship => ship && ship.active);
-    if (!ships.length) return null;
-    if (!enemy) return ships[0];
-    return ships.reduce((nearest, ship) => {
-        const a = Phaser.Math.Distance.Squared(enemy.x, enemy.y, nearest.x, nearest.y);
-        const b = Phaser.Math.Distance.Squared(enemy.x, enemy.y, ship.x, ship.y);
-        return b < a ? ship : nearest;
-    });
+    return window.NovaWingEnemyMath.nearestShip(
+        enemy,
+        [player, playerTwo].filter(ship => ship && ship.active),
+        (ax, ay, bx, by) => Phaser.Math.Distance.Squared(ax, ay, bx, by)
+    );
 }
 
 function getPlayerMuzzleAnchor(ship = player) {
@@ -7785,10 +7725,7 @@ function approachValue(current, target, maxStep) {
 }
 
 function normalizeAngleDegrees(angle) {
-    let a = angle % 360;
-    if (a > 180) a -= 360;
-    if (a < -180) a += 360;
-    return a;
+    return window.NovaWingEnemyMath.normalizeAngleDegrees(angle);
 }
 
 /**
@@ -7797,20 +7734,12 @@ function normalizeAngleDegrees(angle) {
  * upright hulls rest nose-down. Pure math — no scene access.
  */
 function faceAngleToward(fromX, fromY, toX, toY, upright) {
-    const dx = toX - fromX;
-    const dy = toY - fromY;
-    const deg = upright
-        ? Math.atan2(-dx, dy) * 180 / Math.PI
-        : Math.atan2(dy, dx) * 180 / Math.PI + 180;
-    return normalizeAngleDegrees(deg);
+    return window.NovaWingEnemyMath.faceAngleToward(fromX, fromY, toX, toY, upright);
 }
 
 /** Shortest-arc step from current toward target, capped at maxStep degrees. */
 function turnAngleToward(current, target, maxStep) {
-    const delta = normalizeAngleDegrees(target - current);
-    if (delta > maxStep) return current + maxStep;
-    if (delta < -maxStep) return current - maxStep;
-    return current + delta;
+    return window.NovaWingEnemyMath.turnAngleToward(current, target, maxStep);
 }
 
 /** True when the enemy's art rests nose-down (vertical-roster sprites). */
@@ -10753,7 +10682,7 @@ function applyBackgroundTheme(scene, levelId) {
     createAtmosphereTextures(scene, theme);
     if (nebulaGraphics) nebulaGraphics.setTexture(currentLevelArt.background || ('deepSpace-' + theme))
         .setDisplaySize(960, 720)
-        .setAlpha(currentLevelArt.background ? 0.86 : 1);
+        .setAlpha((currentLevelArt.background ? 0.86 : 1) * (currentLevelArt.backgroundDim || 1));
     if (scene.distantPlanet) scene.distantPlanet.setVisible(!currentLevelArt.background && theme === 'space');
     const colors = theme === 'canyon'
         ? [0x877568, 0xbca083, 0xffdfb0, 0xffedcf]

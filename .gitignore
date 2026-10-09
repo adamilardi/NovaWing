@@ -14,3 +14,4 @@ rl/weights/
 # keep tracked placeholders only if added later
 __pycache__/
 *.pyc
+.agents/memory/*.lock

@@ -69,7 +69,7 @@
                         if (step && Array.isArray(step.keys)) checkKeys(step.keys, catalogs.waves, label);
                     }
                 }
-                checkKeys(Object.values(item.art || {}), catalogs.assets, label);
+                checkKeys(Object.values(item.art || {}).filter(value => typeof value === 'string'), catalogs.assets, label);
                 checkKeys(Object.values(item.music || {}).filter(Boolean), catalogs.tracks, label);
                 const plan = item.powerups || [];
                 if (plan.some((drop, i) => !Number.isFinite(drop.progressMs) || drop.progressMs < 0 || (i && drop.progressMs < plan[i - 1].progressMs))) {

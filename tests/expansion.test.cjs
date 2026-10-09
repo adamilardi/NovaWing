@@ -108,6 +108,7 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
             for (const method of ['setTexture', 'setOrigin', 'setFlip', 'setDepth', 'setTint', 'clearTint', 'setAngularVelocity']) wall[method] = () => wall;
             wall.setTexture = key => { wall.key = key; return wall; };
             wall.setScale = (x, y) => { wall.sx = x; wall.sy = y; return wall; };
+            wall.setCrop = (x, y, w, h) => { wall.crop = { x, y, w, h }; return wall; };
             spawned.push(wall);
             return wall;
         } };
@@ -130,6 +131,8 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
             assert.ok(vertical ? wall.vx === 0 && wall.vy > 0 : wall.vx < 0 && wall.vy === 0);
             assert.ok(wall.isWall && wall.body.width > 0 && wall.body.height > 0);
             assert.ok(Assets.sprites[wall.key]);
+            assert.equal(wall.sx, wall.sy, 'wall art must scale uniformly (cover-crop, never stretch)');
+            assert.ok(wall.crop && wall.crop.w > 0 && wall.crop.h > 0);
         }
     }
 });
