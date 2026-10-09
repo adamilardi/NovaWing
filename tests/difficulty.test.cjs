@@ -125,3 +125,35 @@ test('difficulty query preset is overlaid by explicit numeric knobs only', () =>
     assert.deepEqual(numericOnly, { enemyFireChance: 0.03 });
 });
 
+test('tier presets govern typed fire so roster growth cannot arm every foe', () => {
+    const t1 = Levels.resolveDifficulty(null, 1);
+    const t2 = Levels.resolveDifficulty(null, 2);
+    assert.ok(t1.typedFireChance < 1, 'L1 opener arms a fraction, not every typed foe');
+    assert.ok(t2.typedFireChance < 1, 'L2 arms a fraction, not every typed foe');
+    assert.ok(t1.typedFireChance <= t2.typedFireChance, 'typed fire rises with tier');
+});
+
+test('ashen graveyard hotshot sits above siblings without doubling every axis', () => {
+    const levels = Levels.getEffectiveLevelDefs();
+    const l7 = levels.find(l => l.id === 7 || l.number === 7);
+    assert.ok(l7, 'L7 exists');
+    const normal = l7.difficultyModes.normal;
+    assert.ok(normal.typedFireChance <= 0.8, 'typed fire capped');
+    assert.ok(normal.enemyFireChance <= 0.6, 'fire chance capped');
+    assert.ok(normal.enemyCadenceScale > 0.85, 'cadence not extremely accelerated');
+    assert.ok(normal.enemyShotSpeedScale <= 1.05, 'shot speed near baseline');
+    assert.ok(normal.bossTempoScale > 0.9, 'boss tempo not extremely accelerated');
+    for (const seg of l7.segments.filter(s => s.kind === 'waves')) {
+        assert.ok(seg.difficulty.waveIntervalMinMs >= 2500, `${seg.id} waves within the sibling band`);
+    }
+});
+
+test('scripted canShoot:true thins through typedFireChance instead of bypassing it', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
+    const branch = src.match(/if \(typeof options\.canShoot === 'boolean'\) \{[\s\S]*?\n    \} else if/);
+    assert.ok(branch, 'scripted arming branch exists');
+    assert.ok(!/enemy\.canShoot = options\.canShoot;/.test(branch[0]), 'no raw pass-through');
+    assert.ok(branch[0].includes('rollTypedArmed'), 'scripted true rolls through typedFireChance');
+});

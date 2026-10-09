@@ -4256,14 +4256,18 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
     }
 
     const defaultFireChance = getLevelEnemyFireChance();
+    const typedChance = difficultyNumber('typedFireChance', 1);
+    const rollTypedArmed = () => typedChance >= 1 ? true : gameplayRandom() < Math.max(0, typedChance);
     if (typeof options.canShoot === 'boolean') {
-        enemy.canShoot = options.canShoot;
+        // Scripted true means eligible, not guaranteed: thin blanket-armed
+        // waves through typedFireChance so roster growth stays governed.
+        // Explicit false always passes through unarmed.
+        enemy.canShoot = options.canShoot === true ? rollTypedArmed() : false;
     } else if (typeof typeDef.canShootDefault === 'boolean') {
         if (!typeDef.canShootDefault) {
             enemy.canShoot = false;
         } else {
-            const typedChance = difficultyNumber('typedFireChance', 1);
-            enemy.canShoot = typedChance >= 1 ? true : gameplayRandom() < Math.max(0, typedChance);
+            enemy.canShoot = rollTypedArmed();
         }
     } else {
         enemy.canShoot = gameplayRandom() < defaultFireChance;

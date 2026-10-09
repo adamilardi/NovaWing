@@ -4,6 +4,19 @@ Playtester (human) feedback per level, newest first. Each item keeps the
 tester's own words plus the branch it was tested against. Status flow:
 `new` → `investigating` → `fixed` (or `wontfix` with a reason).
 
+## campaign difficulty — 2026-10-09 (fixed, needs feel-check)
+
+1. "The level difficulty is off now" (too hard, campaign scope) — FIXED
+   (2026-10-09): root causes were (a) scripted `canShoot: true` bypassed
+   `typedFireChance`, so 23 wave scripts armed every foe forever and fire
+   scaled with the roster (L1 census: 0.91 armed); (b) L7 Hotshot cranked
+   every axis at once (0.8 fire, 0.72 cadence, 1.15 shots, 1700ms waves).
+   Fix: scripted-true now rolls through `typedFireChance`; tier presets
+   1/2 set 0.6/0.7; L7 normal eased to 0.55/0.75/0.9-cadence/1.0-shots
+   with sibling-band intervals (kept <1 cadence/tempo per the standing
+   "sustained pressure" test). L1 census after: 0.56 armed (N=75).
+   182/182 tests. Awaiting human feel-check on L1/L2/L7.
+
 ## validation/obsidian-gate-r2 — 2026-10-08 (new)
 
 1. "it's one of the best levels" — no action; hold as quality bar.

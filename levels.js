@@ -142,6 +142,9 @@
         1: {
             interceptorChance: 0.12,
             enemyFireChance: 0.28,
+            // Opener arms a fraction of typed foes; 1.0 armed literally
+            // everything and incoming fire scaled with the roster.
+            typedFireChance: 0.6,
             interceptorFireChance: 0.55,
             softInterceptorAim: true,
             interceptorAimScale: 0.55,
@@ -158,6 +161,7 @@
         2: {
             interceptorChance: 0.26,
             enemyFireChance: 0.42,
+            typedFireChance: 0.7,
             // Bridge the opener's soft 0.55 aim to the late-game 1.45 aim.
             interceptorAimScale: 0.95,
             interceptorShotLead: 170
@@ -920,9 +924,12 @@
         durationMs: 82000, bossScore: 3800, bossHealth: 360,
         difficultyModes: {
             easy: EXPANSION_MODES.easy,
-            normal: { enemyCadenceScale: 0.72, enemyShotSpeedScale: 1.15,
-                enemyFireChance: 0.8, typedFireChance: 1, interceptorChance: 0.45,
-                bossTempoScale: 0.7, bossShotSpeedScale: 1.15 },
+            // Hardest expansion level: keeps its pressure identity (cadence
+            // and boss tempo slightly hot) but every axis was cranked at once
+            // (0.8 fire, 0.72 cadence, 1.15 shots) and that wall is gone.
+            normal: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.0,
+                enemyFireChance: 0.55, typedFireChance: 0.75, interceptorChance: 0.35,
+                bossTempoScale: 0.95, bossShotSpeedScale: 1.05 },
             hard: { enemyCadenceScale: 0.6, enemyShotSpeedScale: 1.3,
                 enemyFireChance: 0.95, typedFireChance: 1, interceptorChance: 0.55,
                 bossTempoScale: 0.65, bossShotSpeedScale: 1.3 }
@@ -931,13 +938,13 @@
             arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
         segments: [
             expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation', 'skyDive', 'floorRise'], 'hullField', false,
-                { waveIntervalMinMs: 1900, waveIntervalMaxMs: 2400 }),
+                { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
             expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser', 'skyDive', 'floorRise'], 'ashShelter', false,
-                { waveIntervalMinMs: 1800, waveIntervalMaxMs: 2300 }),
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
             expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
                 { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
             expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false,
-                { waveIntervalMinMs: 1700, waveIntervalMaxMs: 2200 }),
+                { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
                 combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
         ]
