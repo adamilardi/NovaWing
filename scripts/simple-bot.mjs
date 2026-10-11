@@ -12,8 +12,8 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
-import { isRunWin, advanceCampaign } from './rl/run-outcome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
+import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 // LEVEL unset = campaign run: clear every level until campaign victory.
@@ -67,9 +67,14 @@ export function installSimpleBot() {
 async function main() {
     if (LEVEL !== null && (!Number.isInteger(LEVEL) || LEVEL < 1)) throw new Error('LEVEL must be a positive integer');
     fs.mkdirSync(OUT, { recursive: true });
-    const browser = await chromium.launch(defaultLaunchOptions(process.env.HEADLESS !== '0'));
+    const browser = await launchBrowser(chromium, process.env.HEADLESS !== '0');
     const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
-    page.on('pageerror', err => console.error('[pageerror]', (err && err.message) || err));
+    const pageErrors = [];
+    page.on('pageerror', err => {
+        const message = String((err && err.message) || err);
+        pageErrors.push(message);
+        console.error('[pageerror]', message);
+    });
     const url = new URL(BASE);
     url.searchParams.set('bot', String(Date.now()));
     if (LEVEL !== null) url.searchParams.set('level', String(LEVEL));
@@ -147,7 +152,7 @@ async function main() {
                 continue;
             }
             if (isRunWin(snap, LEVEL)) {
-                won = true;
+                won = isDeathlessWin(snap, LEVEL);
                 await page.waitForTimeout(2000);
                 break;
             }
@@ -183,8 +188,9 @@ async function main() {
         }
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ won, continuesUsed, maxLevel, final: report.final }));
-    if (!won) process.exitCode = 2;
+    console.log(JSON.stringify({ won, continuesUsed, maxLevel, pageErrors: pageErrors.length, final: report.final }));
+    if (pageErrors.length) process.exitCode = 1;
+    else if (!won) process.exitCode = 2;
 }
 
 main().catch((error) => {

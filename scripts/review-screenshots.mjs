@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
@@ -28,7 +28,7 @@ const SCENARIOS = [
     { name: 'l1-boss', params: { boss: '1' }, shotsAt: [10000, 22000] },
 ];
 
-const browser = await chromium.launch(defaultLaunchOptions(process.env.HEADLESS !== '0'));
+const browser = await launchBrowser(chromium, process.env.HEADLESS !== '0');
 const errors = [];
 const shots = [];
 try {

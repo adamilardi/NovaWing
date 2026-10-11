@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState, evaluateAction } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 
@@ -273,7 +273,7 @@ const SCENARIOS = [
 async function main() {
     fs.mkdirSync(OUT, { recursive: true });
     const runtimeHashes = await verifyServedRuntime(BASE);
-    const browser = await chromium.launch(defaultLaunchOptions(true));
+    const browser = await launchBrowser(chromium, true);
     const levels = {};
     let pass = 0;
     let fail = 0;

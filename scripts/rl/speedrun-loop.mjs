@@ -223,6 +223,7 @@ function countDemos() {
  * @returns {boolean} whether promotion happened
  */
 function maybePromoteOnClear(board, clearSec, meta = {}) {
+    if (Number(meta.continuesUsed) > 0) return false;
     if (clearSec == null || !Number.isFinite(clearSec) || clearSec <= 0) return false;
     if (!fs.existsSync(POLICY)) return false;
 
@@ -511,6 +512,7 @@ async function main() {
             promoted = maybePromoteOnClear(board, bestThis, {
                 level: bestEval.evalLevel,
                 score: bestEval.score,
+                continuesUsed: bestEval.continuesUsed,
                 round: r,
                 mode: 'eval'
             });

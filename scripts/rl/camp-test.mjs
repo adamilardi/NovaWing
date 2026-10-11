@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { bootControlledGame, suppressRendering } from './controlled-play.mjs';
-import { defaultLaunchOptions, routeVendorPhaser } from './chrome.mjs';
+import { launchBrowser, routeVendorPhaser } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -143,7 +143,7 @@ async function runTrial(browser, trial) {
 async function main() {
     if (!Number.isFinite(DURATION_MS) || DURATION_MS < 1000) throw new Error('DURATION_MS >= 1000');
     console.log(`Camp test: level=${LEVEL} trials=${TRIALS} duration=${DURATION_MS}ms tag=${TAG}`);
-    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    const browser = await launchBrowser(chromium, HEADLESS);
     const rows = [];
     try {
         for (let t = 1; t <= TRIALS; t++) {

@@ -6,6 +6,11 @@ export function isRunWin(snapshot, startLevel = null) {
         snapshot.awaitingNextLevel || Number(snapshot.level) > startLevel);
 }
 
+/** A clear that spent a continue is not a deathless win. */
+export function isDeathlessWin(snapshot, startLevel = null) {
+    return isRunWin(snapshot, startLevel) && !(Number(snapshot.continuesUsed) > 0);
+}
+
 /** Use the results card's action so its UI and listeners are cleaned up. */
 export async function advanceCampaign(page, snapshot, startLevel = null) {
     if (startLevel != null || !snapshot?.awaitingNextLevel || snapshot.victoryPending) return false;

@@ -6,7 +6,7 @@ import { choice, noul, TypeSafeClient } from '/home/adam/spacechicken/node_modul
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { bootControlledGame } from './rl/controlled-play.mjs';
 import { isRunWin } from './rl/run-outcome.mjs';
 
@@ -110,7 +110,7 @@ async function main() {
     if (!process.env.TYPESAFE_API_KEY) throw new Error('TYPESAFE_API_KEY is required');
     fs.mkdirSync(OUT, { recursive: true });
     const client = new TypeSafeClient({ logLevel: 'off' });
-    const browser = await chromium.launch(defaultLaunchOptions(true));
+    const browser = await launchBrowser(chromium, true);
     const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
     await page.clock.install();
     const pageErrors = [];

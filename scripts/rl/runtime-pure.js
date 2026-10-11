@@ -517,6 +517,9 @@
     }
 
     function forwardPolicy(policy, obs) {
+        if (policy.actionSize != null && policy.actionSize !== 4) {
+            throw new Error('policy.actionSize ' + policy.actionSize + ' != 4');
+        }
         var h = obs instanceof Float32Array ? obs : Float32Array.from(obs);
         // v3 weights remain usable for comparison; trainers only accept v4 demonstrations.
         if (policy.obsSize === 192 && policy.version === 3 && h.length === OBS_SIZE) h=h.subarray(0,192);
@@ -586,7 +589,6 @@
             var ay = y[1];
             var fire = y[2] >= 0.5;
             var boost = y[3] >= 0.5;
-            fire = true;
             return { x: ax, y: ay, fire: fire, boost: boost };
         }
 

@@ -21,13 +21,13 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { installPolicyPilot } from './play-policy.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions, routeVendorPhaser } from './chrome.mjs';
+import { launchBrowser, routeVendorPhaser } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HEADLESS = process.env.HEADLESS !== '0';
-const TRIALS = Math.max(1, Number(process.env.TRIALS || 1));
+const TRIALS = Number(process.env.TRIALS || 1);
 const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
 const OUT_DIR = process.env.PLAYTEST_OUT || path.join(ROOT, 'rl', 'weights');
@@ -87,10 +87,14 @@ export const SCENARIOS = {
 function parseScenarioList() {
     const raw = String(process.env.SCENARIO || process.env.SCENARIOS || 'l1-start,l2-canyon,l3-intro');
     if (raw === 'all') return Object.keys(SCENARIOS);
-    return raw
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s && SCENARIOS[s]);
+    const requested = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    const unknown = requested.filter((s) => !SCENARIOS[s]);
+    if (unknown.length) {
+        console.error('Unknown scenario(s): ' + unknown.join(', '));
+        console.error('Keys: ' + Object.keys(SCENARIOS).join(', '));
+        process.exit(1);
+    }
+    return requested;
 }
 
 function classifyDeath(snap, history) {
@@ -270,9 +274,14 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
                 await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
                 continue;
             }
-            const isWin = status.outcome === 'win' || (snap && (snap.levelCompleted || snap.victoryPending || snap.awaitingNextLevel || snap.level > scenario.level));
+            const clearedNow = status.outcome === 'win' || (snap && (snap.levelCompleted || snap.victoryPending || snap.awaitingNextLevel || snap.level > scenario.level));
             const isLose = (status.outcome === 'lose' || (snap && snap.levelEnded)) && !snap?.levelTransitioning;
-            if (isWin) {
+            if (clearedNow && Number(snap.continuesUsed) > 0) {
+                won = false;
+                outcome = 'continued_clear';
+                break;
+            }
+            if (clearedNow) {
                 won = true;
                 outcome = 'win';
                 break;
@@ -288,7 +297,11 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
             simulatedMs += advanceMs;
         }
         finalSnap = await page.evaluate(() => __novawingDebug.getBotSnapshot());
-        if (finalSnap.levelCompleted || finalSnap.victoryPending || finalSnap.awaitingNextLevel || finalSnap.level > scenario.level) {
+        const cleared = finalSnap.levelCompleted || finalSnap.victoryPending || finalSnap.awaitingNextLevel || finalSnap.level > scenario.level;
+        if (cleared && Number(finalSnap.continuesUsed) > 0) {
+            won = false;
+            outcome = 'continued_clear';
+        } else if (cleared) {
             won = true;
             outcome = 'win';
         }
@@ -333,6 +346,10 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
 }
 
 async function main() {
+    if (!Number.isInteger(TRIALS) || TRIALS < 1) {
+        console.error('TRIALS must be a positive integer');
+        process.exit(1);
+    }
     const ids = parseScenarioList();
     if (!ids.length) {
         console.error('No valid scenarios. Keys:', Object.keys(SCENARIOS).join(', '));
@@ -351,7 +368,7 @@ async function main() {
     console.log('NovaWing playtest scenarios');
     console.log(`scenarios=${ids.join(',')} trials=${TRIALS} expert=${EXPERT} headless=${HEADLESS}`);
 
-    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    const browser = await launchBrowser(chromium, HEADLESS);
     const results = [];
     const deathHist = {};
     const segmentCoverage = new Set();
@@ -414,6 +431,11 @@ async function main() {
         segmentsCovered: report.segmentsCovered,
         report: outPath
     }, null, 2));
+    const pageErrorTrials = results.filter((row) => row.pageErrors && row.pageErrors.length);
+    if (pageErrorTrials.length) {
+        console.error(`page errors in ${pageErrorTrials.length} trial(s)`);
+        process.exitCode = 1;
+    }
 }
 
 main().catch((err) => {

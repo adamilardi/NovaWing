@@ -3,13 +3,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { chromium } from 'playwright';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState, evaluateAction } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 const out = process.env.JEV_AUDIT_OUT || '/tmp/novawing-jev-state-audit';
 fs.mkdirSync(out, { recursive: true });
 const runtimeHashes = await verifyServedRuntime('http://127.0.0.1:4000/');
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const results = [];
 try {
     for (const level of [5, 6]) {

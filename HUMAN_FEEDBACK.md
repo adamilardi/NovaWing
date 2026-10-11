@@ -4,6 +4,46 @@ Playtester (human) feedback per level, newest first. Each item keeps the
 tester's own words plus the branch it was tested against. Status flow:
 `new` → `investigating` → `fixed` (or `wontfix` with a reason).
 
+## design notes: difficulty philosophy — 2026-10-09
+
+Tester steer: "moments of chaos followed by calm"; loves Quake Nightmare;
+normal must still be fun; keep the three modes. Research blend implemented
+2026-10-09 (static scorer + dynamic heat). Uncommitted; needs feel-check.
+
+What the best do (research): Battle Garegga/Cave rank loops (difficulty
+follows performance, death cools it); Left 4 Dead AI Director (Build →
+Peak → Relax as measurable states, ~30-45s relax); Gradius recovery rule
+(checkpoints survivable from zero power); R-Type (sequence stages by
+measured difficulty); modes with jobs (Normal = intended, Easy = learn,
+Hard = remix, never just HP).
+
+Static: pressure scorer (`npm run score`, `Levels.scoreLevelCurve`).
+Every segment scores 0-100 from resolved knobs: density 0.5 (who shoots),
+tempo 0.25 (cadence + wave pace), shots 0.15, wave-pattern threat mix 0.1
+(`WAVE_THREAT` catalog, feel-checkable). Roles: breather <40, standard
+40-60, chaos 60+. Bosses score from boss tempo/shots + level density.
+Standardization (tests/difficulty-curve.test.cjs): every multi-segment
+level has a breather AND a contrast arc ≥5; no adjacent chaos waves on
+Cadet/Hotshot (Supernova is all-chaos by design); modes order every
+segment easy ≤ normal ≤ hard; caps Hotshot 70 / Supernova 95; first
+weapon-class drop within 6s of every opener; L7 stays the hottest peak.
+Current Hotshot means: L1 48, L2 57, L3 45, L4 42, L5 44, L6 43, L7 56
+(peak 65), L8 41, L9 41, L10 44, L11 42. Supernova runs +30 over Hotshot
+(72-95): nightmare-grade, L7-hard 95 is the wall.
+Known scorer blind spots (unscored dimensions): terrain/paths, black
+holes, boss bullet patterns, verticality. L2 scores 57 with no internal
+breather (terrain pressure is real but unscored) — watch feel-check.
+Easy curves are flat-calm (peaks ≤34); consider mild easy peaks later
+so Cadets learn to dodge.
+
+Dynamic: heat loop (`src/difficulty-heat.js`, ±15% intensity).
+Per-run heat 0-1, starts 0.4: kill +0.02, powerup +0.04, calm second
++0.006, hurt -0.06, death -0.30. Mode-bounded (easy ≤0.6, normal
+0.15-0.85, hard ≥0.4). Bends wave pacing and spawn arming only — never
+HP, patterns, or drops. Ranked-safe: the loop is the intended
+experience, not an assist. Live-verified (0.4 → 0.41 on kills/calm →
+0.15 floor after damage, 0 errors). Interceptors excluded for now.
+
 ## campaign difficulty — 2026-10-09 (fixed, needs feel-check)
 
 1. "The level difficulty is off now" (too hard, campaign scope) — FIXED

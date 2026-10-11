@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { appendPlaytestTimeScale } from './rl/chrome.mjs';
-import { isRunWin, advanceCampaign } from './rl/run-outcome.mjs';
+import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
@@ -64,13 +64,10 @@ export function installInPagePilot() {
         return snap && (snap.scrollMode === 'vertical' || snap.combatOrientation === 'up');
     }
 
-    function clockScale(snap) {
-        const n = Number(snap && snap.timeScale);
-        return Number.isFinite(n) && n > 0 ? n : 1;
-    }
-
-    function simVel(v, snap) {
-        return (Number(v) || 0) * clockScale(snap);
+    // Sim seconds, not wall seconds. snap.time and these velocities share that
+    // clock, so an 8× verify session and a 1× stepped demo dodge the same way.
+    function simVel(v) {
+        return Number(v) || 0;
     }
 
     function timeToHit(dist, vel, snap) {
@@ -114,13 +111,15 @@ export function installInPagePilot() {
             };
         }
         if (snap.openBands && snap.openBands.length) {
-            const tops = snap.openBands.map(function (b) { return b[0]; });
-            const bots = snap.openBands.map(function (b) { return b[1]; });
-            return {
-                minY: Math.min.apply(null, tops) + 40,
-                maxY: Math.max.apply(null, bots) - 40,
-                wh: wh
-            };
+            const chosen = preferredOpenBands(snap);
+            const band = chosen && chosen[0];
+            if (band) {
+                const top = band[0] + 40;
+                const bot = band[1] - 40;
+                if (bot > top) return { minY: top, maxY: bot, wh: wh };
+                const mid = (band[0] + band[1]) * 0.5;
+                return { minY: mid, maxY: mid, wh: wh };
+            }
         }
         return { minY: 80, maxY: wh - 80, wh: wh };
     }
@@ -169,9 +168,8 @@ export function installInPagePilot() {
         const needY = ph + hs.hh + 10;
         const dx0 = threat.x - px;
         const dy0 = threat.y - py;
-        const scale = clockScale(snap);
-        const vx = (threat.vx || 0) * scale;
-        const vy = (threat.vy || 0) * scale;
+        const vx = threat.vx || 0;
+        const vy = threat.vy || 0;
 
         if (Math.abs(dx0) <= needX && Math.abs(dy0) <= needY) return 0;
 
@@ -460,24 +458,30 @@ export function installInPagePilot() {
         return { score: score, minTtc: minTtc };
     }
 
-    /** Prefer the band that already contains the player, else the widest corridor. */
+    /** Band the ship is in, otherwise the nearest gap. A wider gap across a wall is not nearer. */
     function preferredOpenBands(snap) {
         if (!snap.openBands || !snap.openBands.length) return null;
         const p = snap.player;
-        if (p) {
-            for (let i = 0; i < snap.openBands.length; i++) {
-                const b = snap.openBands[i];
-                if (p.y >= b[0] + 20 && p.y <= b[1] - 20) return [b];
+        if (!p) {
+            let best = snap.openBands[0];
+            let bestW = best[1] - best[0];
+            for (let i = 1; i < snap.openBands.length; i++) {
+                const w = snap.openBands[i][1] - snap.openBands[i][0];
+                if (w > bestW) {
+                    best = snap.openBands[i];
+                    bestW = w;
+                }
             }
+            return [best];
         }
-        // Widest band first (safest for canyon travel).
         let best = snap.openBands[0];
-        let bestW = best[1] - best[0];
-        for (let i = 1; i < snap.openBands.length; i++) {
-            const w = snap.openBands[i][1] - snap.openBands[i][0];
-            if (w > bestW) {
-                best = snap.openBands[i];
-                bestW = w;
+        let bestDist = Infinity;
+        for (let i = 0; i < snap.openBands.length; i++) {
+            const b = snap.openBands[i];
+            const dist = p.y < b[0] ? b[0] - p.y : (p.y > b[1] ? p.y - b[1] : 0);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = b;
             }
         }
         return [best];
@@ -665,12 +669,11 @@ export function installInPagePilot() {
                 minTtc = ttc;
                 kind = t.kind;
                 if (t.kind === 'laser' || t.kind === 'bullet' || t.kind === 'enemy' || t.kind === 'wall') {
-                    const scale = clockScale(snap);
                     if (vertical) {
-                        const predX = t.x + (t.vx || 0) * scale * Math.min(ttc, 0.35);
+                        const predX = t.x + (t.vx || 0) * Math.min(ttc, 0.35);
                         dodgeDir = predX >= p.x ? -1 : 1;
                     } else {
-                        const predY = t.y + (t.vy || 0) * scale * Math.min(ttc, 0.35);
+                        const predY = t.y + (t.vy || 0) * Math.min(ttc, 0.35);
                         dodgeDir = predY >= p.y ? -1 : 1;
                     }
                 }
@@ -1178,7 +1181,7 @@ export function installInPagePilot() {
         const dy = target.y - p.y;
         const ttc = Math.min(target.minTtc, here.ttc);
         const now = snap.time || 0;
-        const wallNow = performance.now();
+        const wallNow = snap.time || 0;
         const invuln = snap.playerInvulnerableUntil && now < snap.playerInvulnerableUntil;
         const lowLives = (snap.lives || 0) <= 1 && !snap.hasShield;
         const bounds = playBounds(snap);
@@ -2042,7 +2045,7 @@ async function runOnce(browser, trialIndex) {
                 continue;
             }
             if (isRunWin(snap, process.env.LEVEL ? Number(process.env.LEVEL) : null)) {
-                won = true;
+                won = isDeathlessWin(snap, process.env.LEVEL ? Number(process.env.LEVEL) : null);
                 await page.waitForTimeout(2000);
                 break;
             }

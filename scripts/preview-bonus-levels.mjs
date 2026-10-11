@@ -2,14 +2,14 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const out = process.env.BONUS_PREVIEW_OUT || '/tmp/novawing-final-previews';
 fs.mkdirSync(out, { recursive: true });
 const runtimeHashes = await verifyServedRuntime(base);
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const results = [];
 try {
     for (const mobile of [false, true]) for (const level of [4, 5, 6, 7]) {

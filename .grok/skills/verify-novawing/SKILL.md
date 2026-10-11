@@ -61,7 +61,7 @@ node scripts/verify-novawing.mjs --case l2-bot
 node scripts/verify-novawing.mjs --case l3-bot
 ```
 
-Full coverage (same level bots plus RL policy on L1–L3 if `rl/weights/bc-policy.json` exists):
+Full coverage (same level bots plus RL policy on L1–L3; a missing `rl/weights/bc-policy.json` fails the case):
 
 ```bash
 npm run verify:full
@@ -102,7 +102,7 @@ A case passes only with:
 - The resulting snapshot fields (progress, score, pause flag, segment/orientation, pageerrors)
 - A screenshot in that run directory for canvas cases
 
-`pageerror` is always a fail. Heuristic/RL death is not a fail. A level bot fails if the snapshot never moved, L2 never showed walls, or L3 never reached vertical combat (intro play plus the topdown fallback).
+`pageerror` is always a fail. Heuristic/RL death is not a fail. A level bot fails unless the ship moved, fired, or scored a kill during the run. The wave clock, enemies already on screen, and a segment written by `setSegment` do not count. L2 still has to show walls, and L3 still has to reach vertical combat (intro play plus the topdown fallback). `rl-policy` also fails when the weights file is missing, the policy tick throws, or it never writes an action.
 
 `npm run check` is not play proof.
 
@@ -118,7 +118,7 @@ Proof files stay under `.verify-runs/`.
 |---|---|
 | `npm run verify` | Boot/move/controller/pause/difficulty/continues, then heuristic bot on L1+L2+L3 |
 | `npm run verify:doctor` | Boot only |
-| `npm run verify:full` | Same, plus RL policy on L1–L3 if weights exist |
+| `npm run verify:full` | Same, plus RL policy on L1–L3. Missing weights fail the case |
 | `node scripts/verify-novawing.mjs --case <ids>` | Subset |
 | `npm run rl:playtest` | Scenario taxonomy (needs a live URL) |
 | `npm run bot` | Heuristic campaign attempt (needs a live URL) |

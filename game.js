@@ -723,7 +723,20 @@ let runtimeSessionGen = 0;
 let leaderboardDebugTainted = false;
 let leaderboardIneligibleReason = null;
 
+function reportBootProgress(value) {
+    if (typeof window !== 'undefined' && window.NovaWingBoot && window.NovaWingBoot.setProgress) {
+        window.NovaWingBoot.setProgress(value);
+    }
+}
+
+function dismissBootScreen() {
+    if (typeof window !== 'undefined' && window.NovaWingBoot && window.NovaWingBoot.dismiss) {
+        window.NovaWingBoot.dismiss();
+    }
+}
+
 function preload() {
+    this.load.on('progress', reportBootProgress);
     window.NovaWingAssets.preload(this);
     createCombatTextures(this);
     createPowerupTextures(this);
@@ -1404,6 +1417,9 @@ function create() {
     bossNextLaserAt = 0;
     bossPhase = 1;
     levelStartTime = 0;
+    runHeat = typeof NovaWingHeat !== 'undefined' ? NovaWingHeat.HEAT_START : 0.4;
+    lastHeatDamageAt = -10000;
+    heatCalmAccumMs = 0;
     levelAttemptStartTime = 0;
     levelStartScore = score;
     levelStartKills = enemiesKilled;
@@ -1724,6 +1740,7 @@ function create() {
     } else {
         beginGameplay();
     }
+    dismissBootScreen();
 
     // Debug: press L to cycle levels (respects live getTotalLevels / ?level3=1).
     if (this.input.keyboard) {
@@ -1767,6 +1784,11 @@ function update(time, delta) {
     const frameDelta = (Number.isFinite(delta) ? delta : 16.67) * getPlaytestTimeScale();
     playtestClockMs += frameDelta;
     const simTime = playtestClockMs;
+    heatCalmAccumMs += frameDelta;
+    if (heatCalmAccumMs >= 1000) {
+        heatCalmAccumMs = 0;
+        if (simTime - lastHeatDamageAt >= 1000) heatEvent('calmTick');
+    }
     // Player movement
     let axes = getMovementAxes();
     const isMoving = axes.x !== 0 || axes.y !== 0;
@@ -2075,6 +2097,7 @@ function flashCombatTarget(scene, target, tint, duration) {
 
 function destroyEnemy(enemy, options = {}) {
     if (!enemy || !enemy.active || enemy.dying) return;
+    heatEvent('kill');
 
     const allowSplit = options.allowSplit !== false;
     const enemyX = enemy.x;
@@ -2371,6 +2394,7 @@ function collectPowerup(playerSprite, powerup) {
     createExplosion(this, x, y, 22);
     if (playerSprite === player || !playerSprite) holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.powerup, PLAYER_POWERUP_POSE_MS);
     sfx.powerup(x);
+    heatEvent('powerup');
 
     const collectorState = getCoopPilotState(playerSprite);
     if (collectorState && playerSprite !== player) {
@@ -2752,6 +2776,7 @@ function damagePlayer(ship = player) {
         this.time.delayedCall(140, () => {
             if (ship.active) ship.setTint(ship === playerTwo ? 0xffa6e7 : 0xffffff);
         });
+        heatEvent('hurt');
         return;
     }
 
@@ -2762,6 +2787,7 @@ function damagePlayer(ship = player) {
 
     state.lives--;
     if (ship === player) { lives = state.lives; updateLivesText(); }
+    heatEvent(state.lives <= 0 ? 'death' : 'hurt');
     updateCoopText();
 
     ship.setTint(0xff0000);
@@ -3053,11 +3079,17 @@ function scheduleNextEnemyWave(scene, delayMs) {
 function nextWaveDelayMs() {
     const min = difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS);
     const max = Math.max(min, difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS));
-    if (!difficultyFlag('randomWaves', false)) return Phaser.Math.Between(min, max);
-    // Clump, then a gap, so Supernova waves do not arrive on a metronome.
-    const lo = Math.max(480, Math.round(min * 0.55));
-    const hi = Math.max(lo + 200, Math.round(max * 1.35));
-    return Phaser.Math.Between(lo, hi);
+    let delay;
+    if (!difficultyFlag('randomWaves', false)) {
+        delay = Phaser.Math.Between(min, max);
+    } else {
+        // Clump, then a gap, so Supernova waves do not arrive on a metronome.
+        const lo = Math.max(480, Math.round(min * 0.55));
+        const hi = Math.max(lo + 200, Math.round(max * 1.35));
+        delay = Phaser.Math.Between(lo, hi);
+    }
+    // Hot runs pack waves tighter; cold runs breathe. Bounded ±15%.
+    return Math.max(240, Math.round(delay / heatIntensity()));
 }
 
 function spawnEnemyWave() {
@@ -3289,6 +3321,21 @@ function getActiveDifficulty() {
         bag = overlayFn(bag, queryBag);
     }
     return bag;
+}
+
+// Per-run heat: gentle rank loop, see src/difficulty-heat.js. Resets every
+// run in create(); persists across levels while the run survives.
+let runHeat = 0.4;
+let lastHeatDamageAt = -10000;
+let heatCalmAccumMs = 0;
+function heatEvent(name) {
+    if (typeof NovaWingHeat === 'undefined') return;
+    runHeat = NovaWingHeat.heatNext(runHeat, name, getDifficultyMode());
+    if (name === 'hurt' || name === 'death') lastHeatDamageAt = playtestClockMs;
+}
+function heatIntensity() {
+    if (typeof NovaWingHeat === 'undefined') return 1;
+    return NovaWingHeat.heatIntensity(runHeat);
 }
 
 function difficultyNumber(key, fallback) {
@@ -4257,7 +4304,17 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
 
     const defaultFireChance = getLevelEnemyFireChance();
     const typedChance = difficultyNumber('typedFireChance', 1);
-    const rollTypedArmed = () => typedChance >= 1 ? true : gameplayRandom() < Math.max(0, typedChance);
+    // Heat bends spawn arming a few percent either way. A base chance of 1
+    // stays guaranteed while hot and only thins while cold.
+    const scaleArming = base => {
+        const scaled = base * heatIntensity();
+        if (scaled >= 1) return 1;
+        return Math.min(0.97, Math.max(0, scaled));
+    };
+    const rollTypedArmed = () => {
+        const c = scaleArming(typedChance);
+        return c >= 1 ? true : gameplayRandom() < c;
+    };
     if (typeof options.canShoot === 'boolean') {
         // Scripted true means eligible, not guaranteed: thin blanket-armed
         // waves through typedFireChance so roster growth stays governed.
@@ -4270,7 +4327,7 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
             enemy.canShoot = rollTypedArmed();
         }
     } else {
-        enemy.canShoot = gameplayRandom() < defaultFireChance;
+        enemy.canShoot = gameplayRandom() < scaleArming(defaultFireChance);
     }
 
     if (typeDef.profile === 'interceptor') {
@@ -12486,8 +12543,8 @@ function snapshotBody(sprite, extra) {
     return Object.assign({
         x: body.x,
         y: body.y,
-        vx: body.vx || sprite.baseVelocityX || 0,
-        vy: body.vy || sprite.baseVelocityY || 0,
+        vx: Number.isFinite(body.vx) ? body.vx : (sprite.baseVelocityX || 0),
+        vy: Number.isFinite(body.vy) ? body.vy : (sprite.baseVelocityY || 0),
         w: body.w || sprite.displayWidth || 16,
         h: body.h || sprite.displayHeight || 16
     }, extra || {});
@@ -12611,6 +12668,7 @@ function getBotSnapshot() {
         playtestBot: typeof isPlaytestBotSession === 'function' ? isPlaytestBotSession() : false,
         timeScale: getPlaytestTimeScale(),
         difficulty: getActiveDifficulty(),
+        heat: typeof runHeat === 'number' ? runHeat : null,
         level: typeof currentLevel === 'number' ? currentLevel : 1,
         totalLevels: totalLevels(),
         levelName: levelDef && levelDef.name ? levelDef.name : null,
@@ -12621,6 +12679,7 @@ function getBotSnapshot() {
             : 0,
         score,
         kills: typeof enemiesKilled === 'number' ? enemiesKilled : 0,
+        shotsFired: typeof shotsFired === 'number' ? shotsFired : 0,
         lives,
         weaponLevel,
         weaponId: activeWeaponId(null),
@@ -12670,8 +12729,8 @@ function getBotSnapshot() {
             return {
                 x: b.x,
                 y: b.y,
-                vx: b.vx || enemy.baseVelocityX || 0,
-                vy: b.vy || enemy.baseVelocityY || 0,
+                vx: Number.isFinite(b.vx) ? b.vx : (enemy.baseVelocityX || 0),
+                vy: Number.isFinite(b.vy) ? b.vy : (enemy.baseVelocityY || 0),
                 w: b.w,
                 h: b.h,
                 type: enemy.enemyType || 'regular',
@@ -12692,8 +12751,8 @@ function getBotSnapshot() {
             return {
                 x: b.x,
                 y: b.y,
-                vx: b.vx || obstacle.baseVelocityX || 0,
-                vy: b.vy || obstacle.baseVelocityY || 0,
+                vx: Number.isFinite(b.vx) ? b.vx : (obstacle.baseVelocityX || 0),
+                vy: Number.isFinite(b.vy) ? b.vy : (obstacle.baseVelocityY || 0),
                 w: b.w,
                 h: b.h
             };
@@ -12703,8 +12762,8 @@ function getBotSnapshot() {
             return {
                 x: b.x,
                 y: b.y,
-                vx: b.vx || wall.baseVelocityX || 0,
-                vy: b.vy || wall.baseVelocityY || 0,
+                vx: Number.isFinite(b.vx) ? b.vx : (wall.baseVelocityX || 0),
+                vy: Number.isFinite(b.vy) ? b.vy : (wall.baseVelocityY || 0),
                 w: b.w,
                 h: b.h,
                 danger: Boolean(wall.isDangerWall)
@@ -12739,8 +12798,8 @@ function getBotSnapshot() {
             return {
                 x: b.x,
                 y: b.y,
-                vx: b.vx || powerup.baseVelocityX || 0,
-                vy: b.vy || powerup.baseVelocityY || 0,
+                vx: Number.isFinite(b.vx) ? b.vx : (powerup.baseVelocityX || 0),
+                vy: Number.isFinite(b.vy) ? b.vy : (powerup.baseVelocityY || 0),
                 w: b.w,
                 h: b.h,
                 type: powerup.powerupType || 'weapon'

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 
 const output = path.resolve('.verify-runs', 'audio-' + new Date().toISOString().replace(/[:.]/g, '-'));
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const reports = [];
 try {
     for (const scenario of ['waves', 'boss', 'canyon', 'canyonBoss', 'singularity', 'gauntlet', 'finalBoss', 'combat', 'mute', 'pause', 'styles']) {

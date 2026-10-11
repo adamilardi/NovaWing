@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isRunWin, advanceCampaign } from '../run-outcome.mjs';
+import { isRunWin, isDeathlessWin, advanceCampaign } from '../run-outcome.mjs';
 
 test('intermediate clears end level runs but never campaign runs', () => {
     const cleared = { level: 1, levelCompleted: true, awaitingNextLevel: true };
@@ -13,6 +13,10 @@ test('intermediate clears end level runs but never campaign runs', () => {
     assert.equal(isRunWin({ level: 7, levelCompleted: true }, 7), true);
     assert.equal(isRunWin({ level: 3, levelEnded: true, lives: 1 }, 3), false);
     assert.equal(isRunWin(null), false);
+    const continued = { level: 2, levelCompleted: true, continuesUsed: 1 };
+    assert.equal(isRunWin(continued, 1), true);
+    assert.equal(isDeathlessWin(continued, 1), false);
+    assert.equal(isDeathlessWin({ level: 2, levelCompleted: true, continuesUsed: 0 }, 1), true);
 });
 
 test('campaign continuation uses the results action and clears old pilot outcomes', async () => {

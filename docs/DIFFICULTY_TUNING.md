@@ -54,3 +54,13 @@ of `levels.js` and [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md).
 Human play feedback still judges overall feel. Regression checks do not
 establish campaign completion rates. Release playtest expectations:
 [POLISH.md](POLISH.md).
+
+## Heat (dynamic rank)
+
+On top of the static modes, each run carries heat 0–1 (starts 0.4):
+kills, powerups, and calm seconds raise it; damage and death lower it.
+Heat bends wave pacing and spawn arming ±15% inside per-mode bounds
+(Cadet ≤0.6, Hotshot 0.15–0.85, Supernova ≥0.4) — never HP, patterns, or
+drops. It is the intended experience on every mode and does not unrank.
+Static pacing intent is scored by `npm run score` and locked by
+tests/difficulty-curve.test.cjs.

@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-import { defaultHeadless, defaultLaunchOptions, appendPlaytestTimeScale } from './rl/chrome.mjs';
+import { defaultHeadless, launchBrowser, appendPlaytestTimeScale } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
 import { casePolish, caseCampaignRanking } from './verify-polish.mjs';
@@ -835,14 +835,16 @@ function classifyPilotOutcome(status, timedOut, startLevel) {
     return 'playing';
 }
 
-function snapshotMoved(t0, snap) {
-    if (!snap) return false;
-    return (snap.levelProgressMs || 0) > ((t0 && t0.levelProgressMs) || 0) + 800 ||
-        (snap.score || 0) > ((t0 && t0.score) || 0) ||
-        (snap.enemiesKilled || 0) > 0 ||
-        (Array.isArray(snap.enemies) && snap.enemies.length > 0) ||
-        snap.phase === 'boss' ||
-        (snap.segment && snap.segment !== 'introBoss');
+function pilotActed(t0, snap) {
+    if (!snap || !t0) return false;
+    const p0 = t0.player;
+    const p1 = snap.player;
+    if (p0 && p1 && Math.hypot((p1.x || 0) - (p0.x || 0), (p1.y || 0) - (p0.y || 0)) >= 12) {
+        return true;
+    }
+    if ((snap.kills || 0) > (t0.kills || 0)) return true;
+    if ((snap.shotsFired || 0) > (t0.shotsFired || 0)) return true;
+    return false;
 }
 
 async function drivePilotUntil(page, durationMs, startLevel) {
@@ -924,7 +926,7 @@ async function playLevelWithBot(browser, base, evidenceDir, level, options = {})
         await session.page.screenshot({ path: shot });
         const snap = run.last.snap;
         const crashed = session.pageErrors.length > 0 || Boolean(run.last.err);
-        const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
+        const moved = pilotActed(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
         const levelOk = !options.requireLevel ||
             (snap && Number(snap.level) >= options.requireLevel);
         const exactOk = !options.requireExactLevel ||
@@ -1081,7 +1083,7 @@ async function caseValidationMobile(browser, base, evidenceDir) {
         await session.page.screenshot({ path: shot });
         const snap = run.last.snap;
         const crashed = session.pageErrors.length > 0 || Boolean(run.last.err);
-        const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
+        const moved = pilotActed(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
         const exact = snap && Number(snap.level) === id;
         const ok = Boolean(snap && snap.ready) && moved && exact && !crashed;
         return result('validation-mobile', ok, ok
@@ -1140,7 +1142,7 @@ async function caseValidationContent(browser, base, evidenceDir) {
         await session.page.screenshot({ path: shot });
         const snap = run.last.snap;
         const crashed = session.pageErrors.length > 0 || Boolean(run.last.err);
-        const moved = snapshotMoved(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
+        const moved = pilotActed(run.t0, snap) || run.outcome === 'clear' || run.outcome === 'win';
         const exact = snap && Number(snap.level) === id;
         const rewardsOk = !art.schedulesPowerups || run.seen.maxPowerups > 0;
         const ok = Boolean(snap && snap.ready) && moved && exact && rewardsOk && !crashed;
@@ -1306,7 +1308,7 @@ async function caseL3Topdown(browser, base, evidenceDir) {
 async function caseRlPolicy(browser, base, evidenceDir) {
     const policyPath = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
     if (!fs.existsSync(policyPath)) {
-        return result('rl-policy', true, `skip: no policy at ${path.relative(ROOT, policyPath)}`, { skipped: true });
+        return result('rl-policy', false, `missing policy at ${path.relative(ROOT, policyPath)}`);
     }
     const { installPolicyPilot } = await import('./rl/play-policy.mjs');
     const { RUNTIME_PURE_PATH } = await import('./rl/load-runtime.mjs');
@@ -1330,16 +1332,31 @@ async function caseRlPolicy(browser, base, evidenceDir) {
             await page.evaluate(installPolicyPilot, { ...policy, explore: false });
             const t0 = await page.evaluate(() => window.__novawingDebug.getBotSnapshot());
             await page.waitForTimeout(durationMs);
-            const snap = await page.evaluate(() => window.__novawingDebug.getBotSnapshot());
+            const status = await page.evaluate(() => ({
+                snap: window.__novawingDebug.getBotSnapshot(),
+                error: window.__novawingPolicyError || null,
+                action: window.__novawingPolicyLastAction || null
+            }));
+            const snap = status.snap;
             const shot = path.join(evidenceDir, 'rl-policy-l' + level + '.png');
             await page.screenshot({ path: shot });
-            const ok = snap && snap.ready && pageErrors.length === 0 && snapshotMoved(t0, snap);
+            const ok = Boolean(snap && snap.ready) &&
+                pageErrors.length === 0 &&
+                !status.error &&
+                Boolean(status.action) &&
+                pilotActed(t0, snap);
             rows.push({
                 level,
                 ok,
                 detail: ok
                     ? `L${level} score=${snap.score} lives=${snap.lives}`
-                    : JSON.stringify({ ready: snap && snap.ready, pageErrors })
+                    : JSON.stringify({
+                        ready: snap && snap.ready,
+                        pageErrors,
+                        policyError: status.error,
+                        acted: Boolean(status.action),
+                        pilotActed: pilotActed(t0, snap)
+                    })
             });
         } finally {
             await context.close();
@@ -1412,7 +1429,7 @@ async function main() {
         base += '/';
     }
 
-    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    const browser = await launchBrowser(chromium, HEADLESS);
     const results = [];
     try {
         for (const id of selectedCases()) {

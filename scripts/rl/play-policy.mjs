@@ -14,9 +14,9 @@ import { fileURLToPath } from 'url';
 import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
 import { forwardPolicy } from './policy-infer.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { launchBrowser } from './chrome.mjs';
 import { routeVendorPhaser } from './chrome.mjs';
-import { isRunWin, advanceCampaign } from './run-outcome.mjs';
+import { isRunWin, isDeathlessWin, advanceCampaign } from './run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -102,7 +102,7 @@ async function main() {
         `fire=${y[2].toFixed(3)} boost=${y[3].toFixed(3)}`
     );
 
-    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    const browser = await launchBrowser(chromium, HEADLESS);
     if (RECORD_VIDEO) fs.mkdirSync(VIDEO_DIR, { recursive: true });
     const context = await browser.newContext({
         viewport: { width: 960, height: 720 },
@@ -171,10 +171,7 @@ async function main() {
             }
             if (status.snap && status.snap.level > peakLevel) peakLevel = status.snap.level;
 
-            if (isLevelOrCampaignWin(status.snap)) {
-                won = true;
-                break;
-            }
+            if (isLevelOrCampaignWin(status.snap)) break;
             if (await advanceCampaign(page, status.snap, START_LEVEL)) continue;
             if (
                 (status.snap && status.snap.levelEnded && !status.snap.victoryPending &&
@@ -205,7 +202,9 @@ async function main() {
         }
 
         finalSnap = await page.evaluate(() => __novawingDebug.getBotSnapshot());
-        won = Boolean(isLevelOrCampaignWin(finalSnap));
+        const cleared = Boolean(isLevelOrCampaignWin(finalSnap));
+        const continuesUsed = finalSnap?.continuesUsed || 0;
+        won = isDeathlessWin(finalSnap, START_LEVEL);
         const elapsedMs = finalSnap && finalSnap.elapsedMs != null
             ? finalSnap.elapsedMs
             : (Date.now() - started);
@@ -236,6 +235,8 @@ async function main() {
         console.log(JSON.stringify(result, null, 2));
         if (won) {
             console.log(`SPEEDRUN CLEAR: ${result.clearSec}s  score=${result.score}`);
+        } else if (cleared) {
+            console.log(`CONTINUED CLEAR continues=${continuesUsed} score=${result.score}`);
         }
 
         try {

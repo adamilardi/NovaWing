@@ -5,7 +5,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { bootControlledGame, suppressRendering } from './rl/controlled-play.mjs';
 import { verifyServedRuntime } from './jev-runtime.mjs';
 import { RUNTIME_PURE_PATH, runtime } from './rl/load-runtime.mjs';
@@ -21,7 +21,7 @@ const maxMs=Number(process.env.BOT_MAX_MS||360000);
 const bossOnly=process.env.BOT_BOSS_ONLY==='1';
 if(!Number.isFinite(stepMs)||stepMs<16||!Number.isFinite(maxMs)||maxMs<=0) throw new Error('Invalid step or duration');
 const hashes=await verifyServedRuntime(base);
-const browser=await chromium.launch(defaultLaunchOptions(true));
+const browser=await launchBrowser(chromium, true);
 const results=[];
 try {
  for(const level of levels) for(const seed of seeds) {

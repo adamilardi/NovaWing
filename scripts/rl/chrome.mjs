@@ -1,7 +1,9 @@
 /**
  * Resolve a Chromium executable for Playwright bots (no hardcoded user paths).
  */
+import { spawn } from 'child_process';
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
@@ -65,6 +67,206 @@ export function defaultLaunchOptions(headless) {
     const chrome = resolveChromePath();
     if (chrome) opts.executablePath = chrome;
     return opts;
+}
+
+const WIN_CHROME = '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe';
+const WIN_CSC = '/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
+const WIN_POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+const RELAY_CS = `using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
+public class Relay {
+    public static void Main(string[] args) {
+        var listener = new TcpListener(IPAddress.Parse(args[0]), int.Parse(args[1]));
+        listener.Start();
+        Console.WriteLine("RELAY_UP");
+        while (true) {
+            var incoming = listener.AcceptTcpClient();
+            int upstream = int.Parse(args[2]);
+            Task.Run(() => Pipe(incoming, upstream));
+        }
+    }
+    static void Pipe(TcpClient incoming, int upstream) {
+        try {
+            using (incoming)
+            using (var remote = new TcpClient()) {
+                remote.Connect("127.0.0.1", upstream);
+                var a = incoming.GetStream();
+                var b = remote.GetStream();
+                var t1 = Task.Run(() => Copy(a, b));
+                var t2 = Task.Run(() => Copy(b, a));
+                Task.WaitAny(t1, t2);
+            }
+        } catch { }
+    }
+    static void Copy(NetworkStream src, NetworkStream dst) {
+        try { src.CopyTo(dst); } catch { }
+        try { dst.Close(); } catch { }
+    }
+}
+`;
+
+function wslHostIp() {
+    try {
+        const match = fs.readFileSync('/etc/resolv.conf', 'utf8').match(/nameserver\s+(\S+)/);
+        return match ? match[1] : null;
+    } catch {
+        return null;
+    }
+}
+
+function windowsChromePath() {
+    if (process.env.NOVAWING_SWIFTSHADER === '1') return null;
+    const fromEnv = process.env.NOVAWING_WIN_CHROME;
+    if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+    if (fs.existsSync(WIN_CHROME) && fs.existsSync(WIN_CSC)) return WIN_CHROME;
+    return null;
+}
+
+function httpGet(url) {
+    return new Promise((resolve, reject) => {
+        const req = http.get(url, (res) => {
+            let body = '';
+            res.on('data', (chunk) => { body += chunk; });
+            res.on('end', () => resolve({ status: res.statusCode, body }));
+        });
+        req.on('error', reject);
+        req.setTimeout(1000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+}
+
+function run(file, args) {
+    return spawn(file, args, { stdio: 'ignore' });
+}
+
+function killToken(token) {
+    return new Promise((resolve) => {
+        if (!fs.existsSync(WIN_POWERSHELL)) {
+            resolve();
+            return;
+        }
+        const child = spawn(WIN_POWERSHELL, ['-NoProfile', '-Command',
+            `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${token}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
+        const done = () => resolve();
+        child.on('exit', done);
+        child.on('error', done);
+        setTimeout(done, 8000);
+    });
+}
+
+async function stopWindowsChrome(token, children = []) {
+    for (const child of children) {
+        try { child.kill(); } catch { /* already gone */ }
+    }
+    await killToken(token);
+    try {
+        fs.rmSync(`/mnt/c/Users/Public/novawing-${token}`, { recursive: true, force: true });
+    } catch {
+        // Windows can keep the profile locked for a moment after the process exits.
+    }
+}
+
+async function ensureRelay() {
+    const exe = '/mnt/c/Users/Public/novawing-cdp-relay.exe';
+    const cs = '/mnt/c/Users/Public/novawing-cdp-relay.cs';
+    if (!fs.existsSync(exe)) {
+        fs.mkdirSync('/mnt/c/Users/Public', { recursive: true });
+        fs.writeFileSync(cs, RELAY_CS);
+        await new Promise((resolve, reject) => {
+            const child = spawn(WIN_CSC, ['/nologo', '/out:C:\\Users\\Public\\novawing-cdp-relay.exe', 'C:\\Users\\Public\\novawing-cdp-relay.cs'], { stdio: 'ignore' });
+            child.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`csc exited ${code}`)));
+            child.on('error', reject);
+        });
+    }
+    return exe;
+}
+
+/**
+ * Linux Chromium's EGL path crashes in WSL's libd3d12core, so headless WebGL
+ * falls back to SwiftShader (~180ms/frame). Windows Chrome on this host renders
+ * with the Radeon (~16ms/frame). Its DevTools port is loopback-only, which WSL
+ * cannot dial, so a small relay on the Windows vNIC forwards it.
+ * Set NOVAWING_SWIFTSHADER=1 to keep the Linux browser.
+ * @returns {Promise<import('playwright').Browser|null>}
+ */
+async function tryWindowsChrome(chromium, headless) {
+    const chromePath = windowsChromePath();
+    const host = wslHostIp();
+    if (!chromePath || !host) {
+        console.error('winchrome skip', Boolean(chromePath), host);
+        return null;
+    }
+    const token = `nwcdp${process.pid}x${Date.now()}`;
+    const chromePort = 20000 + Math.floor(Math.random() * 20000);
+    const relayPort = chromePort + 1;
+    const profile = `C:\\Users\\Public\\novawing-${token}`;
+    let relayExe;
+    try {
+        relayExe = await ensureRelay();
+    } catch (error) {
+        console.error('winchrome relay', error);
+        return null;
+    }
+    const args = [
+        '--use-angle=d3d11',
+        '--ignore-gpu-blocklist',
+        '--enable-gpu',
+        '--disable-gpu-vsync',
+        '--disable-frame-rate-limit',
+        '--no-first-run',
+        '--disable-extensions',
+        `--remote-debugging-port=${chromePort}`,
+        `--user-data-dir=${profile}`,
+        'about:blank'
+    ];
+    if (headless) args.unshift('--headless=new');
+    const chromeChild = run(chromePath, args);
+    const relayChild = run(relayExe, [host, String(relayPort), String(chromePort), token]);
+    const endpoint = `http://${host}:${relayPort}`;
+    const deadline = Date.now() + 15000;
+    let up = false;
+    while (Date.now() < deadline) {
+        try {
+            const res = await httpGet(`${endpoint}/json/version`);
+            if (res.status === 200 && res.body.includes('Browser')) {
+                up = true;
+                break;
+            }
+        } catch {
+            // Chrome or the relay is still starting.
+        }
+        await new Promise((r) => setTimeout(r, 200));
+    }
+    const children = [chromeChild, relayChild];
+    if (!up) {
+        console.error('winchrome down', endpoint, token);
+        await stopWindowsChrome(token, children);
+        return null;
+    }
+    try {
+        const browser = await chromium.connectOverCDP(endpoint);
+        const close = browser.close.bind(browser);
+        browser.close = async () => {
+            try { await close(); } catch { /* already disconnected */ }
+            await stopWindowsChrome(token, children);
+        };
+        return browser;
+    } catch (error) {
+        console.error('winchrome cdp', error);
+        await stopWindowsChrome(token, children);
+        return null;
+    }
+}
+
+/**
+ * @param {typeof chromium} chromium
+ * @param {boolean} headless
+ */
+export async function launchBrowser(chromium, headless) {
+    const windows = await tryWindowsChrome(chromium, headless);
+    if (windows) return windows;
+    return chromium.launch(defaultLaunchOptions(headless));
 }
 
 /**

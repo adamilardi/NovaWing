@@ -282,7 +282,23 @@ describe('policy assist default', () => {
             rt.installPolicyPilot({ obsSize: OBS_SIZE, actionSize: 4, layers, tacticalAssist: false });
             g.__novawingPolicyTick();
             assert.ok(inputs.length > 0);
+            assert.equal(inputs[0].fire, true);
             assert.equal(g.__novawingPolicyAssisted, false);
+            g.__novawingPolicyStop();
+            inputs.length = 0;
+            const quiet = [{
+                w: Array.from({ length: 4 }, () => new Array(OBS_SIZE).fill(0)),
+                b: [0, 0, -5, 0], act: 'identity',
+            }];
+            rt.installPolicyPilot({ obsSize: OBS_SIZE, actionSize: 4, layers: quiet, tacticalAssist: false });
+            g.__novawingPolicyTick();
+            assert.equal(inputs[0].fire, false);
+            g.__novawingPolicyStop();
+            inputs.length = 0;
+            assert.throws(
+                () => rt.forwardPolicy({ obsSize: OBS_SIZE, actionSize: 2, layers }, new Float32Array(OBS_SIZE)),
+                /actionSize/
+            );
             g.__novawingPolicyStop();
             inputs.length = 0;
             // Legacy/assisted payloads still route through the planner.

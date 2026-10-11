@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { bootControlledGame } from './rl/controlled-play.mjs';
 import { verifyServedRuntime } from './jev-runtime.mjs';
 
@@ -9,7 +9,7 @@ const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4175/';
 const output = 'art-candidates/level-5/enemy-dart/animation';
 await fs.mkdir(output, { recursive: true });
 await verifyServedRuntime(base);
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const errors = [];
 try {
     const page = await browser.newPage({ viewport: { width: 960, height: 720 },

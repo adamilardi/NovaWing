@@ -1,5 +1,5 @@
 /**
- * Jev plays an authored NovaWing level on Hotshot.
+ * Jev plays an authored NovaWing level.
  * The API key stays in Node. The page only receives stick and boost.
  */
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -9,8 +9,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
-import { AXES, buildJevCombatState } from './jev-combat-state.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
+import { AXES, buildJevCombatState, formatActionLabel, jevActionGuidance, jevGoal, shortlistActionKeys } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 import { endpointError, jumpControlledSegment, synchronizeControlledLoop } from './rl/controlled-play.mjs';
 import { OBS_VERSION, OBS_SIZE, ACTION_SIZE, OBS_LAYOUT, encodeObservation, toCanonicalAction } from './rl/obs-encode.mjs';
@@ -68,21 +68,16 @@ function safeError(error) {
 async function chooseMove(client, observation, recent) {
     const durationMs = Math.max(16, Math.floor((observation.phase === 'boss' ? Math.min(HOLD_MS, 160) : HOLD_MS) / 16) * 16);
     const state = buildJevCombatState(observation.snapshot, durationMs, recent);
+    const fullOptions = state.actionOptions;
+    const keys = shortlistActionKeys(fullOptions, state.recommendation);
+    const { actionOptions: _fullOptions, ...sent } = state;
     const request = {
-        state: { goal: `Clear Level ${LEVEL} under ordinary Hotshot combat rules with unlimited playtest continues. Auto-fire is held.`, ...state },
+        state: { goal: jevGoal(LEVEL), ...sent },
         questions: {
             action: choice({
                 task: `Choose one direction AND boost setting to hold for exactly ${durationMs} ms.`,
-                guidance: [
-                    'The recommendation ranks swept-path safety, safety after stopping, target interception, pickups and rear firing position. Prefer it unless the full state gives a concrete reason to choose otherwise.',
-                    'Survive telegraphed laser lanes and lethal rings before optimizing shots. Read their activation/expiry times relative to timeMs.',
-                    'Use predictedDamage, predictedCollision and edgeAtMs as estimates, not guarantees. New untelegraphed attacks and nonlinear enemy motion are not predicted.',
-                    'When alternatives exist, avoid predicted damage and body overlap. Move out of warning lanes before they activate.',
-                    'Shoot right in horizontal play or up in vertical play. Align with a target while keeping distance from its body. Boost is already included in each option; boosted options consume energy.',
-                    'Stay behind targets along the firing axis: below them when shooting up, left of them when shooting right. Moving toward the firing edge can put enemies behind you and make auto-fire miss. When there is no immediate hazard, prefer a rear firing position (vertical y=400–530; horizontal x=100–280). These are tactical defaults, not movement limits: leave them whenever dodging requires it.',
-                    'Do not oscillate needlessly: hold if the position remains viable, or continue a deliberate dodge until clear. Reassess when the attack phase changes.'
-                ]
-            }, Object.fromEntries(Object.entries(state.actionOptions).map(([key, value]) => [key, JSON.stringify(value)])))
+                guidance: jevActionGuidance()
+            }, Object.fromEntries(keys.map((key) => [key, formatActionLabel(fullOptions[key])])))
         }
     };
     // Preserve the exact JSON passed to the SDK, excluding credentials.
@@ -90,7 +85,7 @@ async function chooseMove(client, observation, recent) {
     fs.appendFileSync(path.join(OUT, 'observations.jsonl'), JSON.stringify(request) + '\n');
     const response = await client.systemOne(request, { timeout: 12000, retry: { maxRetries: 1 } });
     const answer = response.answers.action;
-    const selected = state.actionOptions[answer.choice];
+    const selected = fullOptions[answer.choice];
     if (!selected) throw new Error('JEV returned an action outside the supplied options');
     return { ...selected, source: 'jev', confidence: answer.confidence,
         model: response.model, usage: response.usage, stateTimeMs: state.timeMs,
@@ -119,7 +114,7 @@ async function main() {
         }
         return fetch(url, init);
     } });
-    const browser = await chromium.launch(defaultLaunchOptions(true));
+    const browser = await launchBrowser(chromium, true);
     const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
     await page.clock.install();
     const pageErrors = [];
@@ -134,12 +129,14 @@ async function main() {
     url.searchParams.set('timescale', '1');
     url.searchParams.set('playtestContinues', 'unlimited');
     url.searchParams.set('diff', 'normal');
-    console.log(`Jev Hotshot Level ${LEVEL}`, url.toString());
+    console.log(`Jev Level ${LEVEL}`, url.toString());
     await page.goto(url.toString(), { waitUntil: 'load', timeout: 30000 });
     await page.waitForFunction(() => window.__novawingDebug?.ready() &&
         window.__novawingDebug.getBotSnapshot().ready, null, { timeout: 45000 });
     // Model latency must not become unobserved flight.
-    await page.clock.pauseAt(new Date(Date.now() + 100));
+    // Wide margin: the fake clock tracks real time until paused, so under load
+    // a stall longer than 100ms makes a now+100 target the past and throws.
+    await page.clock.pauseAt(new Date(Date.now() + 5000));
     await synchronizeControlledLoop(page);
     await page.evaluate((targetLevel) => {
         window.__novawingDebug.setDifficultyMode('normal');
@@ -297,9 +294,11 @@ async function main() {
                 decision = await chooseMove(
                     client,
                     observation,
-                    actions.slice(-4).map(item => ({ action: item.stick + (item.boost ? '_boost' : ''),
-                        durationMs: item.actualDurationMs, livesChange: item.livesChange,
-                        endpointErrorPx: item.endpointErrorPx, predictedDamage: item.prediction.damage }))
+                    actions.slice(-4).map(item => ({
+                        stick: item.stick + (item.boost ? '_boost' : ''),
+                        endpointErrorPx: item.endpointErrorPx,
+                        livesChange: item.livesChange
+                    }))
                 );
                 jevDecisions += 1;
                 usage.input_tokens += decision.usage?.input_tokens || 0;
@@ -448,6 +447,10 @@ async function main() {
             fs.writeFileSync(demoFile,
                 JSON.stringify(header) + '\n' +
                 transitions.map((t) => JSON.stringify({ type: 'step', ...t })).join('\n') + '\n');
+        }
+        if (pageErrors.length) {
+            console.error(`page errors: ${pageErrors.length}`);
+            process.exitCode = 1;
         }
         console.log(JSON.stringify({
             beaten: report.beaten,

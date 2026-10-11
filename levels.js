@@ -291,6 +291,130 @@
         return Object.assign({}, DIFFICULTY_DEFAULTS, preset, copyDifficultyPartial(partial));
     }
 
+    function clamp01(x) {
+        if (!Number.isFinite(x)) return 0;
+        return Math.max(0, Math.min(1, x));
+    }
+
+    // Map a knob to 0 (calm) .. 1 (chaos). calmVal/hotVal are the observed
+    // authored extremes; values outside clamp.
+    function knobHeat(value, calmVal, hotVal) {
+        if (!Number.isFinite(value)) return 0.5;
+        if (hotVal === calmVal) return 0.5;
+        return clamp01((value - calmVal) / (hotVal - calmVal));
+    }
+
+    /**
+     * Resolve the exact bag game.js would use for a segment in a mode.
+     * Mirrors getActiveDifficulty minus the URL query overlay (scoring
+     * covers authored values; debug overlays unrank and are unscored).
+     */
+    function resolveSegmentBag(levelDef, segment, mode) {
+        const m = normalizeDifficultyMode(mode) || 'normal';
+        let bag = overlayDifficulty({}, levelDef.difficulty || {});
+        if (segment && segment.difficulty) bag = overlayDifficulty(bag, segment.difficulty);
+        if (m === 'easy' || m === 'hard') bag = overlayDifficulty(bag, getDifficultyPreset(m));
+        if (levelDef.difficultyModes && levelDef.difficultyModes[m]) {
+            bag = overlayDifficulty(bag, levelDef.difficultyModes[m]);
+        }
+        if (segment && segment.difficultyModes && segment.difficultyModes[m]) {
+            bag = overlayDifficulty(bag, segment.difficultyModes[m]);
+        }
+        return bag;
+    }
+
+    // Wave-pattern threat catalog. Values are relative (1.0 = standard
+    // gun pass) and feel-checkable: retune from playtests, not theory.
+    // Unknown keys default to 1.0 so new waves score neutrally until rated.
+    const WAVE_THREAT = {
+        asteroidWall: 0.7, minefield: 0.7,
+        diagonal: 0.8, verticalRegular: 0.8, skyDive: 0.8, floorRise: 0.8,
+        vFormation: 0.9, verticalV: 0.9, swarm: 0.9, chaser: 0.9,
+        pincer: 1.0, oppositeInterceptors: 1.0, riserColumns: 1.0,
+        sandwich: 1.0, mineCurtain: 1.0,
+        splitterPair: 1.2, crossfireStrafe: 1.2, pincerDive: 1.2,
+        splitterAmbush: 1.4, orbiterRing: 1.4, mixedGauntlet: 1.4
+    };
+
+    function scoreWaveKeys(keys) {
+        if (!Array.isArray(keys) || !keys.length) return 0.5;
+        let total = 0;
+        keys.forEach(k => {
+            total += Number.isFinite(WAVE_THREAT[k]) ? WAVE_THREAT[k] : 1.0;
+        });
+        return clamp01((total / keys.length - 0.7) / (1.5 - 0.7));
+    }
+
+    /**
+     * Score a resolved waves bag 0 (calm) .. 100 (chaos).
+     * density: how many foes shoot. tempo: how often waves and shots come.
+     * shots: how fast projectiles fly. comp: wave-pattern threat mix.
+     * Weights chosen so the shipped campaign reproduces designer intent
+     * (L1 opener gentle, L7 hottest); composition is deliberately light
+     * because threat values are feel estimates, not measurements.
+     */
+    function scoreWavesBag(bag, keys) {
+        const density = clamp01(((bag.typedFireChance || 0)
+            + (bag.enemyFireChance || 0) + (bag.interceptorChance || 0)) / 3 / 0.8);
+        const cadenceHot = knobHeat(bag.enemyCadenceScale, 1.65, 0.6);
+        const mid = ((bag.waveIntervalMinMs || 0) + (bag.waveIntervalMaxMs || 0)) / 2;
+        const paceHot = knobHeat(mid, 4600, 1050);
+        const tempo = (cadenceHot + paceHot) / 2;
+        const shots = knobHeat(bag.enemyShotSpeedScale, 0.68, 1.3);
+        const comp = scoreWaveKeys(keys);
+        return Math.round(100 * (0.5 * density + 0.25 * tempo + 0.15 * shots + 0.1 * comp));
+    }
+
+    function scoreBossSegment(levelDef, segment, mode, bag) {
+        const resolved = bag || resolveSegmentBag(levelDef, segment, mode);
+        const density = clamp01(((resolved.typedFireChance || 0)
+            + (resolved.enemyFireChance || 0) + (resolved.interceptorChance || 0)) / 3 / 0.8);
+        const tempo = knobHeat(resolved.bossTempoScale, 1.5, 0.65);
+        const shots = knobHeat(resolved.bossShotSpeedScale, 0.68, 1.3);
+        return Math.round(100 * (0.4 * density + 0.4 * tempo + 0.2 * shots));
+    }
+
+    function pressureRole(score) {
+        if (score < 40) return 'breather';
+        if (score < 60) return 'standard';
+        return 'chaos';
+    }
+
+    /**
+     * Score a level's pacing curve for a mode: per-segment scores plus
+     * duration-weighted mean and peak. Classic single-phase levels score
+     * as one waves segment over the whole duration.
+     */
+    function scoreLevelCurve(levelDef, mode) {
+        const raw = Array.isArray(levelDef.segments) && levelDef.segments.length
+            ? levelDef.segments.filter(
+                s => s.kind === 'waves' || s.kind === 'boss' || s.kind === 'transition')
+            : [{ id: 'waves', kind: 'waves', durationMs: levelDef.durationMs,
+                difficulty: null, wavePatternKeys: levelDef.wavePatternKeys },
+            { id: 'finalBoss', kind: 'boss', durationMs: 0, difficulty: null }];
+        const segments = raw.map(seg => {
+            // Transitions are non-combat cinematics: true breathers by role.
+            const score = seg.kind === 'boss'
+                ? scoreBossSegment(levelDef, seg, mode)
+                : seg.kind === 'transition'
+                    ? 5
+                    : scoreWavesBag(resolveSegmentBag(levelDef, seg, mode), seg.wavePatternKeys);
+            return { id: seg.id, kind: seg.kind, score: score,
+                role: pressureRole(score), durationMs: seg.durationMs || 0 };
+        });
+        let total = 0;
+        let weight = 0;
+        let peak = 0;
+        segments.forEach(s => {
+            const w = s.durationMs > 0 ? s.durationMs : 10000;
+            total += s.score * w;
+            weight += w;
+            if (s.score > peak) peak = s.score;
+        });
+        return { segments: segments,
+            mean: weight ? Math.round(total / weight) : 0, peak: peak };
+    }
+
     function getDifficultyPreset(name) {
         if (!name || typeof name !== 'string') return {};
         const raw = name.trim().toLowerCase();
@@ -930,9 +1054,10 @@
             normal: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.0,
                 enemyFireChance: 0.55, typedFireChance: 0.75, interceptorChance: 0.35,
                 bossTempoScale: 0.95, bossShotSpeedScale: 1.05 },
-            hard: { enemyCadenceScale: 0.6, enemyShotSpeedScale: 1.3,
-                enemyFireChance: 0.95, typedFireChance: 1, interceptorChance: 0.55,
-                bossTempoScale: 0.65, bossShotSpeedScale: 1.3 }
+            // Nightmare-grade but off the absolute ceiling (was 100/100).
+            hard: { enemyCadenceScale: 0.68, enemyShotSpeedScale: 1.3,
+                enemyFireChance: 0.85, typedFireChance: 1, interceptorChance: 0.55,
+                bossTempoScale: 0.75, bossShotSpeedScale: 1.3 }
         },
         bossEncounters: { final: { behavior: 'graveyardLeviathan', health: 300, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
@@ -941,8 +1066,14 @@
                 { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
             expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser', 'skyDive', 'floorRise'], 'ashShelter', false,
                 { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
-            expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
-                { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
+            Object.assign(
+                expansionWaves('ashShelter', 11000, ['diagonal'], 'reactorTrench', false,
+                    { waveIntervalMinMs: 4200, waveIntervalMaxMs: 4600 }),
+                // Even the pressure level exhales. Relief lives in segment
+                // modes because L7's level modes overwrite plain segment
+                // difficulty (modes resolve last).
+                { difficultyModes: { normal: { typedFireChance: 0.4,
+                    enemyFireChance: 0.35, enemyCadenceScale: 1.2 } } }),
             expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false,
                 { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
@@ -1304,6 +1435,11 @@
         TOTAL_LEVELS: TOTAL_LEVELS,
         defineLevel: defineLevel,
         resolveDifficulty: resolveDifficulty,
+        resolveSegmentBag: resolveSegmentBag,
+        scoreWavesBag: scoreWavesBag,
+        scoreBossSegment: scoreBossSegment,
+        scoreLevelCurve: scoreLevelCurve,
+        pressureRole: pressureRole,
         overlayDifficulty: overlayDifficulty,
         copyDifficultyPartial: copyDifficultyPartial,
         readDifficultyQueryOverlay: readDifficultyQueryOverlay,
@@ -1347,6 +1483,11 @@
     root.getLevelPathCenter = getLevelPathCenter;
     root.getLevelDifficulty = getLevelDifficulty;
     root.resolveDifficulty = resolveDifficulty;
+    root.resolveSegmentBag = resolveSegmentBag;
+    root.scoreWavesBag = scoreWavesBag;
+    root.scoreBossSegment = scoreBossSegment;
+    root.scoreLevelCurve = scoreLevelCurve;
+    root.pressureRole = pressureRole;
     root.overlayDifficulty = overlayDifficulty;
     root.copyDifficultyPartial = copyDifficultyPartial;
     root.readDifficultyQueryOverlay = readDifficultyQueryOverlay;

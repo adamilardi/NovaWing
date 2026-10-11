@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 import { AXES, buildJevCombatState } from './jev-combat-state.mjs';
 import { installInPagePilot } from './play-bot.mjs';
 import { bootControlledGame } from './rl/controlled-play.mjs';
@@ -16,7 +16,7 @@ const duration = Number(process.env.TERRAIN_PLAY_MS || 200000);
 const targets = (process.env.TERRAIN_PLAY_LEVELS || '4,5,6,7').split(',').map(Number);
 fs.mkdirSync(out, { recursive: true });
 const runtimeHashes = await verifyServedRuntime(base);
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const results = [];
 try {
     for (const level of targets) {

@@ -23,8 +23,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
-import { defaultLaunchOptions } from './chrome.mjs';
-import { isRunWin, advanceCampaign } from './run-outcome.mjs';
+import { launchBrowser } from './chrome.mjs';
+import { isRunWin, isDeathlessWin, advanceCampaign } from './run-outcome.mjs';
 import { settleLevelStart } from '../jev-runtime.mjs';
 import {
     OBS_VERSION,
@@ -134,13 +134,17 @@ async function recordEpisode(browser, episodeIndex, policy) {
     const url = new URL(BASE);
     url.searchParams.delete('bot');
     url.searchParams.set('demo', String(episodeIndex));
+    // The Playwright clock is stepped in sim milliseconds, so the query stays at
+    // 1×. Threat time and dodge holds use that same sim clock, which is what the
+    // 8× verify bot decides against. Speedrun and unlimited continues are opt-in,
+    // matching the verify bot session.
     url.searchParams.set('timescale', '1');
     url.searchParams.set('diff', 'normal');
-    url.searchParams.set('playtestContinues', 'unlimited');
     url.searchParams.set('expert', EXPERT);
     if (process.env.LEVEL) url.searchParams.set('level', String(process.env.LEVEL));
-    // Heuristic speedrun bias (progress boost + intro-boss DPS). Default on for demos.
-    const speedrun = process.env.SPEEDRUN !== '0';
+    const unlimitedContinues = process.env.PLAYTEST_CONTINUES === 'unlimited';
+    if (unlimitedContinues) url.searchParams.set('playtestContinues', 'unlimited');
+    const speedrun = process.env.SPEEDRUN === '1' || process.env.SPEEDRUN === 'true';
     if (speedrun) url.searchParams.set('speedrun', '1');
 
     const context = await browser.newContext({
@@ -203,7 +207,11 @@ async function recordEpisode(browser, episodeIndex, policy) {
                 pendingObs = null;
                 continue;
             }
-            if (isEpisodeWin(before)) { won = true; terminal = true; break; }
+            if (isEpisodeWin(before)) {
+                won = isDeathlessWin(before, CAMPAIGN ? null : START_LEVEL);
+                terminal = true;
+                break;
+            }
             if (await advanceCampaign(page, before, CAMPAIGN ? null : START_LEVEL)) {
                 console.log(`episode ${episodeIndex}: advanced to L${before.level + 1}`);
                 pendingObs = null;
@@ -250,6 +258,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
             peakScore = Math.max(peakScore, after.score || 0);
             maxLevel = Math.max(maxLevel, after.level || 1);
             const isWin = isEpisodeWin(after);
+            const deathless = isDeathlessWin(after, CAMPAIGN ? null : START_LEVEL);
             const isLose = !isWin && after.levelEnded && !after.levelTransitioning;
             let reward = stepReward(before, after);
             let next = after;
@@ -275,9 +284,10 @@ async function recordEpisode(browser, episodeIndex, policy) {
                     progress: progNorm(after), levelProgressMs: after.levelProgressMs,
                     levelDurationMs: after.levelDurationMs, tacticalAssist: false, expert: EXPERT } });
             if (isWin || isLose) {
-                won = Boolean(isWin);
+                won = deathless;
                 terminal = true;
-                episodeReturn = applyTerminalReward(steps, episodeReturn, won ? 'win' : 'death');
+                const kind = deathless ? 'win' : (isLose ? 'death' : null);
+                if (kind) episodeReturn = applyTerminalReward(steps, episodeReturn, kind);
                 break;
             }
         }
@@ -291,7 +301,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
     return {
         episode: episodeIndex,
         terminal, simulatedMs,
-        continuesUsed: finalSnap?.continuesUsed || 0, unlimitedContinues: true,
+        continuesUsed: finalSnap?.continuesUsed || 0, unlimitedContinues,
         difficultyMode: finalSnap?.difficultyMode,
         won,
         maxLevel,
@@ -336,7 +346,7 @@ async function main() {
         console.log(`policy=${POLICY_PATH} hidden=${JSON.stringify(policy.hidden)}`);
     }
 
-    const browser = await chromium.launch(defaultLaunchOptions(HEADLESS));
+    const browser = await launchBrowser(chromium, HEADLESS);
     const allFiles = [];
     let totalSteps = 0;
     let wins = 0;
@@ -366,7 +376,7 @@ async function main() {
             behaviorPolicy: policyId ? `policy-${policyId}.json` : null,
             terminal: ep.terminal, simulatedMs: ep.simulatedMs, continuesUsed: ep.continuesUsed,
             difficultyMode: ep.difficultyMode, ordinaryCombatRules: true,
-            playtestBot: false, timeScale: 1, unlimitedContinues: true,
+            playtestBot: false, timeScale: 1, unlimitedContinues: ep.unlimitedContinues,
             obsVersion: OBS_VERSION,
             obsSize: OBS_SIZE,
             actionSize: ACTION_SIZE,

@@ -1,7 +1,7 @@
 /** Real-browser regressions; run against a freshly built local server. */
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { defaultLaunchOptions } from './chrome.mjs';
+import { launchBrowser } from './chrome.mjs';
 import { bootControlledGame, jumpControlledSegment, endpointError, suppressRendering } from './controlled-play.mjs';
 import { verifyServedRuntime } from '../jev-runtime.mjs';
 import { settleLevelStart } from '../jev-runtime.mjs';
@@ -9,7 +9,7 @@ import { isRunWin, advanceCampaign } from './run-outcome.mjs';
 
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 await verifyServedRuntime(base);
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 try {
     let page = await browser.newPage();
     const errors = [];

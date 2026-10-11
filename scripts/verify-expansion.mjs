@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { defaultLaunchOptions } from './rl/chrome.mjs';
+import { launchBrowser } from './rl/chrome.mjs';
 
 const base = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const out = process.env.EXPANSION_OUT || '/tmp/novawing-expansion-check';
@@ -14,7 +14,7 @@ const viewports = process.env.EXPANSION_VIEWPORT === 'desktop' ? [false]
 const runtimeHash = createHash('sha256').update(['game.js', 'levels.js', 'src/assets.js']
     .map(file => fs.readFileSync(file)).join('\n')).digest('hex');
 fs.mkdirSync(out, { recursive: true });
-const browser = await chromium.launch(defaultLaunchOptions(true));
+const browser = await launchBrowser(chromium, true);
 const reportPath = path.join(out, 'report.json');
 // Always re-execute checks; a cached green report hid expansion regressions.
 const results = [];
