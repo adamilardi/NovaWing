@@ -52,4 +52,4 @@ node scripts/verify-novawing.mjs --case l3-bot
 
 The heuristic bot starts at L3 intro. Death is allowed. If it never reaches
 vertical combat, the harness jumps to `topdown`. `setSegment` does not prove
-the flip. Recipe: `.grok/skills/verify-novawing/features/level-3-singularity.md`.
+the flip. Recipe: `skills/verify-novawing/features/level-3-singularity.md`.

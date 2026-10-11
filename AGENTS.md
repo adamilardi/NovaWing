@@ -28,3 +28,5 @@ Do not deploy the landing merely because a game changed; deploy the affected Pag
 This file is for Codex, Grok, and other coding assistants. Do not add navigation links or setup UI to either game unless explicitly requested; the relationship between the games belongs in these instructions and in the hub/router deployment.
 
 Run the relevant project checks after changes. Preserve unrelated working-tree changes, especially in the Space Chicken sibling repository.
+
+Shared skills live in `skills/`. For a critique of graphics, gameplay, or difficulty, read `skills/expert-playtester/SKILL.md` and follow it. Boot-and-bot proof stays in `skills/verify-novawing/SKILL.md`.

@@ -145,6 +145,6 @@ npm run build
 npm run verify
 ```
 
-Mapped cases and bot contracts: `.grok/skills/verify-novawing/`.
+Mapped cases and bot contracts: `skills/verify-novawing/`.
 Author L3 pacing in `levels.js` (topdown `durationMs`, `wavePatternKeys`,
 `difficulty`, `blackHole.previewAtMs`). See [content authoring](CONTENT_AUTHORING.md).
