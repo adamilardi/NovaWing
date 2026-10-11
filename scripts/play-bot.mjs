@@ -14,7 +14,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { appendPlaytestTimeScale } from './rl/chrome.mjs';
+import { appendPlaytestTimeScale, launchBrowser, routeVendorPhaser } from './rl/chrome.mjs';
 import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,11 +25,10 @@ const DURATION_MS = Number(process.env.DURATION_MS || 360000);
 const LOG_MS = Number(process.env.LOG_MS || 2000);
 const SLOW_MO = Number(process.env.SLOW_MO || 0);
 const TRIALS = Math.max(1, Number(process.env.TRIALS || 1));
-const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
-    '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
 const SCREENSHOT_DIR = process.env.BOT_SCREENSHOT_DIR ||
     path.join(__dirname, '..', '.bot-runs');
-const RECORD_VIDEO = process.env.RECORD_VIDEO !== '0';
+// Video capture requires a locally launched Playwright browser; keep fast GPU runs the default.
+const RECORD_VIDEO = process.env.RECORD_VIDEO === '1';
 
 /**
  * In-page pilot. Serialized into the browser; no Node closures.
@@ -1962,6 +1961,7 @@ async function runOnce(browser, trialIndex) {
         recordVideo: RECORD_VIDEO ? { dir: videoDir, size: { width: 960, height: 720 } } : undefined
     });
     const page = await context.newPage();
+    await routeVendorPhaser(page);
 
     page.on('dialog', async dialog => {
         if (dialog.type() === 'prompt') await dialog.accept('BotPilot');
@@ -2141,21 +2141,7 @@ async function main() {
     console.log(`headless=${HEADLESS} trials=${TRIALS} duration=${DURATION_MS}ms video=${RECORD_VIDEO}`);
     if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
 
-    const launchOptions = {
-        headless: HEADLESS,
-        slowMo: SLOW_MO,
-        args: [
-            '--use-gl=swiftshader',
-            '--ignore-gpu-blocklist',
-            '--no-sandbox',
-            '--autoplay-policy=no-user-gesture-required'
-        ]
-    };
-    if (fs.existsSync(CACHED_CHROME)) {
-        launchOptions.executablePath = CACHED_CHROME;
-    }
-
-    const browser = await chromium.launch(launchOptions);
+    const browser = await launchBrowser(chromium, HEADLESS, { slowMo: SLOW_MO, recordVideo: RECORD_VIDEO });
     const results = [];
 
     try {

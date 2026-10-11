@@ -9,9 +9,10 @@ const Rules = require('../shared/run-rules.cjs');
 test('expansion has four complete reachable encounter arcs and durable selected art', () => {
     const levels = Levels.getEffectiveLevelDefs();
     Flow.validate(levels, { assets: new Set(Object.keys(Assets.sprites)), tracks: new Set(Object.keys(Assets.tracks)) });
-    assert.deepEqual(levels.slice(3).map(l => l.name), ['ORBITAL FOUNDRY', 'AURORA PASSAGE', 'VOID CATHEDRAL', 'ASHEN GRAVEYARD', 'PRISM BATTERY', 'ABYSSAL RELAY', 'STORM SPIRE', 'GLASS DUNES']);
-    assert.equal(new Set(levels.slice(3).map(l => l.art.background)).size, 8);
-    for (const level of levels.slice(3)) {
+    const expansion = levels.filter(level => level.id >= 4 && level.id <= 11);
+    assert.deepEqual(expansion.map(l => l.name), ['ORBITAL FOUNDRY', 'AURORA PASSAGE', 'VOID CATHEDRAL', 'ASHEN GRAVEYARD', 'PRISM BATTERY', 'ABYSSAL RELAY', 'STORM SPIRE', 'GLASS DUNES']);
+    assert.equal(new Set(expansion.map(l => l.art.background)).size, 8);
+    for (const level of expansion) {
         const texture = Assets.sprites[level.art.background];
         assert.ok(fs.existsSync(texture.path));
         assert.ok(Assets.files().includes(texture.path), 'production build must include the background');
@@ -40,7 +41,7 @@ test('expansion has four complete reachable encounter arcs and durable selected 
 });
 
 test('authored geometry displaces flight while leaving reachable timed openings and pickups', () => {
-    for (const level of Levels.getEffectiveLevelDefs().slice(3)) {
+    for (const level of Levels.getEffectiveLevelDefs().filter(level => level.id >= 4 && level.id <= 11)) {
         for (const [phase, segment] of level.segments.filter(s => s.kind === 'waves').entries()) {
             const span = segment.scrollMode === 'vertical' ? 800 : 600;
             const events = segment.terrainEvents;
@@ -100,7 +101,7 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
         const end = source.indexOf('\nfunction ', start + 1);
         return source.slice(start, end < 0 ? undefined : end);
     };
-    for (const level of Levels.getEffectiveLevelDefs().slice(3)) for (const segment of level.segments.filter(s => s.kind === 'waves')) {
+    for (const level of Levels.getEffectiveLevelDefs().filter(level => level.id >= 4 && level.id <= 11)) for (const segment of level.segments.filter(s => s.kind === 'waves')) {
         const spawned = [];
         const walls = { get(x, y, key) {
             const wall = { active: true, x, y, frame: { width: 440, height: 340 },

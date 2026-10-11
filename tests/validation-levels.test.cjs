@@ -39,9 +39,9 @@ test('every validation def is well-formed and structurally valid', () => {
 });
 
 test('validation defs stay out of the shipped campaign', () => {
-    assert.equal(Levels.getTotalLevels(), 11);
+    assert.equal(Levels.getTotalLevels(), 16);
     for (const def of Levels.getEffectiveLevelDefs()) {
-        assert.ok(def.id <= 11, 'shipped catalog must not contain validation ids');
+        assert.ok(def.id <= 16, 'shipped catalog must not contain validation ids');
     }
     // Positional lookup is unchanged for the campaign.
     assert.equal(Levels.getLevelDef(1).name, 'OPEN SPACE');
@@ -63,7 +63,7 @@ test('defineValidationLevel enforces the 90+ contract and id-first lookup', () =
     assert.equal(Levels.getLevelDef(id), def);
     assert.equal(Levels.getLevelDef(1).name, 'OPEN SPACE');
     // ... and the campaign still does not see the experiment.
-    assert.equal(Levels.getTotalLevels(), 11);
+    assert.equal(Levels.getTotalLevels(), 16);
 
     assert.throws(() => Validation.defineValidationLevel({ id: 11, name: 'TOO LOW' }), /id must be an integer >= 90/);
     assert.throws(() => Validation.defineValidationLevel({ name: 'NO ID' }), /id must be an integer >= 90/);

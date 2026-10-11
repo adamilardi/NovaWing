@@ -69,6 +69,14 @@ const BAKED_SPRITE_ASSETS = {
         body: { w: 0.60, h: 0.78, ox: 0.20, oy: 0.11 } },
     duneHerald: { path: 'assets/bosses/dune-herald.png', sourceKey: 'duneHeraldSource', hasAlpha: true,
         body: { w: 0.78, h: 0.78, ox: 0.11, oy: 0.12 } },
+    gardenEngine: { path: 'assets/bosses/garden-engine.png', sourceKey: 'gardenEngineSource', hasAlpha: true,
+        body: { w: 0.94, h: 0.84, ox: 0.03, oy: 0.11 } },
+    obsidianHierophant: { path: 'assets/bosses/obsidian-hierophant.png', sourceKey: 'obsidianHierophantSource', hasAlpha: true,
+        body: { w: 0.49, h: 0.63, ox: 0.25, oy: 0.19 } },
+    cinderfallTyrant: { path: 'assets/bosses/cinderfall-tyrant.png', sourceKey: 'cinderfallTyrantSource', hasAlpha: true,
+        body: { w: 0.85, h: 0.60, ox: 0.05, oy: 0.22 } },
+    heliosGatekeeper: { path: 'assets/bosses/helios-gatekeeper.png', sourceKey: 'heliosGatekeeperSource', hasAlpha: true,
+        body: { w: 0.62, h: 0.55, ox: 0.19, oy: 0.22 } },
     ashenSurface: { path: 'assets/levels/terrain/ashen-surface.png', sourceKey: 'ashenSurfaceSource', hasAlpha: true },
     ashenGraveyard: { path: 'assets/levels/ashen-graveyard.png', sourceKey: 'ashenGraveyardSource', hasAlpha: false },
     foundryWall: { path: 'assets/levels/terrain/foundry-wall.png', sourceKey: 'foundryWallSource', hasAlpha: true },
@@ -87,6 +95,18 @@ const BAKED_SPRITE_ASSETS = {
     stormScenery: { path: 'assets/levels/storm-scenery.png', sourceKey: 'stormScenerySource', hasAlpha: true },
     glassDunes: { path: 'assets/levels/glass-dunes.png', sourceKey: 'glassDunesSource', hasAlpha: false },
     duneScenery: { path: 'assets/levels/dune-scenery.png', sourceKey: 'duneScenerySource', hasAlpha: true },
+    verdantHulk: { path: 'assets/levels/verdant-hulk.png', sourceKey: 'verdantHulkSource', hasAlpha: false },
+    hulkScenery: { path: 'assets/levels/hulk-scenery.png', sourceKey: 'hulkScenerySource', hasAlpha: true },
+    obsidianGate: { path: 'assets/levels/obsidian-gate.png', sourceKey: 'obsidianGateSource', hasAlpha: false },
+    obsidianScenery: { path: 'assets/levels/obsidian-scenery.png', sourceKey: 'obsidianScenerySource', hasAlpha: true },
+    cinderfallKeep: { path: 'assets/levels/cinderfall-keep.png', sourceKey: 'cinderfallKeepSource', hasAlpha: false },
+    cinderWall: { path: 'assets/levels/terrain/cinder-wall.png', sourceKey: 'cinderWallSource', hasAlpha: true },
+    heliosGate: { path: 'assets/levels/helios-gate.png', sourceKey: 'heliosGateSource', hasAlpha: false },
+    wallJungle: { path: 'assets/wall-jungle.png', sourceKey: 'wallJungleSource', hasAlpha: true },
+    bossTropical: { path: 'assets/boss-tropical.png', sourceKey: 'bossTropicalSource', hasAlpha: true },
+    plantSeed: { path: 'assets/plant-seed.png', sourceKey: 'plantSeedSource', hasAlpha: true },
+    plantTree: { path: 'assets/plant-tree.png', sourceKey: 'plantTreeSource', hasAlpha: true,
+        displayWidth: 86, body: { w: 0.42, h: 0.78, ox: 0.29, oy: 0.18 } },
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
     bossVertical: { path: 'assets/boss-vertical.png', sourceKey: 'bossVerticalSource' },
@@ -173,6 +193,38 @@ const SPRITES = {
         upright: true,
         displayWidth: 70,
         body: { w: 0.60, h: 0.55, ox: 0.20, oy: 0.22 }
+    },
+    enemyEmber: {
+        sourceKey: 'enemyEmberSource',
+        path: 'assets/enemy-ember.png',
+        hasAlpha: true,
+        displayWidth: 96,
+        body: { w: 0.62, h: 0.42, ox: 0.10, oy: 0.29 }
+    },
+    flareMirror: {
+        sourceKey: 'flareMirrorSource',
+        path: 'assets/enemy-flare-mirror.png',
+        hasAlpha: true,
+        upright: true,
+        displayWidth: 64,
+        body: { w: 0.55, h: 0.55, ox: 0.22, oy: 0.22 }
+    },
+    enemyGateLantern: {
+        sourceKey: 'enemyGateLanternSource',
+        path: 'assets/enemy-gate-lantern.png',
+        hasAlpha: true,
+        upright: true,
+        displayWidth: 60,
+        body: { w: 0.60, h: 0.62, ox: 0.20, oy: 0.04 }
+    },
+    enemySpore: {
+        sourceKey: 'enemySporeSource',
+        path: 'assets/enemy-spore.png',
+        hasAlpha: true,
+        atlas: true,
+        crop: { x: 373, y: 2, width: 1643, height: 1110 },
+        displayWidth: 112,
+        body: { w: 0.49, h: 0.50, ox: 0.16, oy: 0.30 }
     },
     splitter: {
         sourceKey: 'splitterSource',
@@ -318,6 +370,53 @@ Object.entries(DUNE_CELLS).forEach(([key, [x, y, width, height]]) => {
     for (let variant = 1; variant <= 3; variant++) {
         const pick = DUNE_SOLIDS[(solidIndex + variant - 1) % DUNE_SOLIDS.length];
         const [px, py, pw, ph] = DUNE_CELLS[pick];
+        SPRITES[key + '-' + variant] = Object.assign({}, asset, {
+            crop: { x: px, y: py, width: pw, height: ph }
+        });
+    }
+});
+// Obsidian Gate terrain. The rune slab is a solid cap; the gear ring is decor only.
+const GATE_CELL_DEFS = {
+    obsidianWall: { path: 'assets/levels/terrain/obsidian-wall.png',
+        sourceKey: 'obsidianWallSource', hasAlpha: true },
+    gateSlab: { path: 'assets/levels/terrain/junk-obsidian.png',
+        sourceKey: 'obsidianJunkSource', hasAlpha: true, atlas: true,
+        crop: { x: 485, y: 346, width: 523, height: 258 } },
+    gatePylon: { path: 'assets/levels/terrain/junk-obsidian.png',
+        sourceKey: 'obsidianJunkSource', hasAlpha: true, atlas: true,
+        crop: { x: 75, y: 54, width: 343, height: 740 } }
+};
+const GATE_DECOR_DEFS = {
+    gateRing: { path: 'assets/levels/terrain/junk-obsidian.png',
+        sourceKey: 'obsidianJunkSource', hasAlpha: true, atlas: true,
+        crop: { x: 1062, y: 216, width: 504, height: 504 } }
+};
+Object.entries(GATE_CELL_DEFS).forEach(([key, asset]) => { SPRITES[key] = asset; });
+Object.entries(GATE_DECOR_DEFS).forEach(([key, asset]) => { SPRITES[key] = asset; });
+const GATE_SOLID_KEYS = Object.keys(GATE_CELL_DEFS);
+GATE_SOLID_KEYS.forEach((key, solidIndex) => {
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = GATE_CELL_DEFS[GATE_SOLID_KEYS[(solidIndex + variant - 1) % GATE_SOLID_KEYS.length]];
+        SPRITES[key + '-' + variant] = Object.assign({}, pick);
+    }
+});
+// Verdant Hulk terrain. Rib, pod, and dome are solids; the grate is decor only.
+const HULK_CELLS = {
+    hulkWall: [8, 8, 1529, 750], hulkRib: [8, 766, 220, 260],
+    hulkPod: [236, 766, 381, 495], hulkDome: [625, 766, 560, 266],
+    hulkGrate: [1193, 766, 403, 529]
+};
+const HULK_SOLIDS = ['hulkWall', 'hulkRib', 'hulkPod', 'hulkDome'];
+Object.entries(HULK_CELLS).forEach(([key, [x, y, width, height]]) => {
+    const asset = { path: 'assets/levels/terrain/junk-hulk.png',
+        sourceKey: 'hulkJunkSource', hasAlpha: true, atlas: true,
+        crop: { x, y, width, height } };
+    SPRITES[key] = asset;
+    const solidIndex = HULK_SOLIDS.indexOf(key);
+    if (solidIndex < 0) return;
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = HULK_SOLIDS[(solidIndex + variant - 1) % HULK_SOLIDS.length];
+        const [px, py, pw, ph] = HULK_CELLS[pick];
         SPRITES[key + '-' + variant] = Object.assign({}, asset, {
             crop: { x: px, y: py, width: pw, height: ph }
         });

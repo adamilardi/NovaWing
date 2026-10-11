@@ -17,10 +17,18 @@ const catalog = Object.freeze({
     tempestCondenser: { name: 'TEMPEST CONDENSER', color: 0xffc233, width: 245,
         phases: ['FIRST CIRCUIT', 'CROSS CHARGE', 'FULL TEMPEST'], windupMs: 1100, activeMs: 550, recoveryMs: 2200 },
     duneHerald: { name: 'DUNE HERALD', color: 0xffb347, width: 260,
-        phases: ['SWEEP LINES', 'COMBINED ARMS', 'GLASS STORM'], windupMs: 1100, activeMs: 550, recoveryMs: 2200 }
+        phases: ['SWEEP LINES', 'COMBINED ARMS', 'GLASS STORM'], windupMs: 1100, activeMs: 550, recoveryMs: 2200 },
+    gardenEngine: { name: 'GARDEN ENGINE', color: 0x7dff6a, width: 350,
+        phases: ['CULTIVATION', 'OVERGROWTH', 'BLOOM'], windupMs: 1100, activeMs: 600, recoveryMs: 2200 },
+    obsidianHierophant: { name: 'OBSIDIAN HIEROPHANT', color: 0xffd166, width: 260,
+        phases: ['FIRST GATE', 'TWIN RITE', 'BLACK LITURGY'], windupMs: 1100, activeMs: 550, recoveryMs: 2400 },
+    cinderfallTyrant: { name: 'CINDERFALL TYRANT', color: 0xff5a22, width: 340,
+        phases: ['VENT BREACH', 'TWIN ERUPTION', 'CALDERA WRATH'], windupMs: 1150, activeMs: 650, recoveryMs: 2300 },
+    heliosGatekeeper: { name: 'HELIOS GATEKEEPER', color: 0xffc14d, width: 245,
+        phases: ['FIRST LANCE', 'TWIN SWEEPS', 'GATE BARRAGE'], windupMs: 1100, activeMs: 600, recoveryMs: 2200 }
 });
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
-function plan(id, cycle, phase, focus = 300) {
+function plan(id, cycle, phase, focus = 300, extra = null) {
     if (!catalog[id]) throw new Error('Unknown boss behavior: ' + id);
     phase = clamp(phase, 1, 3);
     if (id === 'foundryWarden') {
@@ -90,6 +98,106 @@ function plan(id, cycle, phase, focus = 300) {
         }
         return plan;
     }
+    if (id === 'heliosGatekeeper') {
+        const focusX = clamp(focus, 120, 680);
+        if (phase === 1) {
+            const lane = cycle % 2 === 0 ? 150 : 650;
+            return { kind: 'flareLance', lanes: [lane],
+                sweepVx: [lane < 400 ? 150 : -150], thickness: 26 };
+        }
+        if (phase === 2) {
+            return { kind: 'flareLance', lanes: [150, 650],
+                sweepVx: [150, -150], thickness: 26 };
+        }
+        return { kind: 'flareLance', lanes: [150, focusX, 650],
+            sweepVx: [170, focusX < 400 ? 120 : -120, -170], thickness: 30 };
+    }
+    if (id === 'cinderfallTyrant') {
+        const focusAlt = typeof extra === 'number' ? extra : 400;
+        const px = clamp(focusAlt, 100, 700);
+        const lanes = phase === 1
+            ? (px < 400 ? [px, px + 170] : [px - 170, px])
+            : (px < 300 ? [px, px + 170, px + 340]
+                : px > 500 ? [px - 340, px - 170, px]
+                : [px - 170, px, px + 170]);
+        const attack = { kind: 'eruptionColumns', lanes, thickness: phase === 3 ? 34 : 28 };
+        if (phase >= 2) {
+            attack.sparks = phase;
+            attack.sparkSpeed = 250 + phase * 20;
+        }
+        return attack;
+    }
+    if (id === 'obsidianHierophant') {
+        const slots = [170, 310, 490, 630];
+        const start = cycle % 2;
+        const lanes = phase === 1 ? [slots[start], slots[start + 2]]
+            : phase === 2 ? slots.filter((_, index) => index !== cycle % slots.length)
+            : [slots[(cycle + 1) % 2], slots[((cycle + 1) % 2) + 1], slots[((cycle + 1) % 2) + 2]];
+        const attack = { kind: 'gateDischarge', lanes, thickness: 24 };
+        const count = phase === 1 ? 3 : 5;
+        const aim = clamp(90 + (focus - 400) * 0.08, 65, 115);
+        const spread = 12;
+        attack.angles = Array.from({ length: count }, (_, i) => aim - spread * (count - 1) / 2 + spread * i);
+        attack.speed = 220 + phase * 15;
+        attack.bursts = phase >= 3 ? 2 : 1;
+        return attack;
+    }
+    if (id === 'gardenEngine') {
+        const sections = extra && typeof extra === 'object' ? extra : null;
+        const order = ['mortar', 'lasher', 'battery'];
+        const alive = sections
+            ? order.filter(name => !sections[name] || sections[name].destroyed !== true)
+            : order.slice();
+        const solo = phase >= 2 && alive.length === 1;
+        let arms;
+        if (alive.length === 0) arms = [];
+        else if (phase >= 2 && alive.length >= 2) {
+            const pairs = [];
+            for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) {
+                if (alive.length === 2 || alive[i] === 'lasher' || alive[j] === 'lasher') {
+                    pairs.push([alive[i], alive[j]]);
+                }
+            }
+            arms = pairs.length ? pairs[cycle % pairs.length] : [alive[cycle % alive.length]];
+        } else arms = [alive[cycle % alive.length]];
+        const focusY = clamp(focus, 120, 480);
+        let attack;
+        if (arms[0] === 'lasher') attack = { kind: 'custodianSweep', sections: arms.slice() };
+        else if (arms[0] === 'battery') attack = { kind: 'salvageBurst', sections: arms.slice() };
+        else attack = { kind: 'sporeBloom', sections: arms.slice() };
+        if (arms.includes('mortar')) {
+            const count = phase >= 3 ? 3 : 2;
+            const slots = [200, 340, 480];
+            attack.blooms = [];
+            for (let i = 0; i < count; i++) {
+                attack.blooms.push({
+                    x: slots[(cycle + i) % slots.length],
+                    y: Math.round(clamp(focusY + (i % 2 ? 95 : -95), 100, 500)),
+                    r: 46,
+                    fuseMs: 950 + (solo ? i * 550 : 0)
+                });
+            }
+            if (solo) attack.blooms.push({
+                x: slots[(cycle + 2) % slots.length],
+                y: Math.round(clamp(focusY + 150, 100, 500)),
+                r: 46,
+                fuseMs: 1500
+            });
+        }
+        if (arms.includes('lasher')) {
+            attack.lanes = (phase === 1 && !solo) ? [Math.round(focusY)]
+                : [Math.round(clamp(focusY - 130, 90, 510)), Math.round(clamp(focusY + 130, 90, 510))];
+            attack.thickness = phase >= 3 ? 26 : 24;
+        }
+        if (arms.includes('battery')) {
+            const aim = clamp(180 + (focusY - 300) * 0.06, 162, 198);
+            attack.angles = [aim - 9, aim, aim + 9];
+            attack.speed = 245 + phase * 15;
+            attack.bursts = (phase >= 3 ? 4 : 3) + (solo ? 2 : 0);
+            attack.batteryOffset = 32;
+        }
+        return attack;
+    }
     const upper = cycle % 2 === 0;
     return { kind: 'salvageBurst', angles: phase === 1 ? [170, 190]
         : upper ? [180, 192, 204] : [156, 168, 180],
@@ -99,10 +207,18 @@ function plan(id, cycle, phase, focus = 300) {
 }
 function create(id, time = 0) {
     if (!catalog[id]) throw new Error('Unknown boss behavior: ' + id);
-    return { id, mode: 'recovery', phase: 1, cycle: 0, nextAt: time + 1600,
+    const state = { id, mode: 'recovery', phase: 1, cycle: 0, nextAt: time + 1600,
         windupUntil: null, activeUntil: null, plan: null };
+    if (id === 'gardenEngine') {
+        state.sections = {
+            mortar: { hp: 40, max: 40, destroyed: false },
+            lasher: { hp: 40, max: 40, destroyed: false },
+            battery: { hp: 40, max: 40, destroyed: false }
+        };
+    }
+    return state;
 }
-function tick(state, time, phase, tempo = 1, focus = 300) {
+function tick(state, time, phase, tempo = 1, focus = 300, focusAlt = 400) {
     const spec = catalog[state.id];
     state.phase = clamp(phase, 1, 3);
     // Tempo changes cadence, not reaction time. Warnings never shrink below their
@@ -110,7 +226,8 @@ function tick(state, time, phase, tempo = 1, focus = 300) {
     const scale = Math.max(0.65, Number.isFinite(tempo) ? tempo : 1);
     if (state.mode === 'recovery' && time >= state.nextAt) {
         state.mode = 'windup';
-        state.plan = plan(state.id, state.cycle, state.phase, focus);
+        const extra = state.id === 'gardenEngine' ? (state.sections || null) : focusAlt;
+        state.plan = plan(state.id, state.cycle, state.phase, focus, extra);
         state.windupUntil = time + spec.windupMs;
         state.activeUntil = state.windupUntil + spec.activeMs;
         return { kind: 'windup', plan: state.plan, activatesAt: state.windupUntil, endsAt: state.activeUntil };
@@ -132,6 +249,7 @@ function vulnerable(state) {
     if (state.id === 'foundryWarden') return state.mode === 'recovery';
     // Exposed cores vent during windup/attack; shutters close in recovery.
     if (state.id === 'trenchCustodian') return state.mode !== 'recovery';
+    if (state.id === 'obsidianHierophant') return state.mode !== 'recovery';
     // Shield-gap gating is positional and lives in hitBoss, not here.
     if (state.id === 'tempestCondenser') return true;
     return true;
@@ -199,6 +317,24 @@ function parts(id) {
         { name: 'emitters', rect: [0.25, 0.60, 0.50, 0.40] },
         { name: 'podR', rect: [0.75, 0.60, 0.25, 0.40] }
     ];
+    if (id === 'gardenEngine') return [
+        { name: 'mortar', rect: [0, 0, 0.32, 0.35] },
+        { name: 'lasher', rect: [0, 0.35, 0.32, 0.30] },
+        { name: 'battery', rect: [0, 0.65, 0.32, 0.35] },
+        { name: 'hull', rect: [0.32, 0, 0.68, 1] }
+    ];
+    if (id === 'obsidianHierophant') return [
+        { name: 'shardN', rect: [0, 0, 1, 0.178] },
+        { name: 'shardW', rect: [0, 0.178, 0.2125, 0.648] },
+        { name: 'core', rect: [0.2125, 0.178, 0.575, 0.648] },
+        { name: 'shardE', rect: [0.7875, 0.178, 0.2125, 0.648] },
+        { name: 'shardS', rect: [0, 0.826, 1, 0.174] }
+    ];
+    if (id === 'cinderfallTyrant') return [
+        { name: 'crown', rect: [0, 0, 1, 0.25] },
+        { name: 'maw', rect: [0, 0.25, 1, 0.375] },
+        { name: 'vents', rect: [0, 0.625, 1, 0.375] }
+    ];
     return [
         { name: 'battery', rect: [0, 0, 1, 0.38] },
         { name: 'hull', rect: [0, 0.38, 1, 0.27] },
@@ -264,6 +400,34 @@ function pose(state, name, time) {
         if (name === 'hullR') result.x = charge * 3;
         if (name === 'crownL') result.y = -Math.sin(time * 0.002) * 2;
         if (name === 'crownR') result.y = Math.sin(time * 0.002) * 2;
+    } else if (state.id === 'gardenEngine') {
+        const firing = (state.plan && state.plan.sections) || [];
+        const section = (state.sections && state.sections[name]) || null;
+        if (name === 'mortar' || name === 'lasher' || name === 'battery') {
+            const active = firing.includes(name);
+            result.x = (active ? -charge * 10 : -charge * 2) + (active ? recoil * 7 : 0);
+            if (section && section.destroyed) {
+                result.y = 6;
+                result.angle = name === 'lasher' ? 4 : -3;
+            }
+        } else if (name === 'hull') {
+            result.x = -recoil * 2;
+        }
+    } else if (state.id === 'obsidianHierophant') {
+        const slot = { shardN: 0, shardE: 1, shardS: 2, shardW: 3 }[name];
+        if (slot !== undefined) {
+            const angle = time * 0.0011 + slot * Math.PI / 2;
+            const align = state.mode === 'attack' ? 1 : charge;
+            const fx = [0, 14, 0, -14][slot];
+            const fy = [-14, 0, 14, 0][slot];
+            result.x = Math.cos(angle) * 10 * (1 - align) + fx * align - fx * 0.4 * recoil;
+            result.y = Math.sin(angle) * 10 * (1 - align) + fy * align - fy * 0.4 * recoil;
+        }
+        if (name === 'core') result.y = charge * 3 + recoil * 5;
+    } else if (state.id === 'cinderfallTyrant') {
+        if (name === 'maw') result.x = 9 * recoil - charge * 3;
+        if (name === 'vents') result.y = charge * 6;
+        if (name === 'crown') result.y = -Math.sin(time * 0.002) * 2;
     } else if (name === 'battery') {
         result.x = 11 * recoil;
         result.y = -charge * 3;

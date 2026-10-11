@@ -1,4 +1,4 @@
-# Linux Chrome cannot use the WSL GPU
+# WSL's Mesa/D3D12 shader draw crashes, including in Linux Chrome
 
 Measured on this machine in October 2026. The bot's multi-second steps were
 software WebGL frames, not the JEV model.
@@ -60,10 +60,77 @@ to `C:\Program Files\WSL\lib\libd3d12core.so`. `libdxcore.so` is dated
 these files. They are what this WSL package and the installed AMD driver
 contain.
 
-Mesa's own GL context on that stack works. Linux Chrome's GPU process does
-not survive using it.
+Mesa can create a GL context on that stack, but this does **not** establish
+that shader drawing works. The independent draw test below crashes without
+Chrome involved.
+
+## Follow-up: reproduced outside Chrome (2026-10-11)
+
+`scripts/diagnostics/wsl-gpu-draw.py` creates an EGL pbuffer, clears it,
+compiles and links a minimal vertex/fragment program, and draws one point.
+It uses Python's standard-library `ctypes` and the installed EGL/GL libraries.
+Run it outside any sandbox that hides `/dev/dxg` or the WSLg display:
+
+```sh
+GALLIUM_DRIVER=llvmpipe python3 scripts/diagnostics/wsl-gpu-draw.py
+GALLIUM_DRIVER=d3d12 python3 scripts/diagnostics/wsl-gpu-draw.py
+```
+
+Measured results with the same script:
+
+- llvmpipe: clear, shader compilation/link, and draw succeed; GL_NO_ERROR,
+  exit 0.
+- D3D12 (AMD Radeon Pro 460): context creation, clear, and shader
+  compilation/link succeed; `glDrawArrays` segfaults, exit 139.
+
+This places a reproducible failure below Chrome, in the Mesa/D3D12/AMD
+rendering path. It does not yet identify which component needs a fix.
+Changing Chrome flags alone has not repaired it. Additional headless
+Chrome probes with `WAYLAND_DISPLAY` unset failed with the default GPU
+process, `--in-process-gpu`, disabled stack-guard changes, disabled shader
+disk caches, and process-local preloads of libgcc, libstdc++, or
+libd3d12core. None produced a valid GPU renderer and red-pixel readback.
+
+The saved Chrome trace's return address at libd3d12core offset `0x2e596d`
+is in its bundled libunwind code, immediately after an indirect call;
+the attempted target was on the non-executable stack. That is distinct
+from the unloaded TLS-destructor signature reported in
+[WSLg issue 1497](https://github.com/microsoft/wslg/issues/1497).
+The exact cause of the invalid call remains unconfirmed.
+
+No system libraries or drivers were replaced during these probes. The
+Windows Chrome path remains the working workaround. A Mesa or Windows
+AMD-driver change needs to pass this draw reproducer and then the actual
+Chrome/game benchmark before it can be called a fix.
 
 ## What the bots do
+
+Normal playtests now use the Windows GPU automatically on this host, including
+`npm run bot` and `scripts/test-mobile.mjs`. The launcher prints the WebGL
+renderer and rejects software rendering from Windows Chrome. If the Windows
+launcher is available but fails, the run stops with an error instead of
+silently becoming a slow Linux run.
+
+`npm run bot` defaults to no video. Explicit `RECORD_VIDEO=1` retains
+Playwright's Linux video-recording path and prints a software-rendering warning.
+Use `RECORD_VIDEO=0` for fast runs, including when overriding video-enabled
+npm scripts. Screenshots still work on the Windows GPU path.
+
+To measure actual rendered level-4 frames with a running local server:
+
+```sh
+NOVAWING_URL=http://127.0.0.1:4000/ node scripts/diagnostics/benchmark-browser.mjs
+```
+
+The benchmark reports the game's renderer, three wall-time measurements for
+`page.clock.runFor(320)`, and page errors. Set `NOVAWING_SWIFTSHADER=1` to run
+the same measurement on the software backend.
+
+After the launcher changes, the isolated Windows GPU run measured 83, 85,
+and 84 ms; the software comparison measured 2522, 2375, and 2216 ms for the
+same 320 ms steps (about 28x faster by median). Both reported zero page
+errors. These are short level-4 samples, not a whole-campaign benchmark.
+Logs are preserved in `.verify-runs/gpu-playtests-2026-10-11/`.
 
 `launchBrowser()` in `scripts/rl/chrome.mjs` starts headless Windows Chrome
 on this host and attaches Playwright over the DevTools port. Windows Chrome
@@ -71,8 +138,6 @@ binds that port to 127.0.0.1, which WSL cannot dial, so a small relay on the
 Windows vNIC (the nameserver in `/etc/resolv.conf`) forwards it. The WSL-side
 child processes must stay referenced. Unref drops them before DevTools is up.
 
-`NOVAWING_SWIFTSHADER=1` keeps Linux Chromium. `scripts/play-bot.mjs` and
-`scripts/test-mobile.mjs` still launch that browser. play-bot records video
-through Playwright, which the Windows DevTools connection does not.
-
-SwiftShader remains the fallback when Windows Chrome or the relay is absent.
+`NOVAWING_SWIFTSHADER=1` explicitly selects Linux Chromium. Linux is also used
+on machines without the Windows Chrome installation. A failed Windows launch
+or unavailable hardware WebGL no longer silently falls back to SwiftShader.

@@ -529,6 +529,8 @@
             powerups: Array.isArray(def.powerups) ? def.powerups : [],
             // null / omitted => all wave patterns; [] => none; non-empty => filter only
             wavePatternKeys: def.wavePatternKeys == null ? null : def.wavePatternKeys.slice(),
+            wavePatternSchedule: Array.isArray(def.wavePatternSchedule) ? def.wavePatternSchedule : null,
+            backgroundTheme: typeof def.backgroundTheme === 'string' ? def.backgroundTheme : null,
             hasPathWalls: Boolean(def.hasPathWalls),
             pathEvents: Array.isArray(def.pathEvents) ? def.pathEvents : null,
             paths: def.paths || null,
@@ -1284,8 +1286,401 @@
             }
         });
     });
-    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11];
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11].forEach(level => { level.bonus = true; });
+    const PROMOTED_MODES = {
+        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
+            typedFireChance: 0.35, bossTempoScale: 1.5, bossHealthScale: 0.72 },
+        normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
+            typedFireChance: 0.6, bossTempoScale: 1.25 },
+        hard: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.05,
+            bossTempoScale: 0.98 }
+    };
+    const OBSIDIAN_MODES = {
+        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
+            typedFireChance: 0.35, bossTempoScale: 1.15, bossHealthScale: 0.72,
+            playerIFramesMs: 1600 },
+        normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
+            typedFireChance: 0.6, bossTempoScale: 1.25, playerIFramesMs: 1300 },
+        hard: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.05,
+            bossTempoScale: 0.98, playerIFramesMs: 1100 }
+    };
+
+    function hulkGate(center, span, gap, index, phase, cue, escortType) {
+        const open = [center - gap / 2, center + gap / 2];
+        const blocks = [];
+        const length = 145;
+        [[0, open[0]], [open[1], span]].forEach(function (range) {
+            const lo = range[0];
+            const hi = range[1];
+            const count = Math.max(1, Math.ceil((hi - lo) / 120));
+            const breadth = (hi - lo) / count;
+            for (let tile = 0; tile < count; tile++) {
+                const cap = hi === open[0] ? tile === count - 1 : tile === 0;
+                blocks.push({
+                    cross: lo + (tile + 0.5) * breadth,
+                    breadth: breadth,
+                    length: cap ? length - 25 : length,
+                    along: lo === 0 ? 45 : -25,
+                    texture: cap && phase > 0 ? ['hulkRib', 'hulkPod', 'hulkDome'][(tile + index) % 3] : 'hulkWall',
+                    artVariant: 1 + (tile + index) % 3
+                });
+            }
+        });
+        return {
+            progressMs: index * (phase === 2 ? 4000 : 3600),
+            blocks: blocks,
+            openBands: [open],
+            routeCenter: center,
+            cue: index === 0 ? cue : null,
+            escort: escortType && index > 0 ? { cross: center, type: escortType } : null
+        };
+    }
+    function hulkSegment(id, durationMs, keys, next, centers, cue, phase, escortType, difficulty) {
+        const recovery = phase === 2;
+        const span = 600;
+        const gap = recovery ? 360 : 224;
+        const events = centers.map(function (ratio, index) {
+            return hulkGate(Math.round(span * ratio), span, gap, index, phase, cue, recovery ? null : escortType);
+        });
+        const drops = ['weapon', 'shield', 'repair', 'boost', 'bomb'];
+        const powerups = events.map(function (event, index) {
+            return {
+                progressMs: event.progressMs,
+                type: recovery ? ['repair', 'shield'][index % 2] : drops[index % drops.length],
+                terrainSpeed: true, x: 910, y: event.routeCenter
+            };
+        });
+        events.forEach(function (event, index) {
+            if (recovery || index % 2 === 1) {
+                powerups.push({ progressMs: event.progressMs + 700,
+                    type: 'weapon', terrainSpeed: true, x: 910, y: event.routeCenter });
+            }
+        });
+        powerups.sort(function (a, b) { return a.progressMs - b.progressMs; });
+        return {
+            id: id, kind: 'waves', durationMs: durationMs, progressDriven: true,
+            scrollMode: 'horizontal', combatOrientation: 'right',
+            wavePatternKeys: keys, powerups: powerups, terrainEvents: events,
+            difficulty: Object.assign({ firstWaveDelayMs: 1500,
+                waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 }, difficulty || {}),
+            next: next
+        };
+    }
+    const LEVEL_12 = defineLevel({
+        id: 12, name: 'VERDANT HULK', tier: 3,
+        introHint: 'RIDE THE RIB GATES • DEFANG THE GARDEN ENGINE',
+        art: { background: 'verdantHulk', backgroundDim: 0.55, scenery: 'hulkScenery', wall: 'hulkWall', boss: 'gardenEngine' },
+        music: { waves: 'gauntlet', boss: 'singularity' },
+        durationMs: 70000, bossScore: 3500, bossKills: 1, bossHealth: 240,
+        bossEncounters: { final: { behavior: 'gardenEngine', health: 240, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: GARDEN ENGINE' } },
+        segments: [
+            hulkSegment('sporeTeach', 14000, ['sporeDrift'], 'ribCrossing',
+                [0.50, 0.42, 0.58, 0.50], 'SPORE GATES', 0, null,
+                { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
+            hulkSegment('ribCrossing', 24000,
+                ['sporeDrift', 'splitterPair', 'pincer', 'skyDive', 'floorRise'], 'quietGrove',
+                [0.30, 0.62, 0.38, 0.68, 0.32, 0.55], 'RIB CROSSING', 1, 'sporeLobber'),
+            hulkSegment('quietGrove', 10000, ['diagonal'], 'engineApproach',
+                [0.50, 0.48, 0.52], 'QUIET GROVE', 2, null,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            hulkSegment('engineApproach', 22000,
+                ['sporeDrift', 'splitterAmbush', 'oppositeInterceptors', 'vFormation', 'skyDive', 'floorRise'],
+                'finalBoss', [0.36, 0.66, 0.28, 0.72, 0.40, 0.60],
+                'ENGINE APPROACH', 3, 'sporeLobber'),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+
+    function obsidianDrops(duration) {
+        const positions = [400, 420, 380, 400, 420];
+        return ['weapon', 'shield', 'repair', 'boost', 'bomb'].map(function (type, i) {
+            return { progressMs: Math.round(duration * [0.1, 0.28, 0.5, 0.68, 0.82][i]), type: type, x: positions[i] };
+        });
+    }
+    function obsidianWaves(id, durationMs, keys, next, difficulty) {
+        return { id: id, kind: 'waves', durationMs: durationMs, progressDriven: true,
+            scrollMode: 'vertical', combatOrientation: 'up',
+            wavePatternKeys: keys, powerups: obsidianDrops(durationMs),
+            difficulty: Object.assign({ firstWaveDelayMs: 1500,
+                waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 }, difficulty || {}), next: next };
+    }
+    function obsidianTerrain(segment, phase) {
+        const span = 800;
+        const recovery = phase === 2;
+        const routes = [
+            [0.50, 0.66, 0.30, 0.70, 0.36],
+            [0.50, 0.32, 0.64, 0.36, 0.66],
+            [0.50, 0.48],
+            [0.50, 0.66, 0.30, 0.70]
+        ];
+        const names = ['GATE THRESHOLD', 'RUNE CROSSING', 'STILL CHASM', 'HIEROPHANT ASCENT'];
+        const centers = routes[phase];
+        const gap = recovery ? span * 0.60 : 272;
+        const interval = recovery ? 4000 : 3600;
+        const events = centers.map(function (ratio, index) {
+            const center = Math.round(span * ratio);
+            const open = [center - gap / 2, center + gap / 2];
+            const blocks = [];
+            const length = recovery ? 110 : 145;
+            [[0, open[0]], [open[1], span]].forEach(function (pair) {
+                const lo = pair[0];
+                const hi = pair[1];
+                const count = Math.max(1, Math.ceil((hi - lo) / 120));
+                const breadth = (hi - lo) / count;
+                for (let tile = 0; tile < count; tile++) {
+                    const cap = hi === open[0] ? tile === count - 1 : tile === 0;
+                    blocks.push({ cross: lo + (tile + 0.5) * breadth, breadth: breadth,
+                        length: cap && !recovery ? length - 25 : length,
+                        along: lo === 0 ? 45 : -25,
+                        texture: cap && phase > 0 ? 'gateSlab' : 'obsidianWall',
+                        artVariant: 1 + (tile + index) % 3 });
+                }
+            });
+            return { progressMs: index * interval, blocks: blocks, openBands: [open],
+                routeCenter: center, cue: index === 0 ? names[phase] : null,
+                escort: !recovery && index > 0 ? { cross: center, type: 'regular' } : null };
+        });
+        segment.powerups = events.map(function (event, index) {
+            return { progressMs: event.progressMs,
+                type: recovery ? ['repair', 'shield'][index]
+                    : ['weapon', 'shield', 'repair', 'boost', 'bomb'][index % 5],
+                terrainSpeed: true, x: event.routeCenter, y: -110 };
+        });
+        if (!recovery) {
+            events.forEach(function (event, index) {
+                if (index % 2 === 1) {
+                    segment.powerups.push({ progressMs: event.progressMs + 700,
+                        type: 'weapon', terrainSpeed: true, x: event.routeCenter, y: -110 });
+                }
+            });
+            segment.powerups.sort(function (a, b) { return a.progressMs - b.progressMs; });
+        }
+        return events;
+    }
+    const LEVEL_13 = defineLevel({
+        id: 13, name: 'OBSIDIAN GATE', tier: 3, scrollMode: 'vertical',
+        introHint: 'READ THE RUNE GATES • STRIKE THE OPEN CORE',
+        art: { background: 'obsidianGate', scenery: 'obsidianScenery', wall: 'obsidianWall',
+            bossVertical: 'obsidianHierophant' },
+        music: { waves: 'gauntlet', boss: 'finalBoss' },
+        durationMs: 78000, bossScore: 3500, bossHealth: 330,
+        difficultyModes: OBSIDIAN_MODES,
+        bossEncounters: { final: { behavior: 'obsidianHierophant', health: 200, maxPhase: 3, entry: 'warpCenter',
+            arena: 'flat', label: 'WARNING: OBSIDIAN HIEROPHANT' } },
+        segments: [
+            obsidianWaves('gateThreshold', 22000, ['verticalRegular', 'verticalV', 'lanternDrift'], 'runeCrossing',
+                { typedFireChance: 0.4, enemySpeedScale: 0.9, firstWaveDelayMs: 2200 }),
+            obsidianWaves('runeCrossing', 25000, ['lanternDrift', 'riserColumns', 'crossfireStrafe', 'pincerDive'], 'stillChasm',
+                { waveIntervalMinMs: 2800, waveIntervalMaxMs: 3400 }),
+            obsidianWaves('stillChasm', 10000, [], 'hierophantAscent',
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            obsidianWaves('hierophantAscent', 21000, ['lanternDrift', 'orbiterRing', 'pincerDive', 'mixedGauntlet'], 'finalBoss',
+                { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'vertical',
+                combatOrientation: 'up', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+    LEVEL_13.segments.filter(function (segment) { return segment.kind === 'waves'; }).forEach(function (segment, phase) {
+        segment.terrainEvents = obsidianTerrain(segment, phase);
+        if (phase !== 2) {
+            segment.difficulty.waveIntervalMinMs += 800;
+            segment.difficulty.waveIntervalMaxMs += 800;
+        }
+    });
+
+    function cinderWaves(id, durationMs, keys, schedule, next, difficulty) {
+        return { id: id, kind: 'waves', durationMs: durationMs, progressDriven: true,
+            scrollMode: 'horizontal', combatOrientation: 'right',
+            wavePatternKeys: keys, wavePatternSchedule: schedule,
+            powerups: [], difficulty: Object.assign({ firstWaveDelayMs: 1200,
+                waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 }, difficulty), next: next };
+    }
+    function cinderGates(segment, ratios, opts) {
+        opts = opts || {};
+        const span = 600;
+        const recovery = Boolean(opts.recovery);
+        const gap = recovery ? span * 0.60 : 224;
+        const interval = recovery ? 4000 : 3600;
+        const length = recovery ? 110 : 145;
+        const events = ratios.map(function (ratio, index) {
+            const center = Math.round(span * ratio);
+            const open = [center - gap / 2, center + gap / 2];
+            const blocks = [];
+            [[0, open[0]], [open[1], span]].forEach(function (range) {
+                const lo = range[0];
+                const hi = range[1];
+                const count = Math.max(1, Math.ceil((hi - lo) / 120));
+                const breadth = (hi - lo) / count;
+                for (let tile = 0; tile < count; tile++) {
+                    const cap = hi === open[0] ? tile === count - 1 : tile === 0;
+                    blocks.push({ cross: lo + (tile + 0.5) * breadth, breadth: breadth,
+                        length: cap && !recovery ? length - 25 : length,
+                        along: lo === 0 ? 0 : 65, texture: 'cinderWall' });
+                }
+            });
+            return { progressMs: index * interval, blocks: blocks, openBands: [open],
+                routeCenter: center, cue: index === 0 ? (opts.cue || null) : null,
+                escort: !recovery && index > 0 ? { cross: center, type: opts.escort || 'ember' } : null };
+        });
+        segment.terrainEvents = events;
+        const drops = opts.drops || ['weapon', 'shield', 'repair', 'boost', 'bomb'];
+        segment.powerups = events.map(function (event, index) {
+            return { progressMs: event.progressMs,
+                type: recovery ? ['repair', 'shield'][index % 2] : drops[index % drops.length],
+                terrainSpeed: true, x: 910, y: event.routeCenter };
+        });
+        if (!recovery) {
+            events.forEach(function (event, index) {
+                if (index % 2 !== 1) return;
+                segment.powerups.push({ progressMs: event.progressMs + 700,
+                    type: 'weapon', terrainSpeed: true, x: 910, y: event.routeCenter });
+            });
+            segment.powerups.sort(function (a, b) { return a.progressMs - b.progressMs; });
+        }
+        return segment;
+    }
+    const cinderOuter = cinderGates(cinderWaves('outerVents', 22000,
+        ['emberSurge', 'diagonal', 'vFormation', 'chaser'],
+        [{ untilMs: 10000, keys: ['emberSurge'] },
+            { keys: ['emberSurge', 'diagonal', 'vFormation', 'chaser'] }],
+        'ashfall', { interceptorChance: 0.15, enemyFireChance: 0.35 }),
+        [0.60, 0.30, 0.70, 0.36, 0.64], { cue: 'MAGMA-VENT GATES' });
+    const cinderAsh = cinderGates(cinderWaves('ashfall', 26000,
+        ['emberSurge', 'splitterPair', 'pincer', 'oppositeInterceptors', 'asteroidWall', 'skyDive', 'floorRise'],
+        [{ untilMs: 9000, keys: ['emberSurge', 'asteroidWall'] },
+            { keys: ['emberSurge', 'splitterPair', 'pincer', 'oppositeInterceptors', 'asteroidWall', 'skyDive', 'floorRise'] }],
+        'cooling', { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
+        [0.30, 0.70, 0.34, 0.66, 0.30, 0.55], { cue: 'ASHFALL CROSSING' });
+    const cinderCool = cinderGates(cinderWaves('cooling', 9000, ['diagonal'],
+        [{ keys: ['diagonal'] }], 'coreDefense',
+        { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
+        [0.50, 0.55], { cue: 'COOLING BAY', recovery: true });
+    const cinderCore = cinderGates(cinderWaves('coreDefense', 15000,
+        ['emberSurge', 'splitterAmbush', 'sandwich', 'vFormation', 'skyDive', 'floorRise'],
+        [{ keys: ['emberSurge', 'splitterAmbush', 'sandwich', 'vFormation', 'skyDive', 'floorRise'] }],
+        'finalBoss', {}),
+        [0.70, 0.30, 0.64, 0.36], { cue: 'TYRANT APPROACH' });
+    const LEVEL_14 = defineLevel({
+        id: 14, name: 'CINDERFALL KEEP', tier: 3,
+        introHint: 'READ THE MAGMA GATES • CROSS BETWEEN VOLLEYS',
+        art: { background: 'cinderfallKeep', wall: 'cinderWall', boss: 'cinderfallTyrant' },
+        music: { waves: 'canyon', boss: 'canyonBoss' },
+        durationMs: 72000, bossScore: 2800, bossHealth: 290,
+        difficultyModes: PROMOTED_MODES,
+        bossEncounters: { final: { behavior: 'cinderfallTyrant', health: 230, maxPhase: 3,
+            entry: 'horizontal', arena: 'flat', label: 'WARNING: CINDERFALL TYRANT' } },
+        segments: [cinderOuter, cinderAsh, cinderCool, cinderCore,
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }]
+    });
+
+    const LEVEL_15 = defineLevel({
+        id: 15, name: 'HELIOS GATE', tier: 3, scrollMode: 'vertical',
+        introHint: 'ASCEND THE FLARE LANES • BREAK THE MIRRORS',
+        art: { background: 'heliosGate', bossVertical: 'heliosGatekeeper' },
+        music: { waves: 'gauntlet', boss: 'finalBoss' },
+        durationMs: 75000, bossScore: 3400, bossHealth: 320,
+        difficultyModes: PROMOTED_MODES,
+        bossEncounters: { final: { behavior: 'heliosGatekeeper', health: 240, maxPhase: 3,
+            entry: 'warpCenter', arena: 'flat', label: 'WARNING: HELIOS GATEKEEPER' } },
+        segments: [
+            { id: 'flareApproach', kind: 'waves', durationMs: 22000, progressDriven: true,
+                scrollMode: 'vertical', combatOrientation: 'up',
+                wavePatternKeys: ['verticalRegular', 'verticalV', 'mirrorFan'],
+                wavePatternSchedule: [
+                    { untilMs: 6000, keys: ['mirrorFan'] },
+                    { untilMs: 14000, keys: ['verticalRegular', 'mirrorFan'] },
+                    { keys: ['verticalRegular', 'verticalV', 'mirrorFan'] }
+                ],
+                powerups: [
+                    { progressMs: 2500, type: 'weapon', x: 400 },
+                    { progressMs: 9000, type: 'shield', x: 300 },
+                    { progressMs: 15000, type: 'weapon', x: 500 },
+                    { progressMs: 19000, type: 'boost', x: 400 }
+                ],
+                difficulty: { firstWaveDelayMs: 1500, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 },
+                next: 'gateCrossfire' },
+            { id: 'gateCrossfire', kind: 'waves', durationMs: 24000, progressDriven: true,
+                scrollMode: 'vertical', combatOrientation: 'up',
+                wavePatternKeys: ['mirrorFan', 'riserColumns', 'crossfireStrafe', 'pincerDive'],
+                wavePatternSchedule: [
+                    { untilMs: 8000, keys: ['mirrorFan', 'riserColumns'] },
+                    { keys: ['mirrorFan', 'riserColumns', 'crossfireStrafe', 'pincerDive'] }
+                ],
+                powerups: [
+                    { progressMs: 3000, type: 'weapon', x: 360 },
+                    { progressMs: 10000, type: 'repair', x: 440 },
+                    { progressMs: 16000, type: 'shield', x: 320 },
+                    { progressMs: 21000, type: 'weapon', x: 480 }
+                ],
+                difficulty: { firstWaveDelayMs: 1500, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 },
+                next: 'quietAscent' },
+            { id: 'quietAscent', kind: 'waves', durationMs: 9000, progressDriven: true,
+                scrollMode: 'vertical', combatOrientation: 'up',
+                wavePatternKeys: ['verticalRegular'],
+                powerups: [
+                    { progressMs: 3000, type: 'repair', x: 400 },
+                    { progressMs: 6500, type: 'weapon', x: 400 }
+                ],
+                difficulty: { firstWaveDelayMs: 1500, waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 },
+                next: 'mirrorStorm' },
+            { id: 'mirrorStorm', kind: 'waves', durationMs: 20000, progressDriven: true,
+                scrollMode: 'vertical', combatOrientation: 'up',
+                wavePatternKeys: ['mirrorFan', 'orbiterRing', 'pincerDive', 'mixedGauntlet'],
+                powerups: [
+                    { progressMs: 2500, type: 'shield', x: 360 },
+                    { progressMs: 8000, type: 'weapon', x: 440 },
+                    { progressMs: 13000, type: 'boost', x: 320 },
+                    { progressMs: 17000, type: 'bomb', x: 400 }
+                ],
+                difficulty: { firstWaveDelayMs: 1500, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 },
+                next: 'finalBoss' },
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final',
+                scrollMode: 'vertical', combatOrientation: 'up',
+                wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+
+    const LEVEL_16 = defineLevel({
+        id: 16, name: 'CANOPY RUN', tier: 3,
+        bossScore: 1500, durationMs: 90000, worldHeight: GAME_HEIGHT,
+        cameraFollowY: false, startY: 260, bossArenaY: 260,
+        bossHealth: Math.round(DEFAULT_BOSS_HEALTH * 1.2),
+        introHint: 'SKIM THE TREETOPS',
+        backgroundTheme: 'canopy',
+        art: { wall: 'wallJungle', boss: 'bossTropical', crystal: 'plantSeed',
+            debris: 'plantSeed', obstacle: 'plantTree', mine: 'plantSeed' },
+        difficulty: { waveIntervalMinMs: 1600, waveIntervalMaxMs: 2200 },
+        wavePatternKeys: ['asteroidWall', 'sandwich', 'minefield', 'swarm', 'chaser'],
+        wavePatternSchedule: [
+            { untilMs: 22000, keys: ['asteroidWall', 'sandwich', 'minefield'] },
+            { keys: ['asteroidWall', 'sandwich', 'minefield', 'swarm', 'chaser'] }
+        ],
+        hasPathWalls: true,
+        paths: { sky: [40, 510] },
+        powerups: [
+            { progressMs: 4000, type: 'weapon', y: 240 },
+            { progressMs: 12000, type: 'boost', y: 180 },
+            { progressMs: 20000, type: 'shield', y: 280 },
+            { progressMs: 32000, type: 'bomb', y: 220 },
+            { progressMs: 44000, type: 'repair', y: 160 },
+            { progressMs: 56000, type: 'weapon', y: 300 },
+            { progressMs: 70000, type: 'boost', y: 200 },
+            { progressMs: 76000, type: 'shield', y: 250 }
+        ],
+        pathEvents: buildPathEvents([
+            { startMs: 0, durationMs: 18000, openBands: [[40, 510]], stepMs: 700 },
+            { startMs: 18000, durationMs: 12000, openBands: [[40, 400]], stepMs: 680 },
+            { startMs: 30000, durationMs: 12000, openBands: [[40, 510]], stepMs: 700 },
+            { startMs: 42000, durationMs: 14000, openBands: [[40, 360]], stepMs: 660 },
+            { startMs: 56000, durationMs: 14000, openBands: [[40, 480]], stepMs: 700 },
+            { startMs: 70000, durationMs: 20000, openBands: [[40, 420]], stepMs: 700 }
+        ])
+    });
+
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16];
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16].forEach(level => { level.bonus = true; });
 
     /**
      * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via

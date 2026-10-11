@@ -34,3 +34,12 @@ ON leaderboard_runs (expires_at, used_at);
 
 CREATE INDEX IF NOT EXISTS leaderboard_runs_client_key_idx
 ON leaderboard_runs (client_key, created_at);
+
+CREATE TABLE IF NOT EXISTS level_votes (
+    level_id INTEGER NOT NULL,
+    name_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    vote TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (level_id, name_key)
+);

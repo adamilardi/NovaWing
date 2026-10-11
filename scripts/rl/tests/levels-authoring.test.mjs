@@ -11,7 +11,7 @@ const Levels = require('../../../levels.js');
 
 describe('level authoring surface', () => {
     it('ships the campaign plus bonus grounds and exposes live catalog length', () => {
-        assert.equal(Levels.getTotalLevels(), 11);
+        assert.equal(Levels.getTotalLevels(), 16);
         assert.equal(Levels.getLevelDef(1).name, 'OPEN SPACE');
         assert.equal(Levels.getLevelDef(2).hasPathWalls, true);
         assert.ok(Array.isArray(Levels.getLevelDef(3).segments));
@@ -42,6 +42,23 @@ describe('level authoring surface', () => {
         const modes = new Set(def.segments.map(segment => segment.scrollMode));
         assert.ok(modes.has('horizontal') && modes.has('vertical'));
         assert.equal(def.segments[def.segments.length - 1].id, 'finalBoss');
+    });
+
+    it('keeps promoted bonus levels 12-16 beside the existing catalog', () => {
+        assert.deepEqual(Levels.getEffectiveLevelDefs().slice(0, 11).map(level => level.name), [
+            'OPEN SPACE', 'THE CANYON', 'SINGULARITY RUN', 'ORBITAL FOUNDRY', 'AURORA PASSAGE',
+            'VOID CATHEDRAL', 'ASHEN GRAVEYARD', 'PRISM BATTERY', 'ABYSSAL RELAY', 'STORM SPIRE', 'GLASS DUNES'
+        ]);
+        const promoted = Levels.getEffectiveLevelDefs().filter(level => level.id >= 12);
+        assert.deepEqual(promoted.map(level => [level.id, level.name, level.bonus]), [
+            [12, 'VERDANT HULK', true],
+            [13, 'OBSIDIAN GATE', true],
+            [14, 'CINDERFALL KEEP', true],
+            [15, 'HELIOS GATE', true],
+            [16, 'CANOPY RUN', true]
+        ]);
+        assert.equal(Levels.getLevelDef(16).segments, null);
+        assert.equal(Levels.getLevelDef(16).backgroundTheme, 'canopy');
     });
 
     it('fills authoring defaults so a new level only needs id + the fields that matter', () => {
@@ -169,7 +186,7 @@ describe('level authoring surface', () => {
 
     it('campaign rewards exclude the bonus testing stages', () => {
         assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => !level.bonus).map(level => level.id), [1, 2, 3]);
-        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => level.bonus).map(level => level.id), [4, 5, 6, 7, 8, 9, 10, 11]);
+        assert.deepEqual(Levels.getEffectiveLevelDefs().filter(level => level.bonus).map(level => level.id), [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
         assert.equal(Levels.getCampaignBossScore(), 1500 + 1500 + 2500);
         assert.equal(Levels.getCampaignBossKills(), 3);
         assert.equal(Levels.getLevelBossScore(3), 2500);

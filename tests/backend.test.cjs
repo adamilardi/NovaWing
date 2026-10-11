@@ -262,3 +262,73 @@ test('Continue count is validated, locked at completion, and retained on the lea
     const reloaded = await request('/api/leaderboard?scope=level-1&version=continues');
     assert.equal(reloaded.json().entries[0].continues, 2);
 });
+
+test('extra-level votes keep one row per pilot and replace a later thumb', async t => {
+    const { request } = await serverFixture(t);
+    assert.equal((await request('/api/level-votes', { method: 'POST', body: { levelId: 4, name: 'Ada', vote: 'up' } })).status, 400);
+    const first = await request('/api/level-votes', { method: 'POST', body: { levelId: 16, name: 'Ada', vote: 'up' } });
+    assert.equal(first.status, 201, first.bytes.toString());
+    const flipped = await request('/api/level-votes', { method: 'POST', body: { levelId: 16, name: 'ada', vote: 'down' } });
+    assert.equal(flipped.status, 201);
+    const other = await request('/api/level-votes', { method: 'POST', body: { levelId: 16, name: 'Bo', vote: 'up' } });
+    const row = other.json().levels.find(level => level.levelId === 16);
+    assert.equal(row.up, 1);
+    assert.equal(row.down, 1);
+    assert.deepEqual(row.likes, ['Bo']);
+    const listed = await request('/api/level-votes');
+    assert.equal(listed.json().levels.length, 5);
+    assert.equal(listed.json().levels.find(level => level.levelId === 12).up, 0);
+});
+
+test('Pages level votes store the pilot and return the tally', async () => {
+    const { onRequest } = await import('../functions/api/level-votes.js');
+    const rows = [];
+    const DB = {
+        prepare(sql) {
+            const state = { sql, args: [] };
+            const api = {
+                bind(...args) { state.args = args; return api; },
+                async all() {
+                    return { results: rows.map(row => ({
+                        level_id: row.levelId, name: row.name, vote: row.vote, updated_at: row.updatedAt
+                    })) };
+                },
+                async first() {
+                    if (state.sql.includes('COUNT')) {
+                        return { n: rows.filter(row => row.levelId === state.args[0]).length };
+                    }
+                    return rows.find(row => row.levelId === state.args[0] && row.nameKey === state.args[1]) || null;
+                },
+                async run() {
+                    const [levelId, nameKey, name, vote, updatedAt] = state.args;
+                    const existing = rows.find(row => row.levelId === levelId && row.nameKey === nameKey);
+                    if (existing) Object.assign(existing, { name, vote, updatedAt });
+                    else rows.push({ levelId, nameKey, name, vote, updatedAt });
+                    return { meta: { changes: 1 } };
+                }
+            };
+            return api;
+        }
+    };
+    const post = (body, origin) => onRequest({
+        request: new Request('https://novawing.ailardi.com/api/level-votes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) },
+            body: JSON.stringify(body)
+        }),
+        env: { DB }
+    });
+    const saved = await post({ levelId: 12, name: 'Ada', vote: 'up' });
+    assert.equal(saved.status, 201);
+    const again = await post({ levelId: 12, name: 'Ada', vote: 'down' });
+    const body = await again.json();
+    assert.equal(body.levels.find(level => level.levelId === 12).down, 1);
+    assert.equal(rows.length, 1);
+    const foreign = await post({ levelId: 13, name: 'Ada', vote: 'up' }, 'https://evil.example');
+    assert.equal(foreign.headers.get('access-control-allow-origin'), null);
+    const missing = await onRequest({
+        request: new Request('https://novawing.ailardi.com/api/level-votes'),
+        env: {}
+    });
+    assert.equal(missing.status, 503);
+});

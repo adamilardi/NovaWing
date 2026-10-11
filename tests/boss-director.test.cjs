@@ -51,10 +51,15 @@ test('prism battery animation manifest matches the caster and stays off the leve
 });
 
 test('each expansion level binds its own production boss and behavior', () => {
-    const levels = Levels.getEffectiveLevelDefs().slice(3);
+    const levels = Levels.getEffectiveLevelDefs().filter(level => level.id >= 4 && level.id <= 11);
     const behaviors = levels.map(l => l.bossEncounters.final.behavior);
     assert.equal(new Set(behaviors).size, levels.length);
-    for (const level of levels) {
+    const promoted = Levels.getEffectiveLevelDefs().filter(level => level.id >= 12 && level.id <= 15);
+    const promotedBehaviors = promoted.map(l => l.bossEncounters.final.behavior);
+    assert.deepEqual(promotedBehaviors, ['gardenEngine', 'obsidianHierophant', 'cinderfallTyrant', 'heliosGatekeeper']);
+    assert.equal(new Set(promotedBehaviors).size, promoted.length);
+    assert.equal(Levels.getLevelDef(16).bossEncounters, null);
+    for (const level of levels.concat(promoted)) {
         const id = level.bossEncounters.final.behavior;
         assert.ok(Bosses.catalog[id]);
         assert.ok(Assets.sprites[id].body);

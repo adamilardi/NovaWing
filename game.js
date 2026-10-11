@@ -177,6 +177,7 @@ const DIFFICULTY_MODE_KEY = 'novawing-difficulty';
 const TUTORIAL_SEEN_KEY = 'novawing-tutorial-seen';
 const DIFFICULTY_MODES = ['easy', 'normal', 'hard'];
 const LEADERBOARD_API_URL = '/api/leaderboard';
+const LEVEL_VOTES_API_URL = '/api/level-votes';
 const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const GAME_WIDTH = 800;
@@ -336,7 +337,11 @@ const ENEMY_WAVE_PATTERNS = [
     { key: 'pincerDive', spawn: spawnPincerDiveWave },
     { key: 'orbiterRing', spawn: spawnOrbiterRingWave },
     { key: 'mixedGauntlet', spawn: spawnMixedGauntletWave },
-    { key: 'splitterAmbush', spawn: spawnSplitterAmbushWave }
+    { key: 'splitterAmbush', spawn: spawnSplitterAmbushWave },
+    { key: 'sporeDrift', spawn: spawnSporeDriftWave },
+    { key: 'lanternDrift', spawn: spawnLanternDriftWave },
+    { key: 'emberSurge', spawn: spawnEmberSurgeWave },
+    { key: 'mirrorFan', spawn: spawnMirrorFanWave }
 ];
 
 // Black hole defaults (PR6) — levelDef.blackHole may override.
@@ -534,6 +539,71 @@ const ENEMY_TYPES = {
         shotCooldownMin: 1300,
         shotCooldownMax: 1600,
         move: 'orbiter'
+    },
+    ember: {
+        texture: 'enemyEmber',
+        verticalTexture: 'enemyEmber',
+        speed: -150,
+        health: 3,
+        killScore: 200,
+        tracksPlayer: false,
+        canShootDefault: true,
+        shotSpeed: -380,
+        shotAimScale: 1.1,
+        shotMaxDy: 260,
+        shotCooldownMin: 1000,
+        shotCooldownMax: 1700,
+        move: 'ember'
+    },
+    flareMirror: {
+        texture: 'flareMirror',
+        verticalTexture: 'flareMirror',
+        upright: true,
+        speed: -140,
+        health: 4,
+        killScore: 280,
+        boostRefillOffset: 2,
+        tracksPlayer: false,
+        canShootDefault: true,
+        shotSpeed: 340,
+        shotAimScale: 1.6,
+        shotMaxDx: 260,
+        shotCooldownMin: 1400,
+        shotCooldownMax: 2100,
+        move: 'mirrorHold'
+    },
+    gateLantern: {
+        texture: 'enemyGateLantern',
+        verticalTexture: 'enemyGateLantern',
+        upright: true,
+        speed: -60,
+        health: 3,
+        killScore: 200,
+        boostRefillOffset: 2,
+        tracksPlayer: false,
+        canShootDefault: true,
+        usesLobShot: true,
+        shotSpeed: 120,
+        shotAimScale: 0.8,
+        shotMaxDx: 160,
+        shotCooldownMin: 1500,
+        shotCooldownMax: 2200,
+        move: 'lantern'
+    },
+    sporeLobber: {
+        texture: 'enemySpore',
+        verticalTexture: 'enemySpore',
+        speed: -75,
+        health: 3,
+        killScore: 200,
+        tracksPlayer: false,
+        canShootDefault: true,
+        usesSporeShot: true,
+        shotSpeed: -260,
+        shotAimScale: 0.8,
+        shotMaxDy: 260,
+        shotCooldownMin: 1500,
+        shotCooldownMax: 2400
     }
 };
 
@@ -1961,7 +2031,17 @@ function update(time, delta) {
 
     for (let i = 0, list = enemyBullets.children.entries, n = list.length; i < n; i++) {
         const b = list[i];
-        if (b.active && isOffscreen(b, 10)) releaseSprite(b);
+        if (!b.active) continue;
+        if (b.sporeWeave) updateSporeWeave(b, simTime);
+        if (b.isLobbed && b.body && Number.isFinite(b.lobGravity)) {
+            const step = playtestStepSeconds(frameDelta, 0.008, 0.05);
+            if (isVerticalScroll()) {
+                b.setVelocityY(Math.min((b.body.velocity.y || 0) + b.lobGravity * step, 420));
+            } else {
+                b.setVelocityX(Math.max((b.body.velocity.x || 0) + b.lobGravity * step, -420));
+            }
+        }
+        if (isOffscreen(b, 10)) releaseSprite(b);
     }
 
     for (let i = 0, list = obstacles.children.entries, n = list.length; i < n; i++) {
@@ -2181,6 +2261,10 @@ function hitBoss(bullet, bossSprite) {
         sfx.spark(hitX);
         return;
     }
+    if (bossSprite.encounterState && bossSprite.encounterState.id === 'gardenEngine') {
+        damageGardenEngine.call(this, bossSprite, hitX, hitY, damage, impactAngle);
+        return;
+    }
     bossHealth = Math.max(0, bossHealth - damage);
     if (bossHealth > 0) {
         updateBossPhase.call(this);
@@ -2204,6 +2288,59 @@ function hitBoss(bullet, bossSprite) {
  * Intro encounter escapes at escapeHpRatio; otherwise defeat at 0 HP.
  * @returns {boolean} true if the fight ended this call
  */
+function damageGardenEngine(bossSprite, hitX, hitY, damage, impactAngle) {
+    const state = bossSprite.encounterState;
+    const sections = (state && state.sections) || {};
+    const dw = bossSprite.displayWidth;
+    const dh = bossSprite.displayHeight;
+    const left = bossSprite.x - dw / 2;
+    const top = bossSprite.y - dh / 2;
+    const rects = { mortar: [0, 0, 0.32, 0.35], lasher: [0, 0.35, 0.32, 0.30], battery: [0, 0.65, 0.32, 0.35] };
+    let sectionHit = null;
+    for (const name of ['mortar', 'lasher', 'battery']) {
+        const section = sections[name];
+        if (!section || section.destroyed) continue;
+        const [rx, ry, rw, rh] = rects[name];
+        if (hitX >= left + rx * dw && hitX <= left + (rx + rw) * dw &&
+            hitY >= top + ry * dh && hitY <= top + (ry + rh) * dh) {
+            sectionHit = name;
+            break;
+        }
+    }
+    if (sectionHit) {
+        const section = sections[sectionHit];
+        section.hp -= damage;
+        createExplosion(this, hitX, hitY, damage > 1 ? 12 : 7, {
+            palette: 'cyan', flash: damage > 1, direction: impactAngle, spread: 30
+        });
+        sfx.spark(hitX);
+        flashCombatTarget(this, bossSprite, 0x7dff6a, 48);
+        if (section.hp <= 0) {
+            section.destroyed = true;
+            section.hp = 0;
+            score += 500;
+            createExplosion(this, hitX, hitY, 24, { palette: 'cyan', flash: true });
+            showFloatingText(this, hitX, hitY - 30, sectionHit.toUpperCase() + ' DOWN  +500', '#7dff6a', {});
+            sfx.explosion(0.8, hitX);
+        }
+        updateBossHealthBar();
+        return;
+    }
+    const bodyDamage = bossPhase >= 3 ? damage * 2 : damage;
+    bossHealth = Math.max(0, bossHealth - bodyDamage);
+    if (bossHealth > 0) updateBossPhase.call(this);
+    updateBossHealthBar();
+    createExplosion(this, hitX, hitY, bodyDamage > 1 ? 12 : 7, {
+        palette: bodyDamage > 1 ? 'cyan' : 'orange',
+        flash: bodyDamage > 1,
+        direction: impactAngle,
+        spread: bodyDamage > 1 ? 48 : 30
+    });
+    sfx.spark(hitX);
+    flashCombatTarget(this, bossSprite, bodyDamage > 1 ? 0x99ffff : 0xffffff, bodyDamage > 1 ? 70 : 48);
+    maybeResolveBossAfterDamage(this, bossSprite, 'bullet');
+}
+
 function maybeResolveBossAfterDamage(scene, bossSprite, reason) {
     if (!bossSprite || victoryPending || levelEnded) return false;
 
@@ -3217,12 +3354,13 @@ function getScheduledWavePatternKeys() {
     // Supernova draws from the full level catalog immediately.
     if (difficultyFlag('randomWaves', false)) return null;
     const seg = getLevelSegmentDef();
-    if (!seg) return null;
+    const source = seg || (typeof getLevelDef === 'function' ? getLevelDef(currentLevel) : null);
+    if (!source) return null;
     const mode = getDifficultyMode();
-    const byMode = seg.wavePatternScheduleByMode;
+    const byMode = source.wavePatternScheduleByMode;
     const schedule = (byMode && Array.isArray(byMode[mode]) && byMode[mode].length)
         ? byMode[mode]
-        : seg.wavePatternSchedule;
+        : source.wavePatternSchedule;
     if (!Array.isArray(schedule) || !schedule.length) return null;
     const progress = Number.isFinite(levelProgressMs) ? levelProgressMs : 0;
     for (let i = 0; i < schedule.length; i++) {
@@ -3412,7 +3550,11 @@ function applyLevelArt(scene, levelId, segment = null) {
         wall: pick('wall', 'wall'),
         boss: pick('boss', 'bossShip'),
         bossVertical: pick('bossVertical', 'bossVertical'),
-        playerVertical: pick('playerVertical', 'playerVertical')
+        playerVertical: pick('playerVertical', 'playerVertical'),
+        crystal: pick('crystal', 'crystal'),
+        debris: pick('debris', 'debris'),
+        obstacle: pick('obstacle', 'obstacle'),
+        mine: pick('mine', 'mine')
     };
     if (nebulaGraphics) {
         const theme = getBackgroundTheme(levelId);
@@ -4051,6 +4193,123 @@ function spawnMixedGauntletWave(scene) {
     scheduleWavePart(scene, 4500, () => spawnCrossfireStrafeWave(scene));
 }
 
+function spawnSporeDriftWave(scene) {
+    const lane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    spawnEnemy.call(scene, {
+        x: 840,
+        y: getWaveLaneY(lane),
+        type: 'regular',
+        speed: -150,
+        canShoot: true,
+        nextShotDelay: 800
+    });
+    for (let i = 0; i < 3; i++) {
+        scheduleWavePart(scene, 350 + i * 650, () => {
+            spawnEnemy.call(scene, {
+                x: 890 + i * 60,
+                y: getWaveLaneY(Phaser.Math.Clamp(lane + (i - 1), 0, WAVE_LANES.length - 1)),
+                type: 'sporeLobber',
+                canShoot: true,
+                nextShotDelay: 900 + i * 250
+            });
+        });
+    }
+}
+
+function spawnLanternDriftWave(scene) {
+    const column = Phaser.Math.Between(300, 500);
+    for (let row = 0; row < 3; row++) {
+        scheduleWavePart(scene, row * 450, () => {
+            spawnEnemy.call(scene, {
+                x: column + Phaser.Math.Between(-30, 30),
+                y: -60 - row * 24,
+                type: 'gateLantern',
+                speed: -60,
+                canShoot: true,
+                nextShotDelay: 900 + row * 200,
+                skipPathClamp: true
+            });
+        });
+    }
+    [160, 640].forEach((x, i) => {
+        scheduleWavePart(scene, 300 + i * 200, () => {
+            spawnEnemy.call(scene, {
+                x: x, y: -50, type: 'dart', speed: -200,
+                canShoot: i === 0, tracksPlayer: true,
+                nextShotDelay: 800, skipPathClamp: true
+            });
+        });
+    });
+}
+
+function spawnEmberSurgeWave(scene) {
+    if (isVerticalScroll()) {
+        const baseX = WAVE_LANES[Phaser.Math.Between(1, WAVE_LANES.length - 2)];
+        [-70, 0, 70].forEach((dx, index) => {
+            scheduleWavePart(scene, index * 320, () => {
+                spawnEnemy.call(scene, {
+                    x: Phaser.Math.Clamp(baseX + dx, 80, 720),
+                    y: -60,
+                    type: 'ember',
+                    canShoot: index < 2,
+                    nextShotDelay: 800 + index * 250,
+                    skipPathClamp: true
+                });
+            });
+        });
+        return;
+    }
+    const baseLane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    const steps = [
+        { laneOffset: 0, delay: 0, x: 860, canShoot: true, nextShotDelay: 800 },
+        { laneOffset: -1, delay: 350, x: 920, canShoot: true, nextShotDelay: 1100 },
+        { laneOffset: 1, delay: 700, x: 980, canShoot: false }
+    ];
+    steps.forEach(step => {
+        const laneIndex = Phaser.Math.Clamp(baseLane + step.laneOffset, 0, WAVE_LANES.length - 1);
+        scheduleWavePart(scene, step.delay, () => {
+            spawnEnemy.call(scene, {
+                x: step.x,
+                y: getWaveLaneY(laneIndex),
+                type: 'ember',
+                canShoot: step.canShoot,
+                nextShotDelay: step.nextShotDelay || 1200
+            });
+        });
+    });
+}
+
+function spawnMirrorFanWave(scene) {
+    const holdBase = 150 + Phaser.Math.Between(0, 60);
+    for (let i = 0; i < 2; i++) {
+        const offset = 130 + i * 110;
+        const delay = i * 350;
+        [400 - offset, 400 + offset].forEach((x, side) => {
+            scheduleWavePart(scene, delay + side * 120, () => {
+                spawnEnemy.call(scene, {
+                    x: Phaser.Math.Clamp(x, 90, 710),
+                    y: -60 - i * 24,
+                    type: 'flareMirror',
+                    speed: -140,
+                    canShoot: true,
+                    nextShotDelay: 1100 + delay,
+                    holdY: holdBase + i * 45,
+                    skipPathClamp: true
+                });
+            });
+        });
+    }
+    [340, 460].forEach((x, i) => {
+        scheduleWavePart(scene, 500 + i * 200, () => {
+            spawnEnemy.call(scene, {
+                x: x, y: -50, type: 'dart', speed: -210,
+                canShoot: i === 0, tracksPlayer: true,
+                nextShotDelay: 900, skipPathClamp: true
+            });
+        });
+    });
+}
+
 function spawnSplitterDrones(x, y) {
     if (levelEnded) return;
 
@@ -4252,6 +4511,9 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
     enemy.splitsOnDeath = Boolean(typeDef.splitsOnDeath);
     enemy.usesMissile = Boolean(typeDef.usesMissile);
     enemy.usesRadialShot = Boolean(typeDef.usesRadialShot);
+    enemy.usesLobShot = Boolean(typeDef.usesLobShot);
+    enemy.usesSporeShot = Boolean(typeDef.usesSporeShot);
+    if (Number.isFinite(options.holdY)) enemy.holdY = options.holdY;
     enemy.killScore = Number.isFinite(typeDef.killScore) ? typeDef.killScore : REGULAR_KILL_SCORE;
     enemy.boostRefill = resolveEnemyBoostRefill(typeDef);
     enemy.driftVelocityY = 0;
@@ -4397,6 +4659,8 @@ function spawnObstacle(options = {}) {
     if (!obstacle) return null;
 
     obstacle.setTexture(variant.key);
+    const remapped = resolveObstacleTexture(variant.key);
+    if (remapped && obstacle.scene && obstacle.scene.textures.exists(remapped)) obstacle.setTexture(remapped);
     activateSprite(obstacle, x, y);
     const scale = Number.isFinite(options.scale)
         ? options.scale
@@ -4415,6 +4679,12 @@ function spawnObstacle(options = {}) {
 function getObstacleVariant(variantKey) {
     if (!variantKey) return null;
     return OBSTACLE_VARIANTS.find(variant => variant.key === variantKey) || null;
+}
+
+function resolveObstacleTexture(variantKey) {
+    const requested = variantKey && currentLevelArt && currentLevelArt[variantKey];
+    if (requested && requested !== variantKey) return requested;
+    return null;
 }
 
 function spawnScheduledPowerups() {
@@ -5414,7 +5684,9 @@ function updateExpansionBoss(time, frameDelta) {
     if (!ready) return;
     const action = NovaWingBosses.tick(state, time, bossPhase,
         difficultyNumber('bossTempoScale', 1), player && player.active
-            ? (target.verticalMode ? player.x : player.y) : (target.verticalMode ? 400 : 300));
+            ? (target.verticalMode ? player.x : player.y) : (target.verticalMode ? 400 : 300),
+        player && player.active
+            ? (target.verticalMode ? player.y : player.x) : (target.verticalMode ? 300 : 400));
     bossNextVolleyAt = state.mode === 'windup' ? state.windupUntil : state.nextAt;
     updateExpansionBossParts(target, time);
     const gfx = target.encounterEffects;
@@ -5509,6 +5781,75 @@ function updateExpansionBoss(time, frameDelta) {
         }
         gfx.fillStyle(spec.color, charged ? 0.5 : 0.15);
         gfx.fillCircle(0, target.displayHeight * 0.28, 6 + (charged ? Math.sin(time * 0.01) * 2 : 0));
+    } else if (state.id === 'heliosGatekeeper') {
+        if (charged && state.plan && state.plan.lanes) {
+            gfx.lineStyle(2, spec.color, 0.75);
+            state.plan.lanes.forEach((laneX, i) => {
+                const dir = state.plan.sweepVx && state.plan.sweepVx[i] < 0 ? -1 : 1;
+                const x0 = laneX - target.x;
+                const y0 = -target.displayHeight * 0.32;
+                gfx.lineBetween(x0, y0, x0 + dir * 44, y0);
+                gfx.lineBetween(x0 + dir * 44, y0, x0 + dir * 32, y0 - 8);
+                gfx.lineBetween(x0 + dir * 44, y0, x0 + dir * 32, y0 + 8);
+            });
+        }
+        gfx.fillStyle(0xfff3c4, charged ? 0.6 : 0.2);
+        gfx.fillCircle(0, target.displayHeight * 0.28, 7 + (charged ? Math.sin(time * 0.01) * 2 : 0));
+    } else if (state.id === 'cinderfallTyrant') {
+        gfx.fillStyle(0xffd27a, charged ? 0.9 : 0.3);
+        gfx.fillCircle(-target.displayWidth * 0.3, 0, charged ? 9 : 5);
+        if (state.plan && state.plan.lanes) {
+            const baseY = 580 - target.y;
+            state.plan.lanes.forEach(laneX => {
+                const dx = laneX - target.x;
+                gfx.fillStyle(spec.color, charged ? 0.75 : 0.3);
+                gfx.fillTriangle(dx - 14, baseY, dx + 14, baseY, dx, baseY - 26);
+            });
+        }
+    } else if (state.id === 'obsidianHierophant') {
+        if (state.mode === 'recovery') {
+            gfx.lineStyle(2, 0x8a6a2f, 0.5);
+            gfx.strokeCircle(0, 0, target.displayWidth * 0.42);
+        }
+        if (NovaWingBosses.vulnerable(state)) {
+            gfx.fillStyle(0xffe58b, charged ? 0.8 : 0.5);
+            gfx.fillCircle(0, -target.displayHeight * 0.08, 8 + (charged ? Math.sin(time * 0.01) * 2 : 0));
+        }
+        if (charged && state.plan && state.plan.lanes) {
+            gfx.lineStyle(1, spec.color, 0.55);
+            state.plan.lanes.forEach(laneX => {
+                gfx.lineBetween(0, target.displayHeight * 0.2, laneX - target.x, 420);
+            });
+        }
+        if (charged && state.plan && state.plan.angles) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            const muzzleY = target.displayHeight * 0.3;
+            state.plan.angles.forEach(angle => {
+                const radians = angle * Math.PI / 180;
+                gfx.lineBetween(0, muzzleY, Math.cos(radians) * 210, muzzleY + Math.sin(radians) * 210);
+            });
+        }
+    } else if (state.id === 'gardenEngine') {
+        const firing = (state.plan && state.plan.sections) || [];
+        const sections = state.sections || {};
+        const dw = target.displayWidth;
+        const dh = target.displayHeight;
+        [['mortar', -0.32], ['lasher', 0], ['battery', 0.32]].forEach(([name, fy]) => {
+            const dead = sections[name] && sections[name].destroyed;
+            const active = charged && firing.includes(name);
+            gfx.fillStyle(dead ? 0x3a4a3a : spec.color, dead ? 0.5 : active ? 0.9 : 0.25);
+            gfx.fillCircle(-dw * 0.32, dh * fy, active ? 8 : 4);
+            if (active) {
+                gfx.lineStyle(1, spec.color, 0.5);
+                gfx.strokeCircle(-dw * 0.32, dh * fy, 12 + Math.sin(time * 0.01) * 2);
+            }
+        });
+        if (charged && state.plan && state.plan.blooms) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            state.plan.blooms.forEach(bloom => {
+                gfx.lineBetween(-dw * 0.32, -dh * 0.32, bloom.x - target.x, bloom.y - target.y);
+            });
+        }
     } else {
         const muzzleX = -target.displayWidth * 0.32;
         for (const offset of [-32, 32]) {
@@ -5529,25 +5870,66 @@ function updateExpansionBoss(time, frameDelta) {
     if (action.kind === 'windup') {
         target.attackAnchor = { x: target.x, y: target.y };
         const plan = action.plan;
-        target.encounterWarnings = [];
+        target.encounterWarnings = (target.encounterWarnings || []).filter(w => w.active && w.isBloomTelegraph);
         if (plan.lanes) plan.lanes.forEach(cross => {
-            const vertical = plan.kind === 'sigilLanes';
+            const vertical = plan.kind === 'sigilLanes' || plan.kind === 'eruptionColumns'
+                || plan.kind === 'flareLance' || plan.kind === 'gateDischarge';
+            const loud = plan.kind === 'gateDischarge';
             const warning = segmentScope.own(this.add.rectangle(vertical ? cross : 400,
                 vertical ? 300 : cross, vertical ? plan.thickness : 800,
-                vertical ? 580 : plan.thickness, spec.color, 0.16).setDepth(5));
-            warning.setStrokeStyle(2, spec.color, 0.95);
+                vertical ? 580 : plan.thickness, spec.color, loud ? 0.32 : 0.16).setDepth(5));
+            warning.setStrokeStyle(loud ? 4 : 2, spec.color, loud ? 1 : 0.95);
             warning.combatTelegraph = { kind: 'laser', x: vertical ? cross : 400,
                 y: vertical ? 300 : cross, w: vertical ? plan.thickness : 800,
                 h: vertical ? 580 : plan.thickness, activatesAt: action.activatesAt, endsAt: action.endsAt };
             target.encounterWarnings.push(warning);
         });
+        if (plan.blooms) plan.blooms.forEach(bloom => {
+            const ring = segmentScope.own(this.add.circle(bloom.x, bloom.y, bloom.r, spec.color, 0.10).setDepth(5));
+            ring.setStrokeStyle(2, spec.color, 0.9);
+            ring.isBloomTelegraph = true;
+            ring.combatTelegraph = { kind: 'bloom', x: bloom.x, y: bloom.y, r: bloom.r,
+                activatesAt: action.activatesAt, endsAt: action.endsAt };
+            target.encounterWarnings.push(ring);
+        });
         sfx.laserWarn(target.x);
     } else if (action.kind === 'attack') {
-        target.encounterWarnings.forEach(w => { if (w.active) w.destroy(); });
-        target.encounterWarnings = [];
+        target.encounterWarnings.forEach(w => { if (w.active && !w.isBloomTelegraph) w.destroy(); });
+        target.encounterWarnings = (target.encounterWarnings || []).filter(w => w.active && w.isBloomTelegraph);
         fireExpansionBossAttack.call(this, target, action.plan, action.endsAt);
     } else if (action.kind === 'recovery') {
         target.attackAnchor = null;
+    }
+}
+
+function bossMissileColor(target, color) {
+    if (target && target.encounterState && target.encounterState.id === 'gardenEngine') return 0xff9430;
+    return color;
+}
+
+function detonateSporeBloom(target, bloom) {
+    if (!target || !target.active || boss !== target || gamePhase !== 'boss') return;
+    (target.encounterWarnings || []).forEach(warning => {
+        const mark = warning && warning.combatTelegraph;
+        if (warning.active && warning.isBloomTelegraph && mark &&
+            mark.x === bloom.x && mark.y === bloom.y) warning.destroy();
+    });
+    createExplosion(this, bloom.x, bloom.y, 10, { palette: 'cyan', flash: true });
+    sfx.enemyShoot(bloom.x);
+    const count = 8;
+    const speed = 135 * difficultyNumber('bossShotSpeedScale', 1);
+    for (let i = 0; i < count; i++) {
+        if (enemyBullets.getChildren().filter(b => b.active).length >= 100) return;
+        const angle = (i / count) * Math.PI * 2 + Math.PI / 8;
+        const spore = enemyBullets.get(bloom.x, bloom.y, 'enemyBullet');
+        if (!spore) return;
+        spore.setTexture('enemyBullet');
+        activateSprite(spore, bloom.x, bloom.y);
+        spore.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+        spore.setAngle(0);
+        spore.setDepth(2);
+        spore.setTint(0xff9430);
+        spore.body.setSize(spore.width * 0.7, spore.height * 0.7, true);
     }
 }
 
@@ -5570,35 +5952,62 @@ function spawnExpansionBossMissile(target, angle, speed, color, offset = 0) {
 function fireExpansionBossAttack(target, plan, endsAt) {
     const spec = NovaWingBosses.catalog[target.encounterState.id];
     if (plan.lanes) {
-        const vertical = plan.kind === 'sigilLanes';
-        plan.lanes.forEach(cross => {
-            const key = vertical ? 'bossLaserVertical' : 'bossLaser';
-            const laser = enemyBullets.get(vertical ? cross : 400, vertical ? 300 : cross, key);
-            if (!laser) return;
-            laser.setTexture(key);
-            activateSprite(laser, vertical ? cross : 400, vertical ? 300 : cross);
-            laser.setDisplaySize(vertical ? plan.thickness : 800, vertical ? 580 : plan.thickness);
-            laser.body.setSize(laser.width, laser.height, true);
-            laser.setVelocity(0, 0).setDepth(5).setTint(spec.color);
-            laser.isBossLaser = true;
-            laser.combatExpiresAt = endsAt;
-            laser.nextHitEffectAt = 0;
-            segmentScope.delay(this, Math.max(1, endsAt - playtestNow(this)), () => {
-                if (laser.active && laser.isBossLaser) releaseSprite(laser);
-            });
+        const vertical = plan.kind === 'sigilLanes' || plan.kind === 'eruptionColumns'
+            || plan.kind === 'flareLance' || plan.kind === 'gateDischarge';
+        const stagger = plan.kind === 'gateDischarge' ? 90 : 0;
+        plan.lanes.forEach((cross, laneIndex) => {
+            const ignite = () => {
+                const key = vertical ? 'bossLaserVertical' : 'bossLaser';
+                const laser = enemyBullets.get(vertical ? cross : 400, vertical ? 300 : cross, key);
+                if (!laser) return;
+                laser.setTexture(key);
+                activateSprite(laser, vertical ? cross : 400, vertical ? 300 : cross);
+                laser.setDisplaySize(vertical ? plan.thickness : 800, vertical ? 580 : plan.thickness);
+                laser.body.setSize(laser.width, laser.height, true);
+                const sweep = plan.kind === 'flareLance' && Array.isArray(plan.sweepVx)
+                    ? Number(plan.sweepVx[laneIndex]) : 0;
+                laser.setVelocity(Number.isFinite(sweep) ? sweep : 0, 0).setDepth(5).setTint(spec.color);
+                laser.isBossLaser = true;
+                laser.combatExpiresAt = endsAt;
+                laser.nextHitEffectAt = 0;
+                segmentScope.delay(this, Math.max(1, endsAt - playtestNow(this)), () => {
+                    if (laser.active && laser.isBossLaser) releaseSprite(laser);
+                });
+            };
+            if (stagger > 0 && laneIndex > 0) segmentScope.delay(this, laneIndex * stagger, ignite);
+            else ignite();
         });
         sfx.laserFire(target.x);
+    }
+    if (plan.kind === 'eruptionColumns' && plan.sparks) {
+        for (let spark = 0; spark < plan.sparks; spark++) {
+            segmentScope.delay(this, 150 + spark * 220, () => {
+                if (!target.active || boss !== target || gamePhase !== 'boss') return;
+                const aim = player && player.active ? player : { x: 200, y: 300 };
+                const originX = target.x - target.displayWidth * 0.32;
+                const angle = Math.atan2(aim.y - target.y, aim.x - originX) * 180 / Math.PI;
+                spawnExpansionBossMissile.call(this, target, angle, plan.sparkSpeed || 260, 0xff7a2a, 0);
+            });
+        }
+    }
+    if (plan.blooms) {
+        plan.blooms.forEach(bloom => {
+            segmentScope.delay(this, Math.max(1, bloom.fuseMs || 950), () => {
+                detonateSporeBloom.call(this, target, bloom);
+            });
+        });
+        sfx.missile(target.x);
     }
     // Lanes and volleys fire independently so one plan can combine both.
     // Existing plans carry only one arm, so their behavior is unchanged.
     if (plan.kind === 'iceFan') {
-        plan.angles.forEach(angle => spawnExpansionBossMissile.call(this, target, angle, plan.speed, spec.color));
+        plan.angles.forEach(angle => spawnExpansionBossMissile.call(this, target, angle, plan.speed, bossMissileColor(target, spec.color)));
         sfx.missile(target.x);
     } else if (plan.angles && plan.bursts) {
         for (let burst = 0; burst < plan.bursts; burst++) {
             segmentScope.delay(this, burst * 240, () => {
                 plan.angles.forEach((angle, i) => spawnExpansionBossMissile.call(this,
-                    target, angle + (burst - 1) * 5, plan.speed, spec.color,
+                    target, angle + (burst - 1) * 5, plan.speed, bossMissileColor(target, spec.color),
                     Number.isFinite(plan.batteryOffset) ? plan.batteryOffset : i % 2 ? 32 : -32));
                 if (target.active && boss === target) sfx.missile(target.x);
             });
@@ -7087,6 +7496,28 @@ function maybeFireEnemyShot(enemy, time) {
         return;
     }
 
+    if (enemy.usesLobShot) {
+        if (fireEnemyLobShot.call(this, enemy)) enemy.enemyAnimationFiredAt = time;
+        return;
+    }
+
+    if (enemy.usesSporeShot) {
+        const fire = getEnemyFireVector(enemy);
+        const shot = enemyBullets.get(fire.x, fire.y);
+        if (!shot) return;
+        shot.setTexture('enemyBullet');
+        activateSprite(shot, fire.x, fire.y);
+        shot.setVelocity(fire.vx, fire.vy);
+        shot.setAngle(0);
+        shot.setDepth(2);
+        shot.setTint(0xff9430);
+        shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
+        shot.sporeWeave = { baseVx: fire.vx, baseVy: fire.vy, t0: time, amp: 110, freq: 0.005 };
+        enemy.enemyAnimationFiredAt = time;
+        sfx.enemyShoot(enemy.x);
+        return;
+    }
+
     // Orbiter: 4-way radial burst
     if (enemy.usesRadialShot) {
         const speed = 280;
@@ -7123,6 +7554,38 @@ function maybeFireEnemyShot(enemy, time) {
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
     enemy.enemyAnimationFiredAt = time;
     sfx.enemyShoot(enemy.x);
+}
+
+function fireEnemyLobShot(enemy) {
+    if (!enemy || !enemy.active) return false;
+    const target = getEnemyTarget(enemy);
+    if (!target) return false;
+    const fire = getEnemyFireVector(enemy, {
+        muzzleScale: 0.3,
+        speed: Math.abs(enemy.shotSpeed || 120) * 0.6
+    });
+    const shot = enemyBullets.get(fire.x, fire.y);
+    if (!shot) return false;
+    shot.setTexture('enemyBullet');
+    activateSprite(shot, fire.x, fire.y);
+    shot.setVelocity(fire.vx, fire.vy);
+    shot.setAngle(0);
+    shot.setDepth(2);
+    shot.setTint(0xffd166);
+    shot.setScale(1.25);
+    shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
+    shot.isLobbed = true;
+    shot.lobGravity = isVerticalScroll() ? 260 : -260;
+    sfx.enemyShoot(enemy.x);
+    return true;
+}
+
+function updateSporeWeave(shot, time) {
+    const weave = shot.sporeWeave;
+    if (!weave || !shot.body) return;
+    const mag = Math.hypot(weave.baseVx, weave.baseVy) || 1;
+    const k = Math.sin((time - weave.t0) * weave.freq) * weave.amp;
+    shot.setVelocity(weave.baseVx - weave.baseVy / mag * k, weave.baseVy + weave.baseVx / mag * k);
 }
 
 function fireEnemyMissile(enemy) {
@@ -7498,6 +7961,57 @@ function updateEnemyMovement(enemy, frameDelta) {
         const home = Number.isFinite(enemy.homeX) ? enemy.homeX : enemy.x;
         const targetX = home + Math.sin(enemy.strafePhase) * amp;
         enemy.setVelocityX((targetX - enemy.x) * 6);
+        return;
+    }
+
+    if (enemy.enemyType === 'ember') {
+        updateScrollVelocity(enemy);
+        enemy.weavePhase = (enemy.weavePhase || 0) + 0.03;
+        const amp = enemy.weaveAmplitude || 90;
+        const target = getEnemyTarget(enemy);
+        if (isVerticalScroll()) {
+            const bias = target ? Phaser.Math.Clamp((target.x - enemy.x) * 0.6, -60, 60) : 0;
+            enemy.setVelocityX(Math.cos(enemy.weavePhase) * amp + bias);
+        } else {
+            const bias = target ? Phaser.Math.Clamp((target.y - enemy.y) * 0.6, -60, 60) : 0;
+            enemy.setVelocityY(Math.cos(enemy.weavePhase) * amp + bias);
+        }
+        return;
+    }
+
+    if (enemy.enemyType === 'flareMirror') {
+        const holdY = Number.isFinite(enemy.holdY) ? enemy.holdY : 200;
+        if (enemy.y < holdY - 4) {
+            updateScrollVelocity(enemy);
+            return;
+        }
+        const target = getEnemyTarget(enemy);
+        const tx = target && Number.isFinite(target.x) ? target.x : 400;
+        const align = Phaser.Math.Clamp((tx - enemy.x) * 2.4, -135, 135);
+        const push = enemy.x < 90 ? 60 : (enemy.x > 710 ? -60 : 0);
+        enemy.setVelocity(align + push, 0);
+        return;
+    }
+
+    if (enemy.enemyType === 'gateLantern') {
+        updateScrollVelocity(enemy);
+        const amp = enemy.strafeAmplitude || 90;
+        enemy.strafePhase = (enemy.strafePhase || 0) + 0.022;
+        const home = Number.isFinite(enemy.homeX) ? enemy.homeX : enemy.x;
+        const targetX = home + Math.sin(enemy.strafePhase) * amp;
+        enemy.setVelocityX((targetX - enemy.x) * 4);
+        return;
+    }
+
+    if (enemy.enemyType === 'sporeLobber') {
+        updateScrollVelocity(enemy);
+        if (!Number.isFinite(enemy.lobberPhase)) enemy.lobberPhase = gameplayRandom() * Math.PI * 2;
+        const now = enemy.scene ? playtestNow(enemy.scene) : 0;
+        if (enemy.x < 660) enemy.setVelocityX(-30);
+        let bob = Math.sin(now * 0.0025 + enemy.lobberPhase) * 55;
+        if (enemy.y < 95) bob = Math.abs(bob) + 20;
+        else if (enemy.y > 505) bob = -Math.abs(bob) - 20;
+        enemy.setVelocityY(bob);
         return;
     }
 
@@ -8753,16 +9267,80 @@ function launchOpeningGame() {
     openingStartCallback();
 }
 
+let levelVoteSummary = null;
+
+function isExtraBonusLevel(levelId) {
+    const id = Math.floor(Number(levelId));
+    if (id < 12 || id > 16) return false;
+    const def = typeof getLevelDef === 'function' ? getLevelDef(id) : null;
+    return Boolean(def && def.bonus);
+}
+
+function formatLikeNames(likes) {
+    if (!likes || !likes.length) return 'no likes yet';
+    let text = likes[0];
+    const hiddenStart = likes.length > 1 && (text + ', ' + likes[1]).length <= 18 ? 2 : 1;
+    if (hiddenStart === 2) text += ', ' + likes[1];
+    const hidden = likes.length - hiddenStart;
+    if (hidden > 0) text += ' +' + hidden;
+    return text;
+}
+
+function formatExtraLevelVoteLine(levelId) {
+    const row = levelVoteSummary && levelVoteSummary.levels
+        ? levelVoteSummary.levels.find(item => item.levelId === levelId)
+        : null;
+    const up = row ? row.up : 0;
+    const down = row ? row.down : 0;
+    return '▲ ' + up + '  ' + formatLikeNames(row && row.likes) + '   ▼ ' + down;
+}
+
+function extraLevelVoteChoice(levelId, pilotName) {
+    const row = levelVoteSummary && levelVoteSummary.levels
+        ? levelVoteSummary.levels.find(item => item.levelId === levelId)
+        : null;
+    if (!row) return null;
+    const key = sanitizePlayerName(pilotName || '').toLowerCase();
+    if (row.likes.some(name => name.toLowerCase() === key)) return 'up';
+    if (row.dislikes.some(name => name.toLowerCase() === key)) return 'down';
+    return null;
+}
+
+function loadLevelVotes() {
+    return fetch(LEVEL_VOTES_API_URL, { cache: 'no-store' })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data && Array.isArray(data.levels)) levelVoteSummary = data;
+            return levelVoteSummary;
+        })
+        .catch(() => levelVoteSummary);
+}
+
+function submitLevelVote(levelId, vote) {
+    const name = sanitizePlayerName(getSavedPlayerName() || 'Pilot');
+    return fetch(LEVEL_VOTES_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ levelId, name, vote })
+    }).then(response => {
+        if (!response.ok) throw new Error('vote failed');
+        return response.json();
+    }).then(data => {
+        if (data && Array.isArray(data.levels)) levelVoteSummary = { levels: data.levels };
+        return data;
+    });
+}
+
 function showBonusTestingGrounds(scene) {
     if (openingBonusNodes || !openingActive) return;
     commitOpeningPilotName();
     if (openingOverlay && openingOverlay.pilotName) openingOverlay.pilotName.setVisible(false);
     const nodes = [];
     openingBonusNodes = nodes;
-    nodes.push(scene.add.rectangle(400, 300, 800, 600, 0x030713, 0.98)
+    nodes.push(scene.add.rectangle(400, 300, 800, 600, 0x030713, 1)
         .setDepth(90).setScrollFactor(0).setInteractive());
-    const text = (y, label, size = '18px') => {
-        const node = scene.add.text(400, y, label, {
+    const text = (y, label, size = '18px', x = 400) => {
+        const node = scene.add.text(x, y, label, {
             fontFamily: 'monospace', resolution: 2, fontSize: size, fill: '#c7ddff', align: 'center'
         }).setOrigin(0.5).setDepth(91).setScrollFactor(0);
         nodes.push(node);
@@ -8771,19 +9349,49 @@ function showBonusTestingGrounds(scene) {
     text(100, 'BONUS TESTING GROUNDS', '28px');
     text(150, 'Experimental stages • Outside the main campaign\nPractice runs do not enter the leaderboard.', '14px');
     const bonuses = getEffectiveLevelDefs().filter(level => level.bonus);
-    const step = bonuses.length > 4 ? 48 : 60;
+    const columns = bonuses.length > 8;
+    const step = columns ? 42 : (bonuses.length > 4 ? 48 : 60);
+    const pilotName = getSavedPlayerName() || 'Pilot';
+    const voteButtons = [];
+    const paintVoteButton = (node, level) => {
+        if (!isExtraBonusLevel(level.id)) return;
+        const choice = extraLevelVoteChoice(level.id, pilotName);
+        node.setText('LEVEL ' + level.id + ': ' + level.name + '\n' + formatExtraLevelVoteLine(level.id));
+        node.setBackgroundColor(choice === 'up' ? '#145c32' : (choice === 'down' ? '#5c2430' : '#12445c'));
+    };
+    const bindBonus = (node, level) => node
+        .setPadding(columns ? 10 : 18, columns ? (isExtraBonusLevel(level.id) ? 4 : 8) : 12)
+        .setBackgroundColor('#12445c')
+        .setInteractive({ useHandCursor: true }).setName('bonus-level-' + level.id)
+        .on('pointerdown', () => {
+            bonusTestingLevel = level.id;
+            hideOpeningOverlay();
+            openingShownThisSession = true;
+            scene.scene.restart();
+        });
     bonuses.forEach((level, index) => {
-        text(196 + index * step, 'LEVEL ' + level.id + ': ' + level.name, bonuses.length > 4 ? '16px' : '18px')
-            .setPadding(18, 12).setBackgroundColor('#12445c')
-            .setInteractive({ useHandCursor: true }).setName('bonus-level-' + level.id)
-            .on('pointerdown', () => {
-                bonusTestingLevel = level.id;
-                hideOpeningOverlay();
-                openingShownThisSession = true;
-                scene.scene.restart();
-            });
+        const label = isExtraBonusLevel(level.id)
+            ? 'LEVEL ' + level.id + ': ' + level.name + '\n' + formatExtraLevelVoteLine(level.id)
+            : 'LEVEL ' + level.id + ': ' + level.name;
+        let node;
+        if (!columns) {
+            node = text(196 + index * step, label, bonuses.length > 4 ? '16px' : '18px');
+        } else {
+            const column = index < 7 ? 0 : 1;
+            const row = column === 0 ? index : index - 7;
+            node = text(188 + row * step, label, isExtraBonusLevel(level.id) ? '13px' : '14px', column === 0 ? 220 : 580);
+        }
+        bindBonus(node, level);
+        if (isExtraBonusLevel(level.id)) voteButtons.push({ node, level });
+        paintVoteButton(node, level);
     });
-    text(196 + bonuses.length * step + 18, 'BACK TO MAIN SCREEN').setPadding(18, 12)
+    loadLevelVotes().then(() => {
+        if (openingBonusNodes !== nodes) return;
+        voteButtons.forEach(button => {
+            if (button.node.active) paintVoteButton(button.node, button.level);
+        });
+    });
+    text(columns ? 500 : 196 + bonuses.length * step + 18, 'BACK TO MAIN SCREEN').setPadding(18, 12)
         .setInteractive({ useHandCursor: true }).on('pointerdown', () => {
             nodes.forEach(node => node.destroy());
             openingBonusNodes = null;
@@ -10460,6 +11068,14 @@ function resetPooledEnemyState(sprite) {
     sprite.fireMode = null;
     sprite.facePlayer = false;
     sprite.faceAngle = 0;
+    sprite.usesLobShot = false;
+    sprite.usesSporeShot = false;
+    sprite.holdY = null;
+    sprite.weavePhase = null;
+    sprite.lobberPhase = null;
+    sprite.sporeWeave = null;
+    sprite.isLobbed = false;
+    sprite.lobGravity = null;
 }
 
 function deactivateGroup(group, releaseChild = releaseSprite) {
@@ -10582,6 +11198,8 @@ function createMuzzleFlash(scene, x, y, level) {
 // Bake atmospheric detail once; scene restarts reuse the same GPU textures.
 // A local deterministic noise field keeps cosmetic work out of gameplay RNG.
 function getBackgroundTheme(levelId) {
+    const def = typeof getLevelDef === 'function' ? getLevelDef(levelId) : null;
+    if (def && def.backgroundTheme) return def.backgroundTheme;
     return levelId === 2 ? 'canyon' : (levelId === 3 ? 'singularity' : 'space');
 }
 
@@ -10614,6 +11232,8 @@ function createAtmosphereTextures(scene, theme = 'space') {
                 if (theme === 'canyon') {
                     // Dust hangs above and below the flight corridor.
                     ribbon = 0.3 + 0.7 * Math.abs(y - 180) / 180;
+                } else if (theme === 'canopy') {
+                    ribbon = 0.12 + 0.88 * (y / 360);
                 } else if (theme === 'singularity') {
                     const dx = x - 315, dy = (y - 115) * 1.25;
                     const radius = Math.hypot(dx, dy);
@@ -10625,11 +11245,12 @@ function createAtmosphereTextures(scene, theme = 'space') {
                 const dust = noise(x / 48 + 20, y / 48) * 0.45 + 0.55;
                 const i = (y * 480 + x) * 4;
                 const palettes = theme === 'canyon'
-                    ? [100, 56, 25] : (theme === 'singularity'
-                        ? [78 + 20 * violet, 26, 125] : [24 + 28 * violet, 55 - 24 * violet, 100]);
-                pixels.data[i] = (theme === 'canyon' ? 12 : 4) + cloud * palettes[0] * dust;
-                pixels.data[i + 1] = 7 + cloud * palettes[1] * dust;
-                pixels.data[i + 2] = (theme === 'canyon' ? 10 : 17) + cloud * palettes[2] * dust;
+                    ? [100, 56, 25] : (theme === 'canopy'
+                        ? [70 + 50 * (y / 360), 150, 210 - 70 * (y / 360)] : (theme === 'singularity'
+                            ? [78 + 20 * violet, 26, 125] : [24 + 28 * violet, 55 - 24 * violet, 100]));
+                pixels.data[i] = (theme === 'canyon' ? 12 : (theme === 'canopy' ? 70 : 4)) + cloud * palettes[0] * dust * (theme === 'canopy' ? 0.45 : 1);
+                pixels.data[i + 1] = (theme === 'canopy' ? 165 : 7) + cloud * palettes[1] * dust * (theme === 'canopy' ? 0.35 : 1);
+                pixels.data[i + 2] = (theme === 'canyon' ? 10 : (theme === 'canopy' ? 215 : 17)) + cloud * palettes[2] * dust * (theme === 'canopy' ? 0.25 : 1);
                 pixels.data[i + 3] = 255;
             }
         }
@@ -10747,10 +11368,16 @@ function applyBackgroundTheme(scene, levelId) {
     if (scene.distantPlanet) scene.distantPlanet.setVisible(!currentLevelArt.background && theme === 'space');
     const colors = theme === 'canyon'
         ? [0x877568, 0xbca083, 0xffdfb0, 0xffedcf]
-        : (theme === 'singularity'
-            ? [0x776299, 0xaf90d8, 0xf0d6ff, 0xb9dfff]
-            : [0x6a7aa0, 0xa8b8d8, 0xffffff, 0xc8f0ff]);
-    if (starLayers) starLayers.forEach((layer, index) => { layer.color = colors[index]; });
+        : (theme === 'canopy'
+            ? [0x8ec8ff, 0xc8e8ff, 0xfff4c8, 0xffe08a]
+            : (theme === 'singularity'
+                ? [0x776299, 0xaf90d8, 0xf0d6ff, 0xb9dfff]
+                : [0x6a7aa0, 0xa8b8d8, 0xffffff, 0xc8f0ff]));
+    const alphas = theme === 'canopy' ? [0, 0, 0, 0] : [0.35, 0.55, 0.85, 0.95];
+    if (starLayers) starLayers.forEach((layer, index) => {
+        layer.color = colors[index];
+        layer.alpha = alphas[index];
+    });
 }
 
 function drawBackgroundLayers(scene, frameDelta, time) {
@@ -11816,7 +12443,9 @@ function endLevel(title, color, options = {}) {
         return { ...tab, text };
     });
 
+    const rateExtraLevel = completed && isExtraBonusLevel(currentLevel) && !isPlaytestBotSession();
     const selectLeaderboardScope = scope => {
+        if (rateExtraLevel) return;
         selectedLeaderboardScope = leaderboardScopeBase(scope);
         const board = makeLeaderboardScope(selectedLeaderboardScope, viewedDifficulty);
         leaderboardTitle.setText(formatLeaderboardTitle(board, viewedDifficulty) + ' FASTEST');
@@ -12014,7 +12643,64 @@ function endLevel(title, color, options = {}) {
         shareText.setVisible(true);
     };
 
-    selectLeaderboardScope(displayScope);
+    if (rateExtraLevel) {
+        tabTexts.forEach(tab => tab.text.setVisible(false));
+        leaderboardChampion.setVisible(false);
+        leaderboardText.setVisible(false);
+        shareText.setVisible(false);
+        leaderboardTitle.setText('LIKE THIS STAGE?');
+        const voteName = sanitizePlayerName(getSavedPlayerName() || 'Pilot');
+        const voteHint = this.add.text(555, 196, voteName.toUpperCase(), {
+            fontSize: '14px', fill: '#8aa4ff', fontFamily: 'monospace', resolution: 2
+        }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+        const voteStatus = this.add.text(555, 400, 'Tap a thumb. Your name is saved with it.', {
+            fontSize: '13px', fill: '#c7ddff', fontFamily: 'monospace', resolution: 2,
+            align: 'center', wordWrap: { width: 280 }
+        }).setOrigin(0.5).setDepth(12).setScrollFactor(0);
+        const makeVoteButton = (y, label, vote) => {
+            const bg = this.add.rectangle(555, y, 250, 52, 0x12445c, 1)
+                .setStrokeStyle(2, 0x66f6ff, 0.9).setDepth(12).setScrollFactor(0)
+                .setInteractive({ useHandCursor: true });
+            const text = this.add.text(555, y, label, {
+                fontSize: '18px', fill: '#eafcff', fontFamily: 'monospace', resolution: 2
+            }).setOrigin(0.5).setDepth(13).setScrollFactor(0).setInteractive({ useHandCursor: true });
+            return { bg, text, vote };
+        };
+        const upButton = makeVoteButton(258, 'THUMBS UP', 'up');
+        const downButton = makeVoteButton(328, 'THUMBS DOWN', 'down');
+        overlayNodes.push(voteHint, voteStatus, upButton.bg, upButton.text, downButton.bg, downButton.text);
+        let votePending = false;
+        const paintVoteButtons = choice => {
+            [upButton, downButton].forEach(button => {
+                const selected = button.vote === choice;
+                button.bg.setFillStyle(selected ? (button.vote === 'up' ? 0x145c32 : 0x5c2430) : 0x12445c, 1);
+                button.text.setFill(selected ? '#ffffff' : '#eafcff');
+            });
+        };
+        paintVoteButtons(extraLevelVoteChoice(currentLevel, voteName));
+        const castVote = vote => {
+            if (votePending) return;
+            votePending = true;
+            voteStatus.setText('SAVING...');
+            submitLevelVote(currentLevel, vote).then(data => {
+                votePending = false;
+                if (!voteStatus.scene) return;
+                paintVoteButtons(vote);
+                const row = (data.levels || []).find(item => item.levelId === currentLevel);
+                voteStatus.setText('SAVED FOR ' + voteName.toUpperCase()
+                    + (row ? '\n▲ ' + row.up + '   ▼ ' + row.down : ''));
+            }).catch(() => {
+                votePending = false;
+                if (voteStatus.scene) voteStatus.setText('COULD NOT SAVE THE VOTE');
+            });
+        };
+        upButton.bg.on('pointerdown', () => castVote('up'));
+        upButton.text.on('pointerdown', () => castVote('up'));
+        downButton.bg.on('pointerdown', () => castVote('down'));
+        downButton.text.on('pointerdown', () => castVote('down'));
+    } else {
+        selectLeaderboardScope(displayScope);
+    }
     let submissionStarted = false;
     const submitScore = () => {
         if (submissionStarted || !completed || skipLeaderboard) return;

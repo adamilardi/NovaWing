@@ -10,12 +10,9 @@
  *   NOVAWING_URL=http://127.0.0.1:8765/ node scripts/test-mobile.mjs
  */
 import { chromium, devices } from 'playwright';
-import fs from 'fs';
+import { launchBrowser, routeVendorPhaser } from './rl/chrome.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:8765/';
-const CACHED_CHROME = process.env.PLAYWRIGHT_CHROME ||
-    '/home/adam/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome';
-
 const results = [];
 
 function pass(name, detail = '') {
@@ -183,6 +180,7 @@ async function testDesktop(browser) {
         isMobile: false
     });
     const page = await context.newPage();
+    await routeVendorPhaser(page);
     page.on('pageerror', (err) => fail('desktop pageerror', String(err)));
 
     const resp = await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
@@ -233,6 +231,7 @@ async function testMobile(browser) {
     const iPhone = devices['iPhone 13'];
     const context = await browser.newContext({ ...iPhone });
     const page = await context.newPage();
+    await routeVendorPhaser(page);
     page.on('pageerror', (err) => fail('mobile pageerror', String(err)));
 
     const resp = await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
@@ -487,6 +486,7 @@ async function testMobileLandscape(browser) {
         userAgent: devices['iPhone 13'].userAgent
     });
     const page = await context.newPage();
+    await routeVendorPhaser(page);
     await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
     await waitForGame(page);
     await launchFromOpening(page);
@@ -517,6 +517,7 @@ async function testTablet(browser) {
     const iPad = devices['iPad Pro 11'];
     const context = await browser.newContext({ ...iPad });
     const page = await context.newPage();
+    await routeVendorPhaser(page);
     const errors = [];
     page.on('pageerror', error => errors.push(String(error)));
     try {
@@ -542,6 +543,7 @@ async function testNarrowViewportGuards(browser) {
     });
     try {
         const page = await phone.newPage();
+        await routeVendorPhaser(page);
         await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
         await waitForGame(page); await page.waitForTimeout(220);
         await page.setViewportSize({ width: 568, height: 320 });
@@ -561,6 +563,7 @@ async function testNarrowViewportGuards(browser) {
     const desktop = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: false, hasTouch: false });
     try {
         const page = await desktop.newPage();
+        await routeVendorPhaser(page);
         await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
         await waitForGame(page); await page.waitForTimeout(120);
         const guard = await page.evaluate(() => ({
@@ -578,15 +581,7 @@ async function main() {
     console.log('NovaWing mobile web smoke tests');
     console.log('URL:', BASE);
 
-    const launchOptions = {
-        headless: true,
-        args: ['--use-gl=swiftshader', '--ignore-gpu-blocklist', '--no-sandbox']
-    };
-    if (fs.existsSync(CACHED_CHROME)) {
-        launchOptions.executablePath = CACHED_CHROME;
-    }
-
-    const browser = await chromium.launch(launchOptions);
+    const browser = await launchBrowser(chromium, true);
 
     try {
         await testDesktop(browser);

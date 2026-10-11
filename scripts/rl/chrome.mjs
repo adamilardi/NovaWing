@@ -137,7 +137,9 @@ function httpGet(url) {
 }
 
 function run(file, args) {
-    return spawn(file, args, { stdio: 'ignore' });
+    const child = spawn(file, args, { stdio: 'ignore' });
+    child.on('error', (error) => console.error(`[browser] ${path.basename(file)}: ${error.message}`));
+    return child;
 }
 
 function killToken(token) {
@@ -148,10 +150,10 @@ function killToken(token) {
         }
         const child = spawn(WIN_POWERSHELL, ['-NoProfile', '-Command',
             `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${token}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
-        const done = () => resolve();
+        const timer = setTimeout(() => resolve(), 8000);
+        const done = () => { clearTimeout(timer); resolve(); };
         child.on('exit', done);
         child.on('error', done);
-        setTimeout(done, 8000);
     });
 }
 
@@ -190,7 +192,7 @@ async function ensureRelay() {
  * Set NOVAWING_SWIFTSHADER=1 to keep the Linux browser.
  * @returns {Promise<import('playwright').Browser|null>}
  */
-async function tryWindowsChrome(chromium, headless) {
+async function tryWindowsChrome(chromium, headless, slowMo = 0) {
     const chromePath = windowsChromePath();
     const host = wslHostIp();
     if (!chromePath || !host) {
@@ -216,6 +218,7 @@ async function tryWindowsChrome(chromium, headless) {
         '--disable-frame-rate-limit',
         '--no-first-run',
         '--disable-extensions',
+        '--autoplay-policy=no-user-gesture-required',
         `--remote-debugging-port=${chromePort}`,
         `--user-data-dir=${profile}`,
         'about:blank'
@@ -245,7 +248,7 @@ async function tryWindowsChrome(chromium, headless) {
         return null;
     }
     try {
-        const browser = await chromium.connectOverCDP(endpoint);
+        const browser = await chromium.connectOverCDP(endpoint, { slowMo });
         const close = browser.close.bind(browser);
         browser.close = async () => {
             try { await close(); } catch { /* already disconnected */ }
@@ -263,10 +266,32 @@ async function tryWindowsChrome(chromium, headless) {
  * @param {typeof chromium} chromium
  * @param {boolean} headless
  */
-export async function launchBrowser(chromium, headless) {
-    const windows = await tryWindowsChrome(chromium, headless);
-    if (windows) return windows;
-    return chromium.launch(defaultLaunchOptions(headless));
+export async function launchBrowser(chromium, headless, { slowMo = 0, recordVideo = false } = {}) {
+    if (!recordVideo && windowsChromePath()) {
+        const windows = await tryWindowsChrome(chromium, headless, slowMo);
+        if (!windows) {
+            throw new Error('Windows GPU browser failed to start. Set NOVAWING_SWIFTSHADER=1 to explicitly allow slow software rendering.');
+        }
+        try {
+            const page = await windows.contexts()[0].newPage();
+            const renderer = await page.evaluate(() => {
+                const gl = document.createElement('canvas').getContext('webgl');
+                const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+                return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+            });
+            await page.close();
+            if (!renderer || /swiftshader|llvmpipe|software|basic render/i.test(renderer)) {
+                throw new Error(`Hardware WebGL unavailable: ${renderer || 'no renderer'}`);
+            }
+            console.log(`[browser] Windows GPU: ${renderer}`);
+            return windows;
+        } catch (error) {
+            await windows.close();
+            throw error;
+        }
+    }
+    console.warn(`[browser] Linux software rendering${recordVideo ? ' (RECORD_VIDEO=1; use RECORD_VIDEO=0 for the Windows GPU)' : ''}`);
+    return chromium.launch({ ...defaultLaunchOptions(headless), slowMo });
 }
 
 /**

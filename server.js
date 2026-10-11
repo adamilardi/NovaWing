@@ -1,4 +1,5 @@
 const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs, sanitizeLeaderboardScope } = require('./shared/run-rules.cjs');
+const LevelVotes = require('./shared/level-votes.cjs');
 const { build, OUTPUT: PUBLIC_ROOT } = require('./scripts/build.cjs');
 // Simple HTTP server for NovaWing
 const http = require('http');
@@ -17,6 +18,7 @@ const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;
 
 const DATA_DIR = path.join(__dirname, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
+const LEVEL_VOTES_FILE = path.join(DATA_DIR, 'level-votes.json');
 const activeRuns = new Map();
 const runRequestLog = new Map();
 let leaderboardWriteQueue = Promise.resolve();
@@ -232,6 +234,57 @@ async function handleLeaderboardRequest(req, res) {
         version: submittedEntry.version,
         scope: submittedEntry.scope,
         entries: result.savedEntries
+    });
+}
+
+async function readLevelVotes() {
+    try {
+        const raw = await fs.promises.readFile(LEVEL_VOTES_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(LevelVotes.normalizeVote).filter(Boolean);
+    } catch (err) {
+        if (err.code === 'ENOENT') return [];
+        throw err;
+    }
+}
+
+async function writeLevelVotes(votes) {
+    await fs.promises.mkdir(DATA_DIR, { recursive: true });
+    await fs.promises.writeFile(LEVEL_VOTES_FILE, JSON.stringify(votes, null, 2) + '\n');
+}
+
+async function handleLevelVoteRequest(req, res) {
+    if (req.method === 'GET') {
+        const votes = await readLevelVotes();
+        sendJson(res, 200, { levels: LevelVotes.summarizeVotes(votes) });
+        return;
+    }
+    if (req.method !== 'POST') {
+        res.writeHead(405, { Allow: 'GET, POST' });
+        res.end('Method not allowed');
+        return;
+    }
+    const payload = await readRequestJson(req);
+    const vote = LevelVotes.normalizeVote(payload);
+    if (!vote) {
+        sendJson(res, 400, { error: 'Invalid level vote' });
+        return;
+    }
+    const saved = await queueLeaderboardWrite(async () => {
+        const votes = await readLevelVotes();
+        const next = LevelVotes.applyVote(votes, vote);
+        if (!next) return null;
+        await writeLevelVotes(next);
+        return next;
+    });
+    if (!saved) {
+        sendJson(res, 400, { error: 'This stage has enough votes' });
+        return;
+    }
+    sendJson(res, 201, {
+        vote: { levelId: vote.levelId, name: vote.name, vote: vote.vote },
+        levels: LevelVotes.summarizeVotes(saved)
     });
 }
 
@@ -520,6 +573,16 @@ const server = http.createServer((req, res) => {
             if (!res.headersSent) {
                 const status = err.statusCode || 500;
                 // Avoid leaking filesystem internals on unexpected 500s.
+                sendJson(res, status, { error: status === 500 ? 'Server error' : (err.message || 'Server error') });
+            }
+        });
+        return;
+    }
+
+    if (requestPath === '/api/level-votes') {
+        handleLevelVoteRequest(req, res).catch(err => {
+            if (!res.headersSent) {
+                const status = err.statusCode || 500;
                 sendJson(res, status, { error: status === 500 ? 'Server error' : (err.message || 'Server error') });
             }
         });
