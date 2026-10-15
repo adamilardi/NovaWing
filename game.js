@@ -7868,7 +7868,12 @@ function enemyInFireRange(enemy) {
  * @param {{ muzzleScale?: number, leadPerpendicular?: boolean, speed?: number }} [options]
  */
 function getEnemyFireVector(enemy, options) {
-    return window.NovaWingEnemyMath.fireVector(enemy, getEnemyTarget(enemy), options, {
+    return window.NovaWingEnemyMath.fireVector(enemy, getEnemyTarget(enemy), {
+        predictiveAimSeconds: enemy.tracksPlayer
+            ? (difficultyFlag('softInterceptorAim', getLevelDifficultyTier() <= 1) ? 0.12 : 0.24)
+            : 0,
+        ...options
+    }, {
         vertical: isVerticalScroll(),
         fallbackSpeed: ENEMY_SHOT_SPEED,
         clamp: (value, lo, hi) => Phaser.Math.Clamp(value, lo, hi)
@@ -7957,7 +7962,7 @@ function updateEnemyMovement(enemy, frameDelta) {
     if (enemy.enemyType === 'strafer') {
         updateScrollVelocity(enemy);
         const amp = enemy.strafeAmplitude || 120;
-        enemy.strafePhase = (enemy.strafePhase || 0) + 0.045;
+        enemy.strafePhase = (enemy.strafePhase || 0) + 2.7 * dt;
         const home = Number.isFinite(enemy.homeX) ? enemy.homeX : enemy.x;
         const targetX = home + Math.sin(enemy.strafePhase) * amp;
         enemy.setVelocityX((targetX - enemy.x) * 6);
@@ -7966,7 +7971,7 @@ function updateEnemyMovement(enemy, frameDelta) {
 
     if (enemy.enemyType === 'ember') {
         updateScrollVelocity(enemy);
-        enemy.weavePhase = (enemy.weavePhase || 0) + 0.03;
+        enemy.weavePhase = (enemy.weavePhase || 0) + 1.8 * dt;
         const amp = enemy.weaveAmplitude || 90;
         const target = getEnemyTarget(enemy);
         if (isVerticalScroll()) {
@@ -7996,7 +8001,7 @@ function updateEnemyMovement(enemy, frameDelta) {
     if (enemy.enemyType === 'gateLantern') {
         updateScrollVelocity(enemy);
         const amp = enemy.strafeAmplitude || 90;
-        enemy.strafePhase = (enemy.strafePhase || 0) + 0.022;
+        enemy.strafePhase = (enemy.strafePhase || 0) + 1.32 * dt;
         const home = Number.isFinite(enemy.homeX) ? enemy.homeX : enemy.x;
         const targetX = home + Math.sin(enemy.strafePhase) * amp;
         enemy.setVelocityX((targetX - enemy.x) * 4);
@@ -8087,27 +8092,23 @@ function updateEnemyMovement(enemy, frameDelta) {
         return;
     }
 
-    if (isVerticalScroll()) {
-        // Track on X while approach velocity remains on Y.
-        const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
-        const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
-        const targetVelocityX = Phaser.Math.Clamp(
-            (target.x - enemy.x) * trackResponse,
-            -trackSpeed,
-            trackSpeed
-        );
-        enemy.setVelocityX(targetVelocityX);
-        return;
-    }
-
+    const vertical = isVerticalScroll();
+    const viewTop = enemy.scene && enemy.scene.cameras
+        ? enemy.scene.cameras.main.scrollY || 0 : 0;
+    enemy.pursuitState = window.NovaWingEnemyMath.pursuitLane(enemy, target, enemy.pursuitState, {
+        vertical, dt,
+        soft: difficultyFlag('softInterceptorAim', getLevelDifficultyTier() <= 1),
+        minLane: vertical ? 40 : viewTop + 40,
+        maxLane: vertical ? GAME_WIDTH - 40 : viewTop + GAME_HEIGHT - 40
+    });
     const trackSpeed = difficultyNumber('interceptorTrackSpeed', INTERCEPTOR_TRACK_SPEED);
     const trackResponse = difficultyNumber('interceptorTrackResponse', INTERCEPTOR_TRACK_RESPONSE);
-    const targetVelocityY = Phaser.Math.Clamp(
-        (target.y - enemy.y) * trackResponse,
-        -trackSpeed,
-        trackSpeed
+    const lateralVelocity = Phaser.Math.Clamp(
+        (enemy.pursuitState.lane - (vertical ? enemy.x : enemy.y)) * trackResponse,
+        -trackSpeed, trackSpeed
     );
-    enemy.setVelocityY(targetVelocityY);
+    if (vertical) enemy.setVelocityX(lateralVelocity);
+    else enemy.setVelocityY(lateralVelocity);
     if (enemy.facePlayer) updateEnemyFaceAngle(enemy, target, dt);
 }
 
@@ -11067,6 +11068,7 @@ function resetPooledEnemyState(sprite) {
     sprite.orbitRadiusTarget = null;
     sprite.fireMode = null;
     sprite.facePlayer = false;
+    sprite.pursuitState = null;
     sprite.faceAngle = 0;
     sprite.usesLobShot = false;
     sprite.usesSporeShot = false;

@@ -61,6 +61,7 @@ export function defaultLaunchOptions(headless) {
             '--use-gl=swiftshader',
             '--ignore-gpu-blocklist',
             '--no-sandbox',
+            '--mute-audio',
             '--autoplay-policy=no-user-gesture-required'
         ]
     };
@@ -218,6 +219,7 @@ async function tryWindowsChrome(chromium, headless, slowMo = 0) {
         '--disable-frame-rate-limit',
         '--no-first-run',
         '--disable-extensions',
+        '--mute-audio',
         '--autoplay-policy=no-user-gesture-required',
         `--remote-debugging-port=${chromePort}`,
         `--user-data-dir=${profile}`,

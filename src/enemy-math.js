@@ -46,11 +46,42 @@
         });
     }
 
+    // Sample a predicted lane at a human-readable reaction cadence. Once a
+    // close pass begins, retain that lane so a late dodge can beat the attack.
+    // State belongs to one pooled enemy and must be cleared on reuse.
+    function pursuitLane(enemy, target, state, options) {
+        const { vertical, dt, soft, minLane, maxLane } = options;
+        const axis = vertical ? 'x' : 'y';
+        const approach = vertical ? 'y' : 'x';
+        const velocity = enemy.body && enemy.body.velocity;
+        // World boost changes the actual approach speed before pursuit runs.
+        const speed = velocity && Number.isFinite(velocity[approach])
+            ? velocity[approach]
+            : (vertical ? enemy.baseVelocityY : enemy.baseVelocityX);
+        const gap = target[approach] - enemy[approach];
+        const closing = Number.isFinite(speed) && gap * speed > 0;
+        const timeToPass = closing ? Math.abs(gap / speed) : Infinity;
+        const next = state || { lane: target[axis], remaining: 0, committed: false };
+        if (state) next.remaining -= Math.max(0, dt);
+        if (!next.committed && next.remaining <= 0) {
+            const velocity = target.body && target.body.velocity;
+            const lateral = velocity && Number.isFinite(velocity[axis]) ? velocity[axis] : 0;
+            const leadTime = Math.min(soft ? 0.14 : 0.3, timeToPass);
+            const lead = Math.max(-70, Math.min(70, lateral * leadTime));
+            next.lane = Math.max(minLane, Math.min(maxLane, target[axis] + lead));
+            const interval = soft ? 0.24 : 0.16;
+            // Carry frame overshoot so reaction cadence does not drift with FPS.
+            next.remaining = interval - (Math.max(0, -next.remaining) % interval);
+        }
+        if (timeToPass < 0.32) next.committed = true;
+        return next;
+    }
+
     // Aimed enemy shot along the approach axis with perpendicular lead.
     // enemy: the shooter ({x, y, displayWidth/Height, shotSpeed?, shotAimScale?,
     //   shotMaxDx/Dy?, fireMode?, facePlayer?}).
     // target: the ship being shot at, or null when no ship is alive.
-    // options: { muzzleScale?, leadPerpendicular?, speed? } (as game.js).
+    // options: { muzzleScale?, leadPerpendicular?, predictiveAimSeconds?, speed? }.
     // env: { vertical, fallbackSpeed, clamp } — scroll orientation, signed
     //   default shot speed and a (value, lo, hi) clamp helper.
     function fireVector(enemy, target, options, env) {
@@ -62,6 +93,18 @@
         const clamp = typeof context.clamp === 'function'
             ? context.clamp
             : ((value, lo, hi) => Math.min(hi, Math.max(lo, value)));
+        // Predict only a short perpendicular displacement, preserving authored
+        // firing axes, aim caps and flat-shot enemies. Shots never home afterward.
+        if (opts.predictiveAimSeconds > 0 && !enemy.facePlayer && enemy.fireMode !== 'plunge') {
+            const axis = vertical ? 'x' : 'y';
+            const approachGap = vertical ? Math.abs(target.y - enemy.y) : Math.abs(target.x - enemy.x);
+            const shotSpeed = Math.abs(opts.speed || enemy.shotSpeed || fallbackSpeed);
+            const leadTime = Math.min(opts.predictiveAimSeconds, approachGap / (shotSpeed || 1));
+            const velocity = target.body && target.body.velocity;
+            const lateral = velocity && Number.isFinite(velocity[axis]) ? velocity[axis] : 0;
+            target = { x: target.x, y: target.y, body: target.body,
+                [axis]: target[axis] + clamp(lateral * leadTime, -70, 70) };
+        }
         const muzzleScale = Number.isFinite(opts.muzzleScale) ? opts.muzzleScale : 0.46;
         const speed = Number.isFinite(opts.speed)
             ? opts.speed
@@ -145,7 +188,7 @@
         };
     }
 
-    const api = { normalizeAngleDegrees, faceAngleToward, turnAngleToward, isVerticalScrollMode, nearestShip, fireVector };
+    const api = { normalizeAngleDegrees, faceAngleToward, turnAngleToward, isVerticalScrollMode, nearestShip, pursuitLane, fireVector };
     if (typeof module === 'object' && module.exports) module.exports = api;
     else root.NovaWingEnemyMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);
