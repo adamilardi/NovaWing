@@ -8,6 +8,7 @@
  *   SCENARIO=l3-intro,l2-canyon TRIALS=2 npm run rl:playtest
  *   EXPERT=policy POLICY=rl/weights/bc-policy.json npm run rl:playtest
  *   SCENARIO=all HEADLESS=0 npm run rl:playtest
+ *   SCENARIO=l17-full TRIALS=2 npm run rl:playtest  # any shipped level
  *
  * Optional segment jump after boot (uses __novawingDebug.setSegment):
  *   scenarios with `segment: 'topdown'` etc.
@@ -45,7 +46,7 @@ export const SCENARIOS = {
     'l1-full': {
         level: 1,
         durationMs: 180000,
-        description: 'Full level 1 attempt'
+        description: 'Full OPEN SPACE'
     },
     'l2-canyon': {
         level: 2,
@@ -55,7 +56,7 @@ export const SCENARIOS = {
     'l2-full': {
         level: 2,
         durationMs: 200000,
-        description: 'Full canyon + boss'
+        description: 'Full THE CANYON'
     },
     'l3-intro': {
         level: 3,
@@ -74,9 +75,20 @@ export const SCENARIOS = {
         segment: 'finalBoss',
         description: 'Jump to black-hole final boss'
     },
-    'l4-full': {level:4,durationMs:240000,description:'Full Solar Foundry'},
-    'l5-full': {level:5,durationMs:240000,description:'Full Crystal Tempest'},
-    'l6-full': {level:6,durationMs:300000,description:'Full Supernova Core'},
+    'l4-full': {level:4,durationMs:240000,description:'Full ORBITAL FOUNDRY'},
+    'l5-full': {level:5,durationMs:240000,description:'Full AURORA PASSAGE'},
+    'l6-full': {level:6,durationMs:300000,description:'Full VOID CATHEDRAL'},
+    'l7-full': {level:7,durationMs:240000,description:'Full ASHEN GRAVEYARD'},
+    'l8-full': {level:8,durationMs:240000,description:'Full PRISM BATTERY'},
+    'l9-full': {level:9,durationMs:240000,description:'Full ABYSSAL RELAY'},
+    'l10-full': {level:10,durationMs:240000,description:'Full STORM SPIRE'},
+    'l11-full': {level:11,durationMs:240000,description:'Full GLASS DUNES'},
+    'l12-full': {level:12,durationMs:240000,description:'Full VERDANT HULK'},
+    'l13-full': {level:13,durationMs:240000,description:'Full OBSIDIAN GATE'},
+    'l14-full': {level:14,durationMs:240000,description:'Full CINDERFALL KEEP'},
+    'l15-full': {level:15,durationMs:240000,description:'Full HELIOS GATE'},
+    'l16-full': {level:16,durationMs:240000,description:'Full CANOPY RUN'},
+    'l17-full': {level:17,durationMs:240000,description:'Full NEON REEF'},
     'l3-full': {
         level: 3,
         durationMs: 300000,
@@ -438,7 +450,9 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+    main().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}

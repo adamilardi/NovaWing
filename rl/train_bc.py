@@ -34,7 +34,12 @@ if str(_RL_DIR) not in sys.path:
 
 from contract import ACTION_SIZE, OBS_SIZE, OBS_VERSION  # noqa: E402
 from demos_io import Sample, load_bc_samples  # noqa: E402
-from model import PolicyMLP, action_loss, load_checkpoint_into_policy  # noqa: E402
+from model import (  # noqa: E402
+    PolicyMLP,
+    action_loss,
+    load_checkpoint_into_policy,
+    seed_discrete_heads,
+)
 
 ROOT = _RL_DIR.parent
 DEFAULT_DEMOS = ROOT / "rl" / "demos"
@@ -144,15 +149,33 @@ def train(args: argparse.Namespace) -> Path:
     model = PolicyMLP(OBS_SIZE, ACTION_SIZE, hidden).to(device)
 
     ckpt_path = Path(args.checkpoint) if args.checkpoint else None
+    resumed = False
+    saved_move_std = None
     if ckpt_path and ckpt_path.exists():
+        try:
+            previous = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        except (OSError, RuntimeError, ValueError):
+            previous = None
+        if isinstance(previous, dict):
+            saved_move_std = previous.get("move_log_std")
+            raw_prev = previous.get("model")
+            if saved_move_std is None and isinstance(raw_prev, dict):
+                saved_move_std = raw_prev.get("move_log_std")
         try:
             msg = load_checkpoint_into_policy(model, ckpt_path, device)
             print(msg)
+            resumed = True
         except (RuntimeError, KeyError, TypeError, ValueError) as exc:
             print(
                 f"WARNING: checkpoint {ckpt_path} incompatible with "
                 f"OBS_SIZE={OBS_SIZE} hidden={hidden} ({exc}); training from scratch"
             )
+            saved_move_std = None
+
+    action_bank = torch.from_numpy(np.stack([s.action for s in samples]))
+    head_notes = seed_discrete_heads(model, action_bank, resumed=resumed)
+    if head_notes:
+        print("discrete heads: " + ", ".join(head_notes))
 
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     random.seed(args.seed)
@@ -210,6 +233,10 @@ def train(args: argparse.Namespace) -> Path:
         print(f"Restored best val loss={best_val:.4f}")
 
     payload = model.export_json()
+    move_std_tensor = None
+    if saved_move_std is not None:
+        move_std_tensor = torch.as_tensor(saved_move_std, dtype=torch.float32).flatten().clamp(-4.0, 0.5)
+        payload["moveLogStd"] = [float(x) for x in move_std_tensor]
     payload["train"] = {
         "demos": {
             "episodes": meta["episodes"],
@@ -232,17 +259,19 @@ def train(args: argparse.Namespace) -> Path:
     print(f"Wrote policy → {out_path} ({out_path.stat().st_size} bytes)")
 
     ckpt_out = out_path.with_suffix(".pt")
-    torch.save(
-        {
-            "kind": "bc",
-            "model": model.state_dict(),
-            "hidden": hidden,
-            "obs_size": OBS_SIZE,
-            "action_size": ACTION_SIZE,
-            "obs_version": OBS_VERSION,
-        },
-        ckpt_out,
-    )
+    checkpoint = {
+        "kind": "bc",
+        "model": model.state_dict(),
+        "hidden": hidden,
+        "obs_size": OBS_SIZE,
+        "action_size": ACTION_SIZE,
+        "obs_version": OBS_VERSION,
+    }
+    # PPO learns the exploration scale. BC does not, so keep the last one
+    # instead of letting the next rollout fall back to the 0.22 default.
+    if move_std_tensor is not None:
+        checkpoint["move_log_std"] = move_std_tensor
+    torch.save(checkpoint, ckpt_out)
     print(f"Wrote checkpoint → {ckpt_out}")
 
     model.eval()
@@ -264,8 +293,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--demos", type=str, default=str(DEFAULT_DEMOS))
     p.add_argument("--out", type=str, default=str(DEFAULT_OUT))
     p.add_argument("--epochs", type=int, default=40)
-    p.add_argument("--batch-size", type=int, default=256)
-    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--batch-size", type=int, default=2048)
+    p.add_argument("--lr", type=float, default=3e-3)
     p.add_argument("--hidden", type=str, default="128,128")
     p.add_argument("--val-frac", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)

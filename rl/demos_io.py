@@ -419,7 +419,9 @@ def load_bc_samples(
             if obs.shape != (OBS_SIZE,) or act.shape != (ACTION_SIZE,):
                 continue
             t_frac = (i + 1) / max(1, len(steps))
-            step_w = ep_w * (0.85 + 0.3 * t_frac)
+            # The clear is decided late. The last step weighs about 3x the first
+            # so boss and dodge labels are not diluted by the long approach.
+            step_w = ep_w * (0.55 + 1.25 * t_frac)
             samples.append(
                 Sample(
                     obs=obs,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 import subprocess
 import tempfile
@@ -34,8 +35,18 @@ from model import (  # noqa: E402
     load_checkpoint_into_actor_critic,
     load_checkpoint_into_policy,
     log_prob_actions,
+    seed_discrete_heads,
 )
-from train_rl import build_ppo_buffer, resolve_ppo_checkpoints
+from train_rl import (  # noqa: E402
+    approximate_kl,
+    build_ppo_buffer,
+    make_optimizer,
+    ppo_update,
+    prepare_actor,
+    resolve_ppo_checkpoints,
+    value_clip_range,
+    whiten_rewards,
+)
 
 
 class TestBehaviorRollouts(unittest.TestCase):
@@ -238,30 +249,53 @@ class TestModel(unittest.TestCase):
             with torch.no_grad():
                 self.assertTrue(torch.allclose(bc(x), bc2(x), atol=1e-5))
 
-    def test_action_loss_ignores_constant_discrete_heads(self):
+    def test_action_loss_trains_constant_fire(self):
         ac = ActorCritic(OBS_SIZE, ACTION_SIZE, [16])
         obs = torch.randn(8, OBS_SIZE)
         logits, _ = ac(obs)
-        # Constant fire=1 (heuristic-demo regime): fire term must be zero so
-        # the constant head consumes no gradient budget; boost still varies.
         act = torch.zeros(8, ACTION_SIZE)
         act[:, 0] = 0.1
         act[:, 2] = 1.0
-        act[:4, 3] = 1.0
+        act[:, 3] = 1.0
         loss = action_loss(logits, act)
         move_only = ((torch.tanh(logits[:, 0:2]) - act[:, 0:2]) ** 2).mean(dim=1)
-        boost_l = F.binary_cross_entropy_with_logits(
-            logits[:, 3], act[:, 3], reduction="none")
-        expected = (move_only + 0.5 * boost_l).mean()
+        fire_l = F.binary_cross_entropy_with_logits(logits[:, 2], act[:, 2], reduction="none")
+        boost_l = F.binary_cross_entropy_with_logits(logits[:, 3], act[:, 3], reduction="none")
+        expected = (move_only + 0.5 * fire_l + 0.5 * boost_l).mean()
         torch.testing.assert_close(loss, expected)
-        # Fully constant discrete targets: loss is pure move MSE.
-        act[:, 3] = 1.0
-        loss_const = action_loss(logits, act)
-        torch.testing.assert_close(loss_const, move_only.mean())
-        # Varying fire target: fire term contributes again.
-        act[0, 2] = 0.0
-        loss_vary = action_loss(logits, act)
-        self.assertGreater(float(loss_vary), float(loss_const))
+        loss.backward()
+        # Target fire=1 and a logit near 0 must push the fire logit up.
+        self.assertLess(float(ac.policy_head.bias.grad[2]), 0.0)
+
+    def test_constant_fire_is_pinned_before_training(self):
+        torch.manual_seed(0)
+        model = PolicyMLP(OBS_SIZE, ACTION_SIZE, [32, 32])
+        actions = torch.zeros(64, ACTION_SIZE)
+        actions[:, 2] = 1.0
+        actions[:20, 3] = 1.0
+        notes = seed_discrete_heads(model, actions, resumed=False)
+        self.assertTrue(any(note.startswith("pin fire") for note in notes))
+        self.assertTrue(any(note.startswith("seed boost") for note in notes))
+        obs = torch.randn(32, OBS_SIZE)
+        with torch.no_grad():
+            fire = torch.sigmoid(model(obs)[:, 2])
+        self.assertGreater(float(fire.min()), 0.95)
+
+    def test_value_fit_does_not_move_the_actor(self):
+        torch.manual_seed(0)
+        ac = ActorCritic(OBS_SIZE, ACTION_SIZE, [16])
+        obs = torch.randn(16, OBS_SIZE)
+        with torch.no_grad():
+            before = ac.policy_logits(obs).clone()
+        _logits, values = ac(obs)
+        loss = (values - 5.0).pow(2).mean()
+        loss.backward()
+        torch.optim.SGD(ac.parameters(), lr=0.1).step()
+        with torch.no_grad():
+            after = ac.policy_logits(obs)
+            moved = (ac.value(obs) - values.detach()).abs().mean()
+        torch.testing.assert_close(before, after)
+        self.assertGreater(float(moved), 0.01)
 
     def test_log_prob_and_loss_shapes(self):
         ac = ActorCritic(OBS_SIZE, ACTION_SIZE, [16])
@@ -284,6 +318,128 @@ class TestModel(unittest.TestCase):
         s = json.dumps(payload)
         self.assertIn("layers", s)
         self.assertEqual(payload["kind"], "ppo-mlp")
+
+
+class TestLearningSpeed(unittest.TestCase):
+    def test_kl_estimator_stays_non_negative_when_likelihood_rises(self):
+        old = torch.zeros(8)
+        newer = torch.full((8,), 1.5)
+        kl = float(approximate_kl(newer, old))
+        self.assertGreater(kl, 0.1)
+        self.assertAlmostEqual(float(approximate_kl(old, old)), 0.0, places=5)
+        # The old mean(old - new) estimator is negative here and would skip the brake.
+        self.assertLess(float((old - newer).mean()), 0.0)
+
+    def test_value_clip_can_cover_a_large_return(self):
+        returns = torch.full((32,), 20.0)
+        self.assertGreater(value_clip_range(returns, 0.2), 5.0)
+
+    def test_whiten_keeps_a_win_above_a_death(self):
+        def episode(last):
+            rewards = np.zeros(40, np.float32)
+            rewards[-1] = last
+            return EpisodeRecord(
+                "toy", False, "policy", 0, 0, 1,
+                np.zeros((40, OBS_SIZE), np.float32),
+                np.zeros((40, ACTION_SIZE), np.float32),
+                rewards,
+            )
+
+        win = episode(20.0)
+        death = episode(-8.0)
+        _mean, std = whiten_rewards([win, death])
+        self.assertGreater(std, 1.0)
+        self.assertGreater(float(win.rewards[-1]), 1.0)
+        self.assertLess(float(death.rewards[-1]), -0.2)
+
+    def test_ppo_keeps_the_bc_actor(self):
+        torch.manual_seed(0)
+        bc = PolicyMLP(OBS_SIZE, ACTION_SIZE, [4])
+        with torch.no_grad():
+            for parameter in bc.parameters():
+                parameter.zero_()
+            bc.net[-1].bias.copy_(torch.tensor([0.5, -0.25, 3.0, -2.0]))
+        behavior_net = PolicyMLP(OBS_SIZE, ACTION_SIZE, [4])
+        with torch.no_grad():
+            for parameter in behavior_net.parameters():
+                parameter.zero_()
+        behavior = behavior_net.export_json()
+        behavior["moveLogStd"] = [math.log(0.22), math.log(0.22)]
+        with tempfile.TemporaryDirectory() as td:
+            ckpt = Path(td) / "bc.pt"
+            torch.save(
+                {
+                    "kind": "bc",
+                    "model": bc.state_dict(),
+                    "hidden": [4],
+                    "obs_size": OBS_SIZE,
+                    "action_size": ACTION_SIZE,
+                    "move_log_std": torch.tensor([math.log(0.3), math.log(0.3)]),
+                },
+                ckpt,
+            )
+            model = ActorCritic(OBS_SIZE, ACTION_SIZE, [4])
+            message = prepare_actor(model, ckpt, behavior, torch.device("cpu"))
+            self.assertIn("keeping", message)
+            self.assertAlmostEqual(float(model.policy_head.bias[0].detach()), 0.5, places=4)
+            self.assertAlmostEqual(float(model.move_log_std[0].detach()), math.log(0.3), places=4)
+            fresh = ActorCritic(OBS_SIZE, ACTION_SIZE, [4])
+            missing = prepare_actor(fresh, Path(td) / "missing.pt", behavior, torch.device("cpu"))
+            self.assertIn("behavior", missing)
+            self.assertAlmostEqual(float(fresh.policy_head.bias[0].detach()), 0.0, places=4)
+
+    def test_ppo_learns_a_delayed_action_quickly(self):
+        torch.manual_seed(0)
+        np.random.seed(0)
+        model = ActorCritic(OBS_SIZE, ACTION_SIZE, [32, 32])
+        with torch.no_grad():
+            model.move_log_std.fill_(math.log(0.35))
+            model.value_head.weight.zero_()
+            model.value_head.bias.zero_()
+        # Two behaviors in the same situation. The payoff arrives at the end
+        # of the hold, and only the positive stick should come out ahead.
+        horizon = 8
+        episodes = []
+        for sign, payoff in ((1.0, 1.0), (-1.0, -1.0)):
+            for _ in range(24):
+                obs = np.zeros((horizon, OBS_SIZE), np.float32)
+                obs[:, 0] = 1.0
+                behavior_act = np.zeros((horizon, ACTION_SIZE), np.float32)
+                behavior_act[:, 0] = 0.85 * sign
+                rewards = np.zeros(horizon, np.float32)
+                rewards[-1] = payoff
+                with torch.no_grad():
+                    logits, _ = model(torch.from_numpy(obs))
+                    logp, _ = log_prob_actions(
+                        logits, torch.from_numpy(behavior_act), model.move_log_std
+                    )
+                episodes.append(EpisodeRecord(
+                    "toy", payoff > 0, "policy", horizon * 64, 0, 1, obs, behavior_act,
+                    rewards, behavior_logp=logp.numpy().astype(np.float32),
+                    behavior_act=behavior_act.copy(),
+                    last_obs=obs[-1].copy(),
+                    terminal=True,
+                ))
+        opt = make_optimizer(model, 1e-2, 5e-2)
+        device = torch.device("cpu")
+        trunk_before = model.trunk[0].weight.detach().clone()
+        std_before = model.move_log_std.detach().clone()
+        for _ in range(4):
+            buf = build_ppo_buffer(
+                model, episodes, gamma=0.999, gae_lambda=0.99, device=device
+            )
+            ppo_update(
+                model, opt, buf, epochs=8, batch_size=128, clip_eps=0.2,
+                vf_coef=0.5, ent_coef=0.01, max_grad_norm=1.0, target_kl=0.03,
+                device=device,
+            )
+        with torch.no_grad():
+            situation = torch.zeros(1, OBS_SIZE)
+            situation[0, 0] = 1.0
+            stick = float(torch.tanh(model.policy_logits(situation)[0, 0]))
+        self.assertGreater(stick, 0.25, f"stick={stick:.3f}")
+        torch.testing.assert_close(model.trunk[0].weight, trunk_before)
+        torch.testing.assert_close(model.move_log_std, std_before)
 
 
 class TestCanonicalDemoSkip(unittest.TestCase):

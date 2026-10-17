@@ -8,7 +8,7 @@ record demos (heuristic expert / human later)
  behavior cloning (rl/train_bc.py)
         ↓  JSON weights  (rl/weights/bc-policy.json)
  play-policy / in-page inference
-        ↓  gated PPO+GAE when policy wins exist
+        ↓  gated AWR+GAE when policy wins exist
  speedrun-loop (curriculum + clear-time promotion)
 ```
 
@@ -25,7 +25,7 @@ record demos (heuristic expert / human later)
 | Encode + forward + in-page pilot | `scripts/rl/runtime-pure.js` |
 | Node re-exports | `obs-encode.mjs`, `policy-infer.mjs` |
 | Python constants | `rl/contract.py` (`OBS_VERSION=4`, `OBS_SIZE=320`) |
-| Trainers | `rl/train_bc.py`, `rl/train_rl.py` (PPO) |
+| Trainers | `rl/train_bc.py`, `rl/train_rl.py` (AWR) |
 
 - **Obs v4** (`OBS_SIZE=320`): the v3 prefix plus 128 tactical features covering all observed threats, warnings, movement rules and action estimates. The prefix includes pilot dodge facts (hold collision, time to impact, edge distances, nine safe move flags, next boss shot). Edge and move flags use canonical axes in vertical play. Enemy bullets are ordered by hold collision time.
 - **Action**: `[ax, ay, fire, boost]` with `ax,ay ∈ [-1,1]`, buttons in `{0,1}`.
@@ -45,7 +45,7 @@ Policy recording stores complete `(obs, action, reward, nextObs)` transitions, i
 
 For PPO, stochastic movement uses a Gaussian with the exported `moveLogStd`; buttons use Bernoulli draws from the network probabilities. The environment receives bounded movement, while `behaviorAction` retains the unclipped latent sample and `behaviorLogProb` records its joint likelihood. `EXPLORE_MOVE_STD` can override the collection variance; the override is saved with the behavior policy. `EXPERT=policy` always samples during collection and rejects tactical assistance because an assisted action has a different distribution.
 
-Each recording saves `policy-<sha256>.json` beside the demos. Keep that file with its rollouts. PPO selects the latest behavior-policy cohort, restores that exact actor, verifies its hash, and keeps recorded likelihoods and advantages fixed throughout the update. Older demos without `transitionVersion: 1` remain available for BC but are skipped by PPO; record fresh policy demos before fine-tuning. The included policy weights may also need current-contract BC training first.
+Each recording saves `policy-<sha256>.json` beside the demos. Keep that file with its rollouts. The fine-tune selects the latest behavior-policy cohort, verifies its hash, and keeps that actor's trunk. Advantages are recomputed from the critic each outer epoch. Older demos without `transitionVersion: 1` remain available for BC but are skipped here; record fresh policy demos before fine-tuning. The included policy weights may also need current-contract BC training first.
 
 Scenario jumps must reach their requested segment and authored orientation; a failed jump aborts instead of reporting a mislabeled trial. Scenario reports include wall and simulated durations and effective player rules. `DURATION_MS` can cap a scenario for a quick smoke check.
 
@@ -64,10 +64,17 @@ SCENARIO=l3-topdown,l3-final DURATION_MS=10000 npm run rl:playtest
 ```bash
 npm start
 
-python3 -m venv .venv-rl
-source .venv-rl/bin/activate
-pip install -r rl/requirements.txt
+npm run rl:setup
 ```
+
+`rl:setup` creates the uv-managed `.venv-rl` environment and installs
+`rl/requirements.txt` into it. The `rl:*` scripts and `speedrun-loop`
+pick up `.venv-rl/bin/python` automatically when it exists. For manual
+Python work only: `source .venv-rl/bin/activate`.
+
+Training runs on CUDA: the dev machine has an RTX 5070, and `rl:setup`
+installs the matching CUDA torch build from PyPI. CI instead installs the
+CPU-only wheel for the same pinned version.
 
 ---
 
@@ -81,19 +88,25 @@ pip install -r rl/requirements.txt
 
 ### Level-scoped wins
 
-When `LEVEL=N` is set (record, eval, speedrun-loop), a **win** means **clearing level N** (player advances to N+1), not full-campaign victory. Campaign win still requires `victoryPending` (final boss).
+When `LEVEL=N` is set (record, eval, speedrun-loop), a **win** means **clearing level N** (advance past it, or `levelCompleted` on bonus stages), not full-campaign victory. Campaign win still requires `victoryPending` (final boss). `CAMPAIGN=1` recording only starts on campaign levels.
 
 This is required for curriculum: L1 eval win-rate would stay 0 forever if “win” only meant full campaign.
 
 ### Curriculum gates (`speedrun-loop`)
 
-Unless `FORCE_LEVELS=1`:
+`LEVELS` accepts any shipped level id (campaign and bonus alike). Unless
+`FORCE_LEVELS=1` (or `GATE_L2=0`):
 
 | Level | Unlocks when |
 |-------|----------------|
-| L1 | always (if in `LEVELS`) |
+| First requested | always runs |
 | L2 | L1 `lastWinRate` ≥ `GATE_L2` (default **0.20**) |
-| L3 | L2 `lastWinRate` ≥ `GATE_L3` (default **0.15**) |
+| L3 | predecessor `lastWinRate` ≥ `GATE_L3` (default **0.15**) |
+| Every level beyond | predecessor `lastWinRate` ≥ `GATE_NEXT` (default **0.15**) |
+
+Each later requested level unlocks off its predecessor (nearest lower
+requested level), so `LEVELS=1,2,3` behaves exactly as before and longer
+chains (bonus levels included) open one link at a time.
 
 PPO runs only if demo pool has ≥ `MIN_POLICY_WINS_FOR_RL` (default **3**) policy-win files, or `REINFORCE=1` / `PPO=1`.
 
@@ -109,10 +122,48 @@ FORCE_LEVELS=1 npm run rl:speedrun-loop
 
 # Aggressive multi-level farm
 npm run rl:speedrun-loop:all
+
+# Single bonus level (runs always: it is the first requested level)
+LEVELS=17 npm run rl:speedrun-loop
+
+# Every shipped level as one chain
+LEVELS=$(node -e "console.log(Array.from({length:require('./levels.js').getTotalLevels()},(_,i)=>i+1).join(','))") npm run rl:speedrun-loop
 ```
 
 Board: `rl/weights/speedrun-board.json`  
 Best weights: `rl/weights/bc-policy-best.json` (only after a true faster clear)
+
+### Speed (measured on 12 cores + RTX 5070, L1 heuristic)
+
+Recording is the bottleneck, and each step pays ~20–35ms of fixed CDP /
+virtual-clock overhead that does not parallelize — so wide sample windows
+win: the game sim scales across renderers while the overhead amortizes.
+
+| Config | Game-time per wall-second |
+|--------|---------------------------|
+| 1 worker × 64ms | ~1.1× |
+| 6 workers × 64ms | ~2.5× |
+| 6 workers × 256ms | ~6.5× |
+
+Training (12k steps, 10 epochs): batch 256 → 22.6s; batch 2048 → 8.8s
+GPU / 6s CPU. Training runs on the dev machine's RTX 5070 (CUDA
+auto-select with CPU fallback) and is not the bottleneck at current data
+scales — it will matter past ~100k steps.
+
+Knobs, in impact order:
+
+- `SAMPLE_MS=256` — ~2.6× record throughput at 6 workers. Tradeoff:
+  actions are held 4× longer, so supervision is coarser. Deploy replans
+  at its own cadence, so this mostly costs fine-grained labels.
+- `RECORD_WORKERS=6` + `HEADLESS_SHELL=1` — shell binary starts faster
+  and uses less memory per worker; 2–3 workers per browser is the sweet
+  spot, more only helps with wide windows.
+- `BATCH_SIZE=2048` (now the default) — ~2.6× faster BC epochs.
+- `rl:speedrun-loop:fast` — L1-only preset combining all of the above
+  with short rounds for quick iteration.
+- `PROFILE_STEPS=1` on `rl:record` — per-step breakdown
+  (snapshot / decide / clock / encode) to keep this honest as the game
+  and harness change.
 
 ### Manual steps
 
@@ -193,6 +244,7 @@ Scenarios (`scripts/rl/playtest-scenarios.mjs`):
 | `l3-topdown` | Debug jump to vertical gauntlet |
 | `l3-final` | Debug jump to BH boss |
 | `l3-full` | Full finale |
+| `l4-full` … `l17-full` | Full bonus-level attempts (one per shipped level) |
 
 Reports: `rl/weights/playtest-latest.json` + timestamped copy.  
 Includes **death histogram** (`black_hole_swallow`, `wall_or_corridor`, `softlock_progress`, …) and **segments covered**.
@@ -205,7 +257,7 @@ Includes **death histogram** (`black_hole_swallow`, `wall_or_corridor`, `softloc
 2. **Playtest** heuristic: `npm run rl:playtest`
 3. **Seed L1 wins** with speedrun-biased expert: `npm run rl:seed-l1` then `npm run rl:train`
 4. Run `npm run rl:speedrun-loop:l1` until win rate ≥ 20%
-5. Open multi-level loop (gates unlock L2/L3 automatically)
+5. Open multi-level loop (gates unlock later levels automatically)
 6. Status anytime: `npm run rl:status`
 
 ### Boss practice (skip waves)
@@ -283,7 +335,7 @@ Observed on a long L1 parallel run: expert clears ~70s reliably; policy often re
 4. **Parallel expert farm only** for spare CPU/RAM (extra win demos); avoid two competing speedrun-loops writing the same policy file.
 5. **Boss practice scenario** for demos (playtest-style jump or debug start at boss) so the net sees more clear trajectories.
 6. Optional later: richer boss features in OBS (volley phase, laser telegraph) if imitation still fails.
-7. Optional: store `log_prob` at record time for exact on-policy PPO (current trainer recomputes under the loaded policy).
+7. Behavior log-probs are stored at record time. The fine-tune keeps the BC trunk frozen and regresses the action head onto high-advantage actions.
 
 ### Machine budget (this host ~8 cores / 9.5 GB)
 
@@ -317,7 +369,7 @@ rl/
   demos_io.py            # shared JSONL + GAE
   model.py               # PolicyMLP + ActorCritic + log-prob
   train_bc.py            # speedrun-weighted BC + JSON export
-  train_rl.py            # PPO + GAE fine-tune
+  train_rl.py            # AWR + GAE fine-tune
   tests/                 # unittest suite
   requirements.txt
   demos/                 # gitignored JSONL
@@ -326,16 +378,17 @@ rl/
 
 ---
 
-## PPO fine-tune (`train_rl.py`)
+## RL fine-tune (`train_rl.py`)
 
 Uses policy self-play demos with per-step rewards:
 
 | Piece | Detail |
 |-------|--------|
-| Algorithm | Clipped PPO (actor-critic) |
-| Advantage | GAE(λ) with learned value head |
-| Policy | Gaussian move + Bernoulli fire/boost; learnable move log-std |
-| Stability | value clip, grad clip, target-KL early stop |
+| Algorithm | Advantage-weighted regression onto the sampled actions. The BC actor is the start point. Recorded behavior log-probs stay on the rollout for diagnostics; the trunk is not rewound and is not trained |
+| Advantage | GAE(γ=0.999, λ=0.99), about six seconds of credit at a 64ms hold. Weights are `exp(adv / 0.5)`, clamped at 10 |
+| Critic | Linear readout on frozen features, fit for one warmup pass at `--value-lr 0.05` after reward whitening |
+| Policy step | Action head only, `--lr 1e-2`. A likelihood-ratio clip was stopping after the stick moved a few hundredths, so it is not the brake |
+| Buttons | Constant fire/boost labels are pinned, so a short BC run still shoots |
 | Export | Policy MLP JSON only (value head stays in `.pt`) |
 | Gate | `MIN_POLICY_WINS_FOR_RL` policy-win demos (or `PPO=1`) |
 
@@ -349,7 +402,8 @@ Used in `scripts/rl/rewards.mjs` for PPO:
 |--------|------|
 | `Δ progress` | main speedrun signal |
 | score delta | capped |
-| life lost | negative |
+| life lost | −1.5 per life when the ship stays in the fight |
+| continue | same −8 as a death (unlimited continues never end the episode) |
 | level / boss reach | positive |
 | boost while progressing | small positive |
 | win / death | +20 / −8 |

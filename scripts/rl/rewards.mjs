@@ -27,8 +27,15 @@ export function stepReward(prev, snap) {
         const dealt = (prev.boss.health || 0) - (snap.boss.health || 0);
         if (dealt > 0) r += Math.min(dealt / snap.boss.maxHealth, 1) * 6.0;
     }
-    const dl = (snap.lives || 0) - (prev.lives || 0);
-    if (dl < 0) r += dl * 1.5;
+    // Unlimited playtest continues never end the episode, so the terminal
+    // death bonus never fires. Charge it when the continue card appears.
+    // A non-fatal hit is the smaller life-loss term.
+    const continued = !prev.continuePending && snap.continuePending;
+    if (continued) r += REWARD_DEATH;
+    else {
+        const dl = (snap.lives || 0) - (prev.lives || 0);
+        if (dl < 0) r += dl * 1.5;
+    }
     if ((snap.level || 1) > (prev.level || 1)) r += 4.0;
     if (prev.phase === 'waves' && snap.phase === 'boss') r += 2.5;
     if (snap.isBoosting && dp > 0) r += 0.05;

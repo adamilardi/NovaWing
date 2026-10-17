@@ -7,7 +7,9 @@
  *
  * CAMPAIGN=1 records full campaigns (L1 → victory, or LEVEL → victory)
  * instead of single levels. Covers transitions and cross-level entries
- * that single-level demos never see.
+ * that single-level demos never see. CAMPAIGN only starts on campaign
+ * levels: bonus levels never set victory, so record them scoped
+ * (LEVEL=N without CAMPAIGN), where a win is clearing that level.
  *
  * Policy rollouts store shaped `reward` per step for PPO fine-tuning.
  *
@@ -24,6 +26,7 @@ import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
 import { launchBrowser } from './chrome.mjs';
+import { createRequire } from 'module';
 import { isRunWin, isDeathlessWin, advanceCampaign } from './run-outcome.mjs';
 import { settleLevelStart } from '../jev-runtime.mjs';
 import {
@@ -51,9 +54,15 @@ const HEADLESS = process.env.HEADLESS !== '0';
 const EPISODES = Math.max(1, Number(process.env.EPISODES || 5));
 const CAMPAIGN = process.env.CAMPAIGN === '1';
 const DURATION_MS = Number(process.env.DURATION_MS || (CAMPAIGN ? 480000 : 360000));
-const SAMPLE_MS = Number(process.env.SAMPLE_MS || 64);
+const REQUESTED_SAMPLE_MS = Number(process.env.SAMPLE_MS || 64);
 if (!Number.isFinite(DURATION_MS) || DURATION_MS < 16) throw new Error("DURATION_MS must be at least 16");
-if (!Number.isFinite(SAMPLE_MS) || SAMPLE_MS < 16) throw new Error("SAMPLE_MS must be at least 16");
+if (!Number.isFinite(REQUESTED_SAMPLE_MS) || REQUESTED_SAMPLE_MS < 16) throw new Error("SAMPLE_MS must be at least 16");
+// Playwright fires animation frames on a 16ms grid. A 50ms hold steps 14ms
+// frames and the learned timing no longer matches the 64ms eval hold.
+const SAMPLE_MS = Math.max(16, Math.round(REQUESTED_SAMPLE_MS / 16) * 16);
+if (SAMPLE_MS !== REQUESTED_SAMPLE_MS) {
+    console.log(`SAMPLE_MS ${REQUESTED_SAMPLE_MS} snapped to ${SAMPLE_MS} so holds stay on 16ms frames`);
+}
 const DEMO_DIR = process.env.DEMO_DIR || path.join(ROOT, 'rl', 'demos');
 const EXPERT = (process.env.EXPERT || 'heuristic').toLowerCase();
 const POLICY_PATH = process.env.POLICY || path.join(ROOT, 'rl', 'weights', 'bc-policy.json');
@@ -71,7 +80,15 @@ const BOSS_ENCOUNTER = ['standard', 'intro', 'final'].includes(BOSS_RAW)
     ? BOSS_RAW
     : (process.env.BOSS_ENCOUNTER || '1');
 const START_SEGMENT = (process.env.SEGMENT || '').trim() || null;
+const PROFILE_STEPS = process.env.PROFILE_STEPS === '1';
 if (CAMPAIGN && BOSS_SKIP) throw new Error('CAMPAIGN=1 cannot combine with BOSS_SKIP');
+if (CAMPAIGN && START_LEVEL != null) {
+    const levelDef = createRequire(import.meta.url)('../../levels.js').getLevelDef(START_LEVEL);
+    if (levelDef && levelDef.bonus) {
+        throw new Error(`CAMPAIGN=1 cannot start on bonus level ${START_LEVEL} ` +
+            `(bonus clears never set victory) — drop CAMPAIGN to record a scoped LEVEL=${START_LEVEL} run`);
+    }
+}
 
 /** Level-scoped win, or full campaign victory when CAMPAIGN=1. */
 function isEpisodeWin(snap) {
@@ -198,10 +215,16 @@ async function recordEpisode(browser, episodeIndex, policy) {
     let terminal = false;
     let pendingObs = null;
     let nextProgressLog = 20000;
+    const profile = PROFILE_STEPS ? { snap: 0, decide: 0, clock: 0, encode: 0, n: 0 } : null;
+    const mark = PROFILE_STEPS
+        ? (key, t0) => { profile[key] += performance.now() - t0; }
+        : () => {};
 
     try {
         while (simulatedMs < DURATION_MS) {
+            let t0 = PROFILE_STEPS ? performance.now() : 0;
             const before = await page.evaluate(() => __novawingDebug.getBotSnapshot());
+            mark('snap', t0);
             if (before.continuePending) {
                 await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
                 pendingObs = null;
@@ -227,6 +250,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
             // One decision, one held action, one transition. No autonomous rAF pilot
             // can replace the action while the recorder advances the frozen game.
             const obs = pendingObs || Array.from(encodeObservation(before));
+            t0 = PROFILE_STEPS ? performance.now() : 0;
             const decision = await page.evaluate(({ obs, mode }) => {
                 const rt = window.NovaWingRL;
                 const snap = __novawingDebug.getBotSnapshot();
@@ -246,10 +270,17 @@ async function recordEpisode(browser, episodeIndex, policy) {
                 return { obs,
                     action: rt.encodeAction(window.__novawingPilotLastInput, snap) };
             }, { obs, mode });
-            const holdMs = Math.min(SAMPLE_MS, DURATION_MS - simulatedMs);
+            mark('decide', t0);
+            let holdMs = Math.min(SAMPLE_MS, DURATION_MS - simulatedMs);
+            holdMs -= holdMs % 16;
+            if (holdMs < 16) break;
+            t0 = PROFILE_STEPS ? performance.now() : 0;
             await page.clock.runFor(holdMs);
+            mark('clock', t0);
             simulatedMs += holdMs;
+            t0 = PROFILE_STEPS ? performance.now() : 0;
             const after = await page.evaluate(() => __novawingDebug.getBotSnapshot());
+            mark('snap', t0);
             finalSnap = after;
             if (simulatedMs >= nextProgressLog) {
                 console.log(`episode ${episodeIndex}: sim=${Math.round(simulatedMs / 1000)}s segment=${after.segment} lives=${after.lives} continues=${after.continuesUsed}`);
@@ -274,7 +305,10 @@ async function recordEpisode(browser, episodeIndex, policy) {
             }
             maxLevel = Math.max(maxLevel, next.level || 1);
             finalSnap = next;
+            t0 = PROFILE_STEPS ? performance.now() : 0;
             pendingObs = Array.from(encodeObservation(next));
+            mark('encode', t0);
+            if (PROFILE_STEPS) profile.n += 1;
             episodeReturn += reward;
             steps.push({ ...decision, reward, nextObs: pendingObs,
                 terminated: Boolean(isWin || isLose), durationMs: holdMs,
@@ -296,6 +330,12 @@ async function recordEpisode(browser, episodeIndex, policy) {
     } finally {
         await stopExpert(page, mode);
         await context.close();
+    }
+    if (PROFILE_STEPS && profile.n > 0) {
+        const avg = (ms) => (ms / profile.n).toFixed(1);
+        console.log(`profile ep${episodeIndex}: n=${profile.n} ` +
+            `snap=${avg(profile.snap)}ms decide=${avg(profile.decide)}ms ` +
+            `clock=${avg(profile.clock)}ms encode=${avg(profile.encode)}ms`);
     }
 
     return {

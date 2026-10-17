@@ -366,6 +366,21 @@ describe('rewards', () => {
         assert.ok(idle < 0);
     });
 
+    it('a continue costs the death penalty and a graze does not', () => {
+        const prev = {
+            score: 0, lives: 3, level: 1, phase: 'waves',
+            levelProgressMs: 0, levelDurationMs: 60000, isBoosting: false,
+            continuePending: false
+        };
+        const graze = stepReward(prev, { ...prev, lives: 2 });
+        assert.ok(Math.abs(graze - (-1.5 - 0.002)) < 1e-6);
+        const downed = stepReward(
+            { ...prev, lives: 1 },
+            { ...prev, lives: 0, continuePending: true }
+        );
+        assert.ok(Math.abs(downed - (REWARD_DEATH - 0.002)) < 1e-6);
+    });
+
     it('applyTerminalReward once', () => {
         const steps = [{ reward: 0.1 }];
         let ret = 0.1;

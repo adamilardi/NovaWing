@@ -8,6 +8,10 @@
  *   npm run bot:simple
  *   LEVEL=4 npm run bot:simple
  *   HEADLESS=0 npm run bot:simple
+ *
+ * Node owns lifecycle only: unstuck nudges on stalls, planner reinstalls
+ * when decisions freeze, top-tier gun rotation through quiet moments at
+ * max rank, and the run report. It never steers the ship.
  */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -93,6 +97,10 @@ async function main() {
     const started = Date.now();
     let lastLog = 0, continuesUsed = 0, won = false, finalSnap = null, decisions = 0;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
+    let lastErrorLogged = '', stalls = 0, switches = 0;
+    let lastProgress = { key: '', t: Date.now() };
+    let lastDecisions = 0, lastDecisionsT = Date.now(), lastSwitchT = 0;
+    const deathsByCause = {};
     try {
         while (Date.now() - started < DURATION_MS) {
             const status = await page.evaluate(() => {
@@ -118,7 +126,10 @@ async function main() {
                     error: window.__novawingSimpleBotError
                 };
             });
-            if (status.error) console.error('[bot]', status.error);
+            if (status.error && status.error !== lastErrorLogged) {
+                lastErrorLogged = status.error;
+                console.error('[bot]', status.error);
+            }
             const snap = status.snap;
             finalSnap = snap;
             decisions = status.decisions;
@@ -144,6 +155,8 @@ async function main() {
                         near: all.map(t => ({ kind: t.kind, d: Math.round(Math.hypot(t.x - px, t.y - py)) }))
                             .sort((a, b) => a.d - b.d).slice(0, 4) };
                 }, lastPlayer).catch(() => null);
+                const topCause = causes && causes.near && causes.near[0] ? causes.near[0].kind : 'unknown';
+                deathsByCause[topCause] = (deathsByCause[topCause] || 0) + 1;
                 console.log(`[bot] CONTINUE #${continuesUsed} at L${snap.level} ${snap.phase} ` +
                     `${snap.segment} score=${snap.score} kills=${snap.kills} ` +
                     (causes ? `at=(${causes.at.x},${causes.at.y}) near=${JSON.stringify(causes.near)}` : ''));
@@ -162,6 +175,52 @@ async function main() {
             }
             if (snap && snap.levelEnded && !snap.levelTransitioning && !snap.awaitingNextLevel) break;
             const now = Date.now();
+            const playing = Boolean(snap && snap.ready && !snap.paused && !snap.levelEnded &&
+                !snap.continuePending && !snap.levelTransitioning && snap.player);
+            if (playing) {
+                // Stall: nothing (score/kills/segment/level/boss HP) moves
+                // for 20s. Boss HP counts: burning the boss down looks like
+                // frozen score. Screenshot it and drop the sticky preferred
+                // stick so the next plan jinks somewhere new.
+                const bossHp = snap.boss && Number.isFinite(snap.boss.hp) ? snap.boss.hp : '-';
+                const progressKey = `${snap.level}|${snap.segment}|${snap.score}|${snap.kills}|${bossHp}`;
+                if (progressKey !== lastProgress.key) lastProgress = { key: progressKey, t: now };
+                else if (now - lastProgress.t > 20000) {
+                    stalls += 1;
+                    console.log(`[bot] STALL #${stalls} at L${snap.level} ${snap.phase} ${snap.segment} ` +
+                        `score=${snap.score} kills=${snap.kills}`);
+                    await page.screenshot({ path: path.join(OUT, `stall-${stalls}.png`) }).catch(() => {});
+                    await page.evaluate(() => { window.__novawingSimpleBotPreferred = null; }).catch(() => {});
+                    lastProgress = { key: progressKey, t: now };
+                }
+                // Planner death: decisions freeze while the game runs.
+                if (status.decisions !== lastDecisions) {
+                    lastDecisions = status.decisions;
+                    lastDecisionsT = now;
+                } else if (now - lastDecisionsT > 5000) {
+                    console.log('[bot] planner stalled, reinstalling in-page pilot');
+                    await page.evaluate(() => {
+                        window.__novawingSimpleBotStop?.();
+                        window.__novawingSimpleBotInstalled = false;
+                    }).catch(() => {});
+                    await page.evaluate(installSimpleBot).catch(() => {});
+                    lastDecisionsT = now;
+                }
+                // Gun rotation: at max rank outside boss fights, cycle the
+                // top-tier set through a quiet moment so runs cover every
+                // gun instead of only the default.
+                if (snap.weaponLevel >= 3 && snap.phase !== 'boss' && !snap.boss &&
+                    now - lastSwitchT > 25000 && (status.pred || '').startsWith('-/')) {
+                    const switched = await page.evaluate(() => (
+                        typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
+                    )).catch(() => false);
+                    if (switched) {
+                        switches += 1;
+                        console.log(`[bot] gun switch #${switches} at L${snap.level} ${snap.segment}`);
+                    }
+                    lastSwitchT = now;
+                }
+            }
             if (snap && now - lastLog > 2000) {
                 const boss = snap.boss ? ` boss=(${Math.round(snap.boss.x)},${Math.round(snap.boss.y)}:p${snap.boss.phase},hp${snap.boss.health})` : '';
                 console.log(`[bot] t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s L${snap.level} ` +
@@ -181,6 +240,7 @@ async function main() {
     const report = {
         when: new Date().toISOString(), level: LEVEL, won, continuesUsed,
         decisions, maxLevel, wallMs: Date.now() - started,
+        switches, stalls, deathsByCause,
         final: finalSnap && {
             level: finalSnap.level, score: finalSnap.score, kills: finalSnap.kills,
             lives: finalSnap.lives, phase: finalSnap.phase, segment: finalSnap.segment,
@@ -188,7 +248,8 @@ async function main() {
         }
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ won, continuesUsed, maxLevel, pageErrors: pageErrors.length, final: report.final }));
+    console.log(JSON.stringify({ won, continuesUsed, maxLevel, switches, stalls,
+        deathsByCause, pageErrors: pageErrors.length, final: report.final }));
     if (pageErrors.length) process.exitCode = 1;
     else if (!won) process.exitCode = 2;
 }

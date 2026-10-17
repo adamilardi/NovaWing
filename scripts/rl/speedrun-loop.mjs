@@ -3,10 +3,12 @@
  *
  *   expert demos → policy self-play → BC → (optional PPO) → multi-level eval → repeat
  *
- * Curriculum (unless FORCE_LEVELS=1):
- *   L1 always (if requested)
- *   L2 only if L1 lastWinRate >= GATE_L2 (default 0.20)
- *   L3 only if L2 lastWinRate >= GATE_L3 (default 0.15)
+ * Curriculum (unless FORCE_LEVELS=1 or GATE_L2=0):
+ *   First requested level always runs.
+ *   Each later requested level unlocks when its predecessor (nearest lower
+ *   requested level) reaches the gate: L2 needs L1 wr >= GATE_L2 (0.20),
+ *   L3 needs predecessor wr >= GATE_L3 (0.15), every level beyond uses
+ *   GATE_NEXT (0.15). LEVELS accepts any shipped level id (1..N).
  *
  * Promotion:
  *   bc-policy-best.json only when a trial WINS and clearSec beats the global best.
@@ -15,27 +17,35 @@
  *   npm run rl:speedrun-loop
  *   ROUNDS=6 EXPERT_EPISODES=3 POLICY_EPISODES=10 EVAL_TRIALS=3 npm run rl:speedrun-loop
  *   LEVELS=1,2,3 FORCE_LEVELS=1  # bypass curriculum
+ *   LEVELS=17 npm run rl:speedrun-loop  # single bonus level
  */
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
+const require = createRequire(import.meta.url);
+const TOTAL_LEVELS = require('../../levels.js').getTotalLevels();
 const ROUNDS = Math.max(1, Number(process.env.ROUNDS || 8));
 const EXPERT_EPISODES = Math.max(0, Number(process.env.EXPERT_EPISODES || 3));
 const POLICY_EPISODES = Math.max(1, Number(process.env.POLICY_EPISODES || 10));
 const EVAL_TRIALS = Math.max(1, Number(process.env.EVAL_TRIALS || 3));
 const DURATION_MS = Number(process.env.DURATION_MS || 200000);
 const DURATION_MS_L3 = Number(process.env.DURATION_MS_L3 || 280000);
-const REQUESTED_LEVELS = String(process.env.LEVELS || '1,2,3')
-    .split(',')
-    .map((s) => Number(s.trim()))
-    .filter((n) => n >= 1 && n <= 3);
+export function parseRequestedLevels(raw, total) {
+    return String(raw || '1,2,3')
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= total);
+}
+const REQUESTED_LEVELS = parseRequestedLevels(process.env.LEVELS, TOTAL_LEVELS);
 const FORCE_LEVELS = process.env.FORCE_LEVELS === '1';
 const GATE_L2 = Number(process.env.GATE_L2 || 0.2);
 const GATE_L3 = Number(process.env.GATE_L3 || 0.15);
+const GATE_NEXT = Number(process.env.GATE_NEXT || 0.15);
 const MIN_POLICY_WINS_FOR_RL = Math.max(0, Number(process.env.MIN_POLICY_WINS_FOR_RL || 3));
 // REINFORCE env kept as alias; PPO is the trainer (train_rl.py).
 const FORCE_REINFORCE = process.env.REINFORCE === '1' || process.env.PPO === '1';
@@ -76,30 +86,44 @@ function episodesForLevel(base, level) {
 /**
  * Curriculum gate: which levels to train/eval this round.
  * Reads lastWinRate from board.byLevel (updated after each eval).
+ * Pure in (requested, byLevel, opts) so tests can drive it without env.
  */
-function activeLevels(board) {
-    if (FORCE_LEVELS || process.env.GATE_L2 === '0') {
-        return REQUESTED_LEVELS.slice();
-    }
-    const by = board.byLevel || {};
+export function selectLevels(requested, byLevel = {}, opts = {}) {
+    const {
+        force = false,
+        gateL2Zero = false,
+        bossEval = false,
+        gateL2 = GATE_L2,
+        gateL3 = GATE_L3,
+        gateNext = GATE_NEXT
+    } = opts;
+    const sorted = [...requested].sort((a, b) => a - b);
+    if (!sorted.length) return [];
+    if (force || gateL2Zero) return sorted.slice();
     // Boss-only evals are useful curriculum gates, but they are not comparable
     // to full-level win rates or clear times.
-    const winRateKey = BOSS_EVAL ? 'lastBossPracticeWinRate' : 'lastWinRate';
-    const l1wr = Number(by[1] && by[1][winRateKey]) || 0;
-    const l2wr = Number(by[2] && by[2][winRateKey]) || 0;
+    const winRateKey = bossEval ? 'lastBossPracticeWinRate' : 'lastWinRate';
     const out = [];
-    for (const level of REQUESTED_LEVELS) {
-        if (level === 1) out.push(1);
-        else if (level === 2 && l1wr >= GATE_L2) out.push(2);
-        else if (level === 3 && l2wr >= GATE_L3) out.push(3);
-        else if (level === 3 && REQUESTED_LEVELS.includes(2) === false && l1wr >= GATE_L3) {
-            // Allow L3 after L1 if L2 not in request set.
-            out.push(3);
+    sorted.forEach((level, i) => {
+        if (i === 0) {
+            out.push(level); // first requested level always runs
+            return;
         }
-    }
-    if (!out.length && REQUESTED_LEVELS.includes(1)) out.push(1);
-    if (!out.length) out.push(REQUESTED_LEVELS[0] || 1);
+        const prev = sorted[i - 1];
+        const wr = Number(byLevel[prev] && byLevel[prev][winRateKey]) || 0;
+        const gate = level === 2 ? gateL2 : level === 3 ? gateL3 : gateNext;
+        if (wr >= gate) out.push(level);
+    });
+    if (!out.length) out.push(sorted[0]);
     return out;
+}
+
+function activeLevels(board) {
+    return selectLevels(REQUESTED_LEVELS, board.byLevel || {}, {
+        force: FORCE_LEVELS,
+        gateL2Zero: process.env.GATE_L2 === '0',
+        bossEval: BOSS_EVAL
+    });
 }
 
 async function mapLevels(levels, fn) {
@@ -266,7 +290,7 @@ async function recordExpert(round, levels) {
             EPISODES: String(eps),
             DURATION_MS: String(durationForLevel(level, { boss: useBoss })),
             HEADLESS: '1',
-            SAMPLE_MS: '50',
+            SAMPLE_MS: process.env.SAMPLE_MS || '64',
             LEVEL: String(level),
             EXPERT: 'heuristic',
             SPEEDRUN: '1',
@@ -295,7 +319,7 @@ async function recordSelfPlay(round, levels) {
             EPISODES: String(eps),
             DURATION_MS: String(durationForLevel(level, { boss: useBoss })),
             HEADLESS: '1',
-            SAMPLE_MS: '50',
+            SAMPLE_MS: process.env.SAMPLE_MS || '64',
             LEVEL: String(level),
             EXPERT: 'policy',
             EXPLORE: '1',
@@ -313,7 +337,7 @@ async function trainRound(demoStats) {
         'rl/train_bc.py',
         '--epochs', process.env.EPOCHS || '30',
         '--hidden', process.env.HIDDEN || '128,128',
-        '--batch-size', '256',
+        '--batch-size', process.env.BATCH_SIZE || '2048',
         '--speedrun',
         '--out', 'rl/weights/bc-policy.json',
         '--checkpoint', 'rl/weights/bc-policy.pt'
@@ -334,12 +358,13 @@ async function trainRound(demoStats) {
         return;
     }
 
-    log(`train RL (PPO+GAE) policyWins=${policyWins}`);
+    log(`train RL (AWR+GAE) policyWins=${policyWins}`);
     await run(pythonBin(), [
         'rl/train_rl.py',
         '--epochs', process.env.RL_EPOCHS || '4',
-        '--ppo-epochs', process.env.PPO_EPOCHS || '4',
-        '--lr', process.env.RL_LR || '3e-5',
+        '--ppo-epochs', process.env.PPO_EPOCHS || '8',
+        '--lr', process.env.RL_LR || '1e-2',
+        '--value-lr', process.env.RL_VALUE_LR || '0.05',
         '--hidden', process.env.HIDDEN || '128,128',
         '--out', 'rl/weights/bc-policy.json',
         '--checkpoint', 'rl/weights/bc-policy.pt'
@@ -415,7 +440,7 @@ async function main() {
     const board = loadBoard();
     log(
         `Speedrun loop rounds=${ROUNDS} requested=${REQUESTED_LEVELS.join(',')} ` +
-        `gates L2@${GATE_L2} L3@${GATE_L3} force_levels=${FORCE_LEVELS} ` +
+        `gates L2@${GATE_L2} L3@${GATE_L3} next@${GATE_NEXT} force_levels=${FORCE_LEVELS} ` +
         `expert=${EXPERT_EPISODES}/level policy=${POLICY_EPISODES}/level eval=${EVAL_TRIALS}/level ` +
         `min_policy_wins_rl=${MIN_POLICY_WINS_FOR_RL} ` +
         `boss_practice=${BOSS_PRACTICE} boss_record_only=${BOSS_RECORD_ONLY} ` +
@@ -427,11 +452,11 @@ async function main() {
         log(`\n######## ROUND ${r}/${ROUNDS} active=[L${levels.join('+L')}] ########`);
         if (levels.length < REQUESTED_LEVELS.length && !FORCE_LEVELS) {
             const rateKey = BOSS_EVAL ? 'lastBossPracticeWinRate' : 'lastWinRate';
+            const wrs = REQUESTED_LEVELS.map((l) =>
+                `L${l}=${(board.byLevel[l] && board.byLevel[l][rateKey]) ?? 0}`).join(' ');
             log(
                 `curriculum: training ${levels.join(',')} only ` +
-                `(L1 wr=${(board.byLevel[1] && board.byLevel[1][rateKey]) ?? 0}; ` +
-                `L2 wr=${(board.byLevel[2] && board.byLevel[2][rateKey]) ?? 0}; ` +
-                `mode=${BOSS_EVAL ? 'boss-practice' : 'full-level'})`
+                `(wr: ${wrs}; mode=${BOSS_EVAL ? 'boss-practice' : 'full-level'})`
             );
         }
 
@@ -562,7 +587,9 @@ async function main() {
     console.log(JSON.stringify(board, null, 2));
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+    main().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}

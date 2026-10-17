@@ -4,6 +4,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import http from 'http';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
@@ -19,11 +20,60 @@ export function resolveChromePath() {
     if (process.env.PLAYWRIGHT_CHROME && fs.existsSync(process.env.PLAYWRIGHT_CHROME)) {
         return process.env.PLAYWRIGHT_CHROME;
     }
+    // HEADLESS_SHELL=1 checks the shell cache before the pinned full build.
+    if (process.env.HEADLESS_SHELL === '1') {
+        const shell = probePlaywrightCache(true);
+        if (shell) return shell;
+    }
     try {
         const p = chromium.executablePath();
         if (p && fs.existsSync(p)) return p;
     } catch {
         // Playwright browsers may not be installed yet
+    }
+    // The pinned playwright revision is often absent while a working binary
+    // sits in the cache: probe for any chromium revision, newest first,
+    // full chrome before headless shell.
+    return probePlaywrightCache(false);
+}
+
+function probePlaywrightCache(shellFirst) {
+    let entries = [];
+    try {
+        entries = fs.readdirSync(path.join(os.homedir(), '.cache', 'ms-playwright'), { withFileTypes: true });
+    } catch {
+        return undefined;
+    }
+    const revisionOf = (name) => {
+        const match = /-(\d+)$/.exec(name);
+        return match ? Number(match[1]) : -1;
+    };
+    const dirs = entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort((a, b) => revisionOf(b) - revisionOf(a));
+    const cache = path.join(os.homedir(), '.cache', 'ms-playwright');
+    const full = [
+        ['chrome-linux', 'chrome'],
+        ['chrome-linux64', 'chrome']
+    ];
+    const shell = [
+        ['chrome-linux', 'headless_shell'],
+        ['chrome-headless-shell-linux64', 'chrome-headless-shell']
+    ];
+    // Shell-first callers want the lighter binary: faster startup and less
+    // memory per worker, ideal for high-parallelism RL recording. Each
+    // class sweeps every cached revision (newest first) before the other
+    // class is considered.
+    const phases = shellFirst ? [shell, full] : [full, shell];
+    for (const layouts of phases) {
+        for (const dir of dirs) {
+            if (!dir.startsWith('chromium')) continue;
+            for (const [folder, binary] of layouts) {
+                const candidate = path.join(cache, dir, folder, binary);
+                if (fs.existsSync(candidate)) return candidate;
+            }
+        }
     }
     return undefined;
 }

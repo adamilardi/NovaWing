@@ -106,14 +106,16 @@ class ActorCritic(nn.Module):
     def forward(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         h = self.trunk(obs)
         logits = self.policy_head(h)
-        value = self.value_head(h).squeeze(-1)
+        # Linear readout on frozen features. The critic then fits in one pass
+        # and its loss cannot drag the behavior-cloned actor off the demo actions.
+        value = self.value_head(h.detach()).squeeze(-1)
         return logits, value
 
     def policy_logits(self, obs: torch.Tensor) -> torch.Tensor:
         return self.policy_head(self.trunk(obs))
 
     def value(self, obs: torch.Tensor) -> torch.Tensor:
-        return self.value_head(self.trunk(obs)).squeeze(-1)
+        return self.value_head(self.trunk(obs).detach()).squeeze(-1)
 
     def as_policy_mlp(self) -> PolicyMLP:
         """Materialize a PolicyMLP with matching weights for JSON export / BC resume."""
@@ -201,31 +203,54 @@ def action_loss(
     move_tgt = target[:, 0:2]
     move_l = ((move_pred - move_tgt) ** 2).mean(dim=1)
 
-    # A binary head whose target is constant across the batch carries no
-    # information (e.g. heuristic demos hardcode fire=1). Fitting it anyway
-    # only saturates the head and spends gradient budget on bias shift, so
-    # gate each discrete head on batch target variance.
+    # Always fit fire and boost. A constant "always fire" label used to be
+    # dropped, which left the button at its random init (~0.5) so the shipped
+    # policy barely shot. Constant labels are pinned separately; this term
+    # keeps a varying button aimed at the teacher.
     fire_t = target[:, 2].clamp(0, 1)
-    fire_l = (
-        F.binary_cross_entropy_with_logits(
-            pred[:, 2], fire_t, reduction="none"
-        )
-        if fire_t.max() - fire_t.min() > 0.5
-        else torch.zeros_like(move_l)
-    )
     boost_t = target[:, 3].clamp(0, 1)
-    boost_l = (
-        F.binary_cross_entropy_with_logits(
-            pred[:, 3], boost_t, reduction="none"
-        )
-        if boost_t.max() - boost_t.min() > 0.5
-        else torch.zeros_like(move_l)
-    )
+    fire_l = F.binary_cross_entropy_with_logits(pred[:, 2], fire_t, reduction="none")
+    boost_l = F.binary_cross_entropy_with_logits(pred[:, 3], boost_t, reduction="none")
     per = move_l + 0.5 * fire_l + 0.5 * boost_l
     if weights is not None:
         w = weights / weights.mean().clamp(min=1e-6)
         per = per * w
     return per.mean()
+
+
+def seed_discrete_heads(
+    model: PolicyMLP,
+    actions: torch.Tensor,
+    *,
+    resumed: bool,
+) -> List[str]:
+    """Make fire/boost match the demo rate on the first export.
+
+    A constant button (heuristic fire is always 1) is pinned to that label so
+    a short run still shoots. A varying button gets its bias set to the demo
+    rate only on a fresh network; a resumed head keeps what it already learned.
+    """
+    last = model.net[-1]
+    if not isinstance(last, nn.Linear):
+        raise RuntimeError("policy MLP does not end in a linear layer")
+    notes: List[str] = []
+    with torch.no_grad():
+        for index, name in ((2, "fire"), (3, "boost")):
+            values = actions[:, index].float()
+            if values.numel() == 0:
+                continue
+            rate = float(values.mean())
+            target = min(0.98, max(0.02, rate))
+            logit = math.log(target / (1.0 - target))
+            constant = float(values.max() - values.min()) <= 0.5
+            if constant:
+                last.weight[index].zero_()
+                last.bias[index] = logit
+                notes.append(f"pin {name}={target:.2f}")
+            elif not resumed:
+                last.bias[index] = logit
+                notes.append(f"seed {name}={target:.2f}")
+    return notes
 
 
 def load_checkpoint_into_policy(
@@ -281,13 +306,23 @@ def load_checkpoint_into_actor_critic(
 
     raw = state.get("model", state)
     kind = state.get("kind", "bc")
-    keys = list(raw.keys())
+    keys = list(raw.keys()) if isinstance(raw, dict) else []
     if kind == "ppo" or any(k.startswith("trunk.") for k in keys):
         missing, unexpected = model.load_state_dict(raw, strict=False)
-        return (
+        message = (
             f"loaded PPO checkpoint {ckpt_path} "
             f"(missing={len(missing)} unexpected={len(unexpected)})"
         )
-    # BC PolicyMLP state
-    model.load_policy_mlp_state(raw)
-    return f"warm-started actor from BC {ckpt_path}"
+    else:
+        model.load_policy_mlp_state(raw)
+        message = f"warm-started actor from BC {ckpt_path}"
+    # BC files keep the learned exploration scale beside the actor weights.
+    # PPO files store it inside the state dict, which load_state_dict applied.
+    sidecar = state.get("move_log_std") if isinstance(state, dict) else None
+    if sidecar is not None and "move_log_std" not in keys:
+        with torch.no_grad():
+            model.move_log_std.copy_(
+                torch.as_tensor(sidecar, dtype=torch.float32, device=model.move_log_std.device).flatten()
+            )
+        message += " (kept move std)"
+    return message

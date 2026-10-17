@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-PPO fine-tune for NovaWing using self-play demos.
+RL fine-tune for NovaWing using self-play demos.
 
 Loads policy rollouts (demo headers with expert=policy and per-step rewards),
-computes GAE advantages with a learned value head, and updates an actor-critic
-with clipped PPO + entropy bonus. Exports policy MLP JSON for JS deploy.
+computes GAE advantages, and regresses the actor onto the actions that scored.
+The behavior-cloned trunk stays frozen. Exports policy MLP JSON for JS deploy.
 
-  python rl/train_rl.py --epochs 8 --lr 3e-5
+  python rl/train_rl.py --epochs 4 --lr 1e-2
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import hashlib
+import math
 import random
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ import numpy as np
 try:
     import torch
     import torch.nn as nn
+    import torch.nn.functional as F
 except ImportError as exc:
     print("PyTorch required. pip install -r rl/requirements.txt", file=sys.stderr)
     raise SystemExit(1) from exc
@@ -35,6 +37,7 @@ if str(_RL_DIR) not in sys.path:
 from contract import ACTION_SIZE, OBS_SIZE, OBS_VERSION  # noqa: E402
 from demos_io import EpisodeRecord, compute_gae, load_rl_episodes  # noqa: E402
 from model import (  # noqa: E402
+    DEFAULT_MOVE_LOG_STD,
     ActorCritic,
     load_checkpoint_into_actor_critic,
     log_prob_actions,
@@ -72,6 +75,139 @@ def rollout_logprobs(
         logp, _ = log_prob_actions(logits, a[i : i + batch].to(device), model.move_log_std)
         out.append(logp.cpu().numpy().astype(np.float32))
     return np.concatenate(out, axis=0) if out else np.zeros((0,), dtype=np.float32)
+
+
+def approximate_kl(logp: torch.Tensor, old_logp: torch.Tensor) -> torch.Tensor:
+    """Schulman k3 estimator. Non-negative, unlike mean(old_logp - logp)."""
+    log_ratio = (logp - old_logp).clamp(-20.0, 20.0)
+    ratio = log_ratio.exp()
+    return ((ratio - 1.0) - log_ratio).mean()
+
+
+def whiten_rewards(episodes: Sequence[EpisodeRecord]) -> Tuple[float, float]:
+    """Shift and scale rewards so returns sit near unit size.
+
+    Advantage normalization already removes a constant from the policy
+    gradient. The critic still has to predict the raw return, and Adam at a
+    stable policy step size cannot chase a return of 20. Whitening leaves the
+    win-versus-death spike intact and lets the value head fit in one pass.
+    """
+    all_rewards = np.concatenate([ep.rewards for ep in episodes]) if episodes else np.zeros(0)
+    if all_rewards.size == 0:
+        return 0.0, 1.0
+    mean = float(all_rewards.mean())
+    std = float(all_rewards.std())
+    if not math.isfinite(std) or std < 1e-4:
+        return mean, 1.0
+    shift = np.float32(mean)
+    scale = np.float32(std)
+    for ep in episodes:
+        ep.rewards = ((ep.rewards - shift) / scale).astype(np.float32)
+    return mean, std
+
+
+def behavior_move_std(behavior: dict) -> List[float]:
+    std = behavior.get("moveLogStd")
+    if isinstance(std, list) and len(std) == 2:
+        return [float(std[0]), float(std[1])]
+    return [DEFAULT_MOVE_LOG_STD, DEFAULT_MOVE_LOG_STD]
+
+
+def install_behavior_actor(model: ActorCritic, behavior: dict, device: torch.device) -> None:
+    actor = model.as_policy_mlp().to(device)
+    linears = [layer for layer in actor.net if isinstance(layer, torch.nn.Linear)]
+    layers = behavior["layers"]
+    if len(linears) != len(layers):
+        raise ValueError("Behavior policy architecture mismatch")
+    with torch.no_grad():
+        for dst, src in zip(linears, layers):
+            dst.weight.copy_(torch.tensor(src["w"], dtype=torch.float32, device=device))
+            dst.bias.copy_(torch.tensor(src["b"], dtype=torch.float32, device=device))
+        model.load_policy_mlp_state(actor.state_dict())
+        model.move_log_std.copy_(
+            torch.tensor(behavior_move_std(behavior), dtype=torch.float32, device=device)
+        )
+
+
+def checkpoint_has_move_std(path: Path) -> bool:
+    try:
+        state = torch.load(path, map_location="cpu", weights_only=False)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    if not isinstance(state, dict):
+        return False
+    if state.get("move_log_std") is not None:
+        return True
+    raw = state.get("model")
+    return isinstance(raw, dict) and "move_log_std" in raw
+
+
+def prepare_actor(
+    model: ActorCritic,
+    checkpoint_path: Path,
+    behavior: dict,
+    device: torch.device,
+) -> str:
+    """Load the BC/PPO actor when it matches. Do not rewind it to the behavior net.
+
+    Recorded behavior log-probs stay the PPO denominator, so a BC update that
+    happened after collection is an off-policy start the clip can absorb.
+    Rewinding to the behavior network used to discard that update every round.
+    """
+    loaded = False
+    message = ""
+    if checkpoint_path.exists():
+        try:
+            message = load_checkpoint_into_actor_critic(model, checkpoint_path, device)
+            loaded = True
+        except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+            message = (
+                f"WARNING: checkpoint {checkpoint_path} incompatible ({exc}); "
+                "initialized actor from the behavior policy"
+            )
+    if not loaded:
+        install_behavior_actor(model, behavior, device)
+        if not message:
+            message = f"initialized actor from the behavior policy (no checkpoint at {checkpoint_path})"
+        return message
+    message += "; keeping checkpoint actor (behavior log-probs stay the denominator)"
+    if not checkpoint_has_move_std(checkpoint_path):
+        with torch.no_grad():
+            model.move_log_std.copy_(
+                torch.tensor(behavior_move_std(behavior), dtype=torch.float32, device=device)
+            )
+        message += "; movement std set from the behavior policy"
+    return message
+
+
+def make_optimizer(model: ActorCritic, lr: float, value_lr: float) -> torch.optim.Optimizer:
+    """Move only the action head and the value head.
+
+    The trunk is the behavior-cloned representation. Updating it to chase one
+    cohort reshuffles those features and cancels the action change. Exploration
+    std stays at the scale the cohort was collected with.
+    """
+    for param in model.trunk.parameters():
+        param.requires_grad_(False)
+    model.move_log_std.requires_grad_(False)
+    return torch.optim.Adam(
+        [
+            {"params": list(model.policy_head.parameters()), "lr": lr},
+            {"params": list(model.value_head.parameters()), "lr": value_lr},
+        ]
+    )
+
+
+def value_clip_range(returns: torch.Tensor, clip_eps: float) -> float:
+    if returns.numel() == 0:
+        return clip_eps
+    std = float(returns.detach().std(unbiased=False))
+    mean = abs(float(returns.detach().mean()))
+    if not math.isfinite(std):
+        std = 0.0
+    if not math.isfinite(mean):
+        mean = 0.0
+    return max(clip_eps, 0.5 * max(std, mean, 1.0))
 
 
 def build_ppo_buffer(
@@ -114,8 +250,13 @@ def build_ppo_buffer(
     old_logp = np.concatenate(old_lp_parts, axis=0)
     old_val = np.concatenate(val_parts, axis=0)
 
-    if normalize_adv and adv.std() > 1e-6:
-        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+    if normalize_adv and adv.size:
+        std = float(adv.std())
+        if std > 1e-6:
+            # A batch of similar returns has a tiny std. Dividing by it turns
+            # numerical noise into a full policy update and erases the run.
+            # Floor the scale around the whitened-return size.
+            adv = (adv - adv.mean()) / max(std, 0.2)
 
     return {
         "obs": torch.from_numpy(obs),
@@ -125,6 +266,35 @@ def build_ppo_buffer(
         "old_logp": torch.from_numpy(old_logp.astype(np.float32)),
         "old_val": torch.from_numpy(old_val.astype(np.float32)),
     }
+
+
+def awr_policy_loss(
+    logits: torch.Tensor,
+    actions: torch.Tensor,
+    advantages: torch.Tensor,
+    *,
+    temperature: float,
+    weight_max: float = 10.0,
+) -> torch.Tensor:
+    """Regress onto taken actions, weighted toward the ones with high advantage.
+
+    A likelihood-ratio clip cannot do this. With move std around 0.22 the
+    ratio leaves the clip after the mean shifts by a few hundredths, and that
+    partial step was landing off the rewarded direction.
+    """
+    if temperature <= 0:
+        raise ValueError("AWR temperature must be positive")
+    weights = torch.exp((advantages / temperature).clamp(-20.0, 20.0)).clamp(max=weight_max)
+    weights = weights / weights.mean().clamp(min=1e-6)
+    mean = torch.tanh(logits[:, 0:2])
+    move = ((mean - actions[:, 0:2]) ** 2).sum(dim=-1)
+    fire = F.binary_cross_entropy_with_logits(
+        logits[:, 2], actions[:, 2].clamp(0, 1), reduction="none"
+    )
+    boost = F.binary_cross_entropy_with_logits(
+        logits[:, 3], actions[:, 3].clamp(0, 1), reduction="none"
+    )
+    return (weights * (move + 0.5 * fire + 0.5 * boost)).mean()
 
 
 def ppo_update(
@@ -140,9 +310,12 @@ def ppo_update(
     max_grad_norm: float,
     target_kl: float,
     device: torch.device,
+    update_policy: bool = True,
+    awr_temperature: float = 0.5,
 ) -> dict:
     n = buf["obs"].shape[0]
     idx = np.arange(n)
+    vclip = value_clip_range(buf["ret"], clip_eps)
     stats = {
         "policy_loss": [],
         "value_loss": [],
@@ -151,10 +324,14 @@ def ppo_update(
         "clipfrac": [],
     }
 
+    # target_kl and ent_coef stay in the signature so older launchers parse.
+    # Sample KL on a tight gaussian explodes after a useful mean shift, so it
+    # is logged and not used as a brake. Temperature is the trust region.
+    del target_kl, ent_coef
+
     model.train()
-    for epoch in range(epochs):
+    for _epoch in range(epochs):
         np.random.shuffle(idx)
-        early_stop = False
         for start in range(0, n, batch_size):
             mb = idx[start : start + batch_size]
             obs = buf["obs"][mb].to(device)
@@ -166,40 +343,38 @@ def ppo_update(
 
             logits, values = model(obs)
             logp, entropy = log_prob_actions(logits, act, model.move_log_std)
-            ratio = torch.exp(logp - old_logp)
-            surr1 = ratio * adv
-            surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * adv
-            policy_loss = -torch.min(surr1, surr2).mean()
+            policy_loss = awr_policy_loss(
+                logits, act, adv, temperature=awr_temperature
+            )
 
-            # Clipped value loss (PPO2-style)
-            v_clipped = old_val + (values - old_val).clamp(-clip_eps, clip_eps)
+            # Clip against the rollout value, wide enough that a unit-scale
+            # return can actually move in one outer epoch.
+            v_clipped = old_val + (values - old_val).clamp(-vclip, vclip)
             vf1 = (values - ret) ** 2
             vf2 = (v_clipped - ret) ** 2
             value_loss = 0.5 * torch.max(vf1, vf2).mean()
 
-            ent = entropy.mean()
-            loss = policy_loss + vf_coef * value_loss - ent_coef * ent
-
+            # Separate backward so the critic's grad clip cannot shrink the
+            # action step. The two heads do not share a gradient path.
             opt.zero_grad(set_to_none=True)
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            if update_policy:
+                policy_loss.backward(retain_graph=True)
+                nn.utils.clip_grad_norm_(model.policy_head.parameters(), max_grad_norm)
+            value_term = value_loss if not update_policy else vf_coef * value_loss
+            value_term.backward()
+            nn.utils.clip_grad_norm_(model.value_head.parameters(), max_grad_norm)
             opt.step()
 
             with torch.no_grad():
-                approx_kl = (old_logp - logp).mean().item()
-                clipfrac = ((ratio - 1.0).abs() > clip_eps).float().mean().item()
+                approx_kl = float(approximate_kl(logp, old_logp))
+                log_ratio = (logp - old_logp).clamp(-20.0, 20.0)
+                clipfrac = ((log_ratio.exp() - 1.0).abs() > clip_eps).float().mean().item()
 
-            stats["policy_loss"].append(policy_loss.item())
-            stats["value_loss"].append(value_loss.item())
-            stats["entropy"].append(ent.item())
+            stats["policy_loss"].append(float(policy_loss.detach()))
+            stats["value_loss"].append(float(value_loss.detach()))
+            stats["entropy"].append(float(entropy.mean().detach()))
             stats["approx_kl"].append(approx_kl)
             stats["clipfrac"].append(clipfrac)
-
-            if target_kl > 0 and approx_kl > target_kl * 1.5:
-                early_stop = True
-                break
-        if early_stop:
-            break
 
     def mean(xs: List[float]) -> float:
         return float(np.mean(xs)) if xs else 0.0
@@ -223,7 +398,7 @@ def train(args: argparse.Namespace) -> Path:
     demo_dir = Path(args.demos)
     episodes, meta = load_rl_episodes(demo_dir, policy_only=not args.include_all)
     print(
-        f"PPO fine-tune: {meta['policy_eps']} policy episodes, "
+        f"RL fine-tune: {meta['policy_eps']} policy episodes, "
         f"{meta['wins']} wins, {meta['steps']} steps "
         f"(skipped ver={meta['skipped_version']} size={meta['skipped_size']} "
         f"other={meta['skipped_other']})"
@@ -241,6 +416,9 @@ def train(args: argparse.Namespace) -> Path:
         raise ValueError('Behavior policy hash does not match recorded policy identity')
     behavior = json.loads(behavior_bytes)
     hidden = behavior['hidden']
+    requested_hidden = [int(x) for x in args.hidden.split(",") if x.strip()]
+    if requested_hidden and list(requested_hidden) != list(hidden):
+        print(f"NOTE: --hidden {requested_hidden} ignored; behavior policy hidden={list(hidden)}")
     device = torch.device(
         "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
     )
@@ -254,31 +432,17 @@ def train(args: argparse.Namespace) -> Path:
     if write_ckpt != str(args.checkpoint):
         print(f"NOTE: preserving init checkpoint; PPO weights go to {write_ckpt}")
     ckpt = Path(init_ckpt)
-    if ckpt.exists():
-        try:
-            msg = load_checkpoint_into_actor_critic(model, ckpt, device)
-            print(msg)
-        except (RuntimeError, KeyError, TypeError, ValueError) as exc:
-            print(
-                f"WARNING: checkpoint {ckpt} incompatible ({exc}); training from scratch"
-            )
-    else:
-        print(f"WARNING: no checkpoint at {ckpt}, training from scratch")
+    print(prepare_actor(model, ckpt, behavior, device))
 
-    # BC may have run since collection. Restore the actual behavior actor, while
-    # retaining the value head when a compatible checkpoint exists.
-    actor = model.as_policy_mlp()
-    linears = [layer for layer in actor.net if isinstance(layer, nn.Linear)]
-    if len(linears) != len(behavior['layers']):
-        raise ValueError('Behavior policy architecture mismatch')
+    reward_mean, reward_std = whiten_rewards(episodes)
+    print(f"reward whiten mean={reward_mean:.4f} std={reward_std:.4f}")
+    # The previous critic predicted a different reward scale. Refit this cohort.
     with torch.no_grad():
-        for dst, src in zip(linears, behavior['layers']):
-            dst.weight.copy_(torch.tensor(src['w'], device=device))
-            dst.bias.copy_(torch.tensor(src['b'], device=device))
-        model.load_policy_mlp_state(actor.state_dict())
-        model.move_log_std.copy_(torch.tensor(behavior['moveLogStd'], device=device))
+        model.value_head.weight.zero_()
+        model.value_head.bias.zero_()
 
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    opt = make_optimizer(model, args.lr, args.value_lr)
+    warmup = min(max(0, args.critic_warmup), max(0, args.epochs - 1))
 
     last_stats = {}
     for epoch in range(1, args.epochs + 1):
@@ -286,6 +450,7 @@ def train(args: argparse.Namespace) -> Path:
         # epoch. The behavior denominator (recorded behavior_logp) stays fixed
         # for this rollout cohort; only the value estimates are refreshed so
         # GAE targets don't go stale after the first round of updates.
+        update_policy = epoch > warmup
         buf = build_ppo_buffer(model, episodes, gamma=args.gamma,
                                gae_lambda=args.gae_lambda, device=device)
         stats = ppo_update(
@@ -300,16 +465,17 @@ def train(args: argparse.Namespace) -> Path:
             max_grad_norm=args.max_grad_norm,
             target_kl=args.target_kl,
             device=device,
+            update_policy=update_policy,
+            awr_temperature=args.awr_temperature,
         )
         last_stats = stats
+        phase = "policy" if update_policy else "critic"
         print(
-            f"ppo epoch {epoch:3d}/{args.epochs}  "
+            f"rl epoch {epoch:3d}/{args.epochs} {phase:7s}  "
             f"pi={stats['policy_loss']:.4f}  v={stats['value_loss']:.4f}  "
             f"ent={stats['entropy']:.3f}  kl={stats['approx_kl']:.4f}  "
             f"clipfrac={stats['clipfrac']:.3f}"
         )
-        if args.target_kl > 0 and stats['approx_kl'] > args.target_kl * 1.5:
-            break
 
     payload = model.export_json()
     payload["train"] = {
@@ -321,6 +487,8 @@ def train(args: argparse.Namespace) -> Path:
         "epochs": args.epochs,
         "ppo_epochs": args.ppo_epochs,
         "lr": args.lr,
+        "value_lr": args.value_lr,
+        "awr_temperature": args.awr_temperature,
         "gamma": args.gamma,
         "gae_lambda": args.gae_lambda,
         "clip_eps": args.clip_eps,
@@ -348,6 +516,7 @@ def train(args: argparse.Namespace) -> Path:
             {
                 "kind": "bc",
                 "model": model.as_policy_mlp().state_dict(),
+                "move_log_std": model.move_log_std.detach().cpu(),
                 "hidden": hidden,
                 "obs_size": OBS_SIZE,
                 "action_size": ACTION_SIZE,
@@ -374,13 +543,25 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--ppo-epochs",
         type=int,
-        default=4,
+        default=8,
         help="PPO epochs per buffer",
     )
     p.add_argument("--batch-size", type=int, default=512)
-    p.add_argument("--lr", type=float, default=3e-5)
-    p.add_argument("--gamma", type=float, default=0.995)
-    p.add_argument("--gae-lambda", type=float, default=0.95)
+    p.add_argument("--lr", type=float, default=1e-2)
+    p.add_argument(
+        "--value-lr",
+        type=float,
+        default=5e-2,
+        help="Critic step size. The value head is a linear readout and has to fit this cohort in one warmup pass.",
+    )
+    p.add_argument(
+        "--critic-warmup",
+        type=int,
+        default=1,
+        help="Outer epochs that fit the value head before the actor steps",
+    )
+    p.add_argument("--gamma", type=float, default=0.999)
+    p.add_argument("--gae-lambda", type=float, default=0.99)
     p.add_argument("--clip-eps", type=float, default=0.2)
     p.add_argument("--vf-coef", type=float, default=0.5)
     p.add_argument("--entropy-coef", type=float, default=0.01)
@@ -388,8 +569,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--target-kl",
         type=float,
-        default=0.03,
-        help="Early-stop PPO epochs when approx KL exceeds 1.5x this (0=off)",
+        default=0.0,
+        help="Accepted for older launchers. Sample KL is logged and does not stop the update.",
+    )
+    p.add_argument(
+        "--awr-temperature",
+        type=float,
+        default=0.5,
+        help="Advantage weight sharpness. Lower concentrates the update on the best actions.",
     )
     p.add_argument("--min-steps", type=int, default=100)
     p.add_argument(
