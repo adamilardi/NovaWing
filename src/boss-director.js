@@ -25,7 +25,9 @@ const catalog = Object.freeze({
     cinderfallTyrant: { name: 'CINDERFALL TYRANT', color: 0xff5a22, width: 340,
         phases: ['VENT BREACH', 'TWIN ERUPTION', 'CALDERA WRATH'], windupMs: 1150, activeMs: 650, recoveryMs: 2300 },
     heliosGatekeeper: { name: 'HELIOS GATEKEEPER', color: 0xffc14d, width: 245,
-        phases: ['FIRST LANCE', 'TWIN SWEEPS', 'GATE BARRAGE'], windupMs: 1100, activeMs: 600, recoveryMs: 2200 }
+        phases: ['FIRST LANCE', 'TWIN SWEEPS', 'GATE BARRAGE'], windupMs: 1100, activeMs: 600, recoveryMs: 2200 },
+    neonChoir: { name: 'NEON CHOIR', color: 0x2ee6c8, width: 340,
+        phases: ['LOW TIDE', 'HARMONY', 'FULL RESONANCE'], windupMs: 1100, activeMs: 600, recoveryMs: 2200 }
 });
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 function plan(id, cycle, phase, focus = 300, extra = null) {
@@ -124,6 +126,33 @@ function plan(id, cycle, phase, focus = 300, extra = null) {
         if (phase >= 2) {
             attack.sparks = phase;
             attack.sparkSpeed = 250 + phase * 20;
+        }
+        return attack;
+    }
+    if (id === 'neonChoir') {
+        // Tide resonance: horizontal lane sweeps plus delayed seeker motes.
+        // Lanes bracket the pilot; motes bloom at walking slots so the safe
+        // pocket is beside the lanes, never inside them.
+        const focusY = clamp(focus, 120, 480);
+        const lanes = phase === 1 ? [Math.round(focusY)]
+            : [Math.round(clamp(focusY - 140, 90, 510)), Math.round(clamp(focusY + 140, 90, 510))];
+        const attack = { kind: 'tideResonance', lanes, thickness: phase === 3 ? 28 : 24 };
+        const slots = [220, 400, 580];
+        const count = phase === 1 ? 2 : 3;
+        attack.motes = [];
+        for (let i = 0; i < count; i++) {
+            attack.motes.push({
+                x: slots[(cycle + i) % slots.length],
+                y: Math.round(clamp(focusY + (i % 2 ? 110 : -110), 100, 500)),
+                r: 42,
+                fuseMs: 1100 + i * 250
+            });
+        }
+        if (phase >= 3) {
+            const aim = clamp(180 + (focusY - 300) * 0.06, 162, 198);
+            attack.angles = [aim - 10, aim, aim + 10];
+            attack.speed = 235;
+            attack.bursts = 2;
         }
         return attack;
     }
@@ -335,6 +364,12 @@ function parts(id) {
         { name: 'maw', rect: [0, 0.25, 1, 0.375] },
         { name: 'vents', rect: [0, 0.625, 1, 0.375] }
     ];
+    if (id === 'neonChoir') return [
+        { name: 'crowns', rect: [0, 0, 0.30, 1] },
+        { name: 'hull', rect: [0.30, 0, 0.38, 1] },
+        { name: 'fins', rect: [0.68, 0, 0.32, 0.5] },
+        { name: 'tail', rect: [0.68, 0.5, 0.32, 0.5] }
+    ];
     return [
         { name: 'battery', rect: [0, 0, 1, 0.38] },
         { name: 'hull', rect: [0, 0.38, 1, 0.27] },
@@ -428,6 +463,17 @@ function pose(state, name, time) {
         if (name === 'maw') result.x = 9 * recoil - charge * 3;
         if (name === 'vents') result.y = charge * 6;
         if (name === 'crown') result.y = -Math.sin(time * 0.002) * 2;
+    } else if (state.id === 'neonChoir') {
+        if (name === 'crowns') {
+            result.x = -charge * 10 + recoil * 6;
+            result.y = Math.sin(time * 0.004) * 3 * (0.4 + charge);
+        } else if (name === 'hull') {
+            result.x = -recoil * 3;
+        } else if (name === 'fins') {
+            result.y = -Math.sin(time * 0.003) * 4 - charge * 4;
+        } else if (name === 'tail') {
+            result.y = Math.sin(time * 0.003 + 1) * 4 + charge * 4;
+        }
     } else if (name === 'battery') {
         result.x = 11 * recoil;
         result.y = -charge * 3;

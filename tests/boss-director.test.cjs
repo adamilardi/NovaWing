@@ -59,7 +59,10 @@ test('each expansion level binds its own production boss and behavior', () => {
     assert.deepEqual(promotedBehaviors, ['gardenEngine', 'obsidianHierophant', 'cinderfallTyrant', 'heliosGatekeeper']);
     assert.equal(new Set(promotedBehaviors).size, promoted.length);
     assert.equal(Levels.getLevelDef(16).bossEncounters, null);
-    for (const level of levels.concat(promoted)) {
+    const reef = Levels.getLevelDef(17);
+    assert.equal(reef.bossEncounters.final.behavior, 'neonChoir');
+    assert.ok(!promotedBehaviors.includes('neonChoir'));
+    for (const level of levels.concat(promoted, [reef])) {
         const id = level.bossEncounters.final.behavior;
         assert.ok(Bosses.catalog[id]);
         assert.ok(Assets.sprites[id].body);

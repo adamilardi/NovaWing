@@ -1,0 +1,158 @@
+{
+  "baked": [
+    {
+      "file": "assets/levels/neon-reef.png",
+      "width": 1600,
+      "height": 900,
+      "bytes": 131552,
+      "coverage": 1,
+      "bounds": [
+        0,
+        0,
+        1599,
+        899
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/levels/reef-scenery.png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 38429,
+      "coverage": 0.30370442708333334,
+      "bounds": [
+        0,
+        0,
+        1279,
+        719
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/levels/terrain/reef-wall.png",
+      "width": 512,
+      "height": 512,
+      "bytes": 68473,
+      "coverage": 1,
+      "bounds": [
+        0,
+        0,
+        511,
+        511
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/levels/terrain/reef-arch.png",
+      "width": 512,
+      "height": 256,
+      "bytes": 41289,
+      "coverage": 1,
+      "bounds": [
+        0,
+        0,
+        511,
+        255
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/levels/terrain/reef-pylon.png",
+      "width": 256,
+      "height": 512,
+      "bytes": 29870,
+      "coverage": 1,
+      "bounds": [
+        0,
+        0,
+        255,
+        511
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/levels/terrain/reef-bloom.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 4532,
+      "coverage": 0.3289642333984375,
+      "bounds": [
+        34,
+        36,
+        225,
+        225
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/bosses/neon-choir.png",
+      "width": 640,
+      "height": 400,
+      "bytes": 17046,
+      "coverage": 0.4914609375,
+      "bounds": [
+        42,
+        51,
+        609,
+        349
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/enemy-reef-skimmer.png",
+      "width": 240,
+      "height": 140,
+      "bytes": 3531,
+      "coverage": 0.2891369047619048,
+      "bounds": [
+        0,
+        13,
+        232,
+        127
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/enemy-reef-angler.png",
+      "width": 280,
+      "height": 180,
+      "bytes": 5533,
+      "coverage": 0.4787698412698413,
+      "bounds": [
+        0,
+        5,
+        267,
+        155
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/powerup-torrent.png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1430,
+      "coverage": 0.64434814453125,
+      "bounds": [
+        6,
+        6,
+        122,
+        122
+      ],
+      "ok": true
+    },
+    {
+      "file": "assets/powerup-phase.png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1644,
+      "coverage": 0.64434814453125,
+      "bounds": [
+        6,
+        6,
+        122,
+        122
+      ],
+      "ok": true
+    }
+  ]
+}

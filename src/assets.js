@@ -77,6 +77,8 @@ const BAKED_SPRITE_ASSETS = {
         body: { w: 0.85, h: 0.60, ox: 0.05, oy: 0.22 } },
     heliosGatekeeper: { path: 'assets/bosses/helios-gatekeeper.png', sourceKey: 'heliosGatekeeperSource', hasAlpha: true,
         body: { w: 0.62, h: 0.55, ox: 0.19, oy: 0.22 } },
+    neonChoir: { path: 'assets/bosses/neon-choir.png', sourceKey: 'neonChoirSource', hasAlpha: true,
+        body: { w: 0.72, h: 0.72, ox: 0.08, oy: 0.14 } },
     ashenSurface: { path: 'assets/levels/terrain/ashen-surface.png', sourceKey: 'ashenSurfaceSource', hasAlpha: true },
     ashenGraveyard: { path: 'assets/levels/ashen-graveyard.png', sourceKey: 'ashenGraveyardSource', hasAlpha: false },
     foundryWall: { path: 'assets/levels/terrain/foundry-wall.png', sourceKey: 'foundryWallSource', hasAlpha: true },
@@ -102,6 +104,8 @@ const BAKED_SPRITE_ASSETS = {
     cinderfallKeep: { path: 'assets/levels/cinderfall-keep.png', sourceKey: 'cinderfallKeepSource', hasAlpha: false },
     cinderWall: { path: 'assets/levels/terrain/cinder-wall.png', sourceKey: 'cinderWallSource', hasAlpha: true },
     heliosGate: { path: 'assets/levels/helios-gate.png', sourceKey: 'heliosGateSource', hasAlpha: false },
+    neonReef: { path: 'assets/levels/neon-reef.png', sourceKey: 'neonReefSource', hasAlpha: false },
+    reefScenery: { path: 'assets/levels/reef-scenery.png', sourceKey: 'reefScenerySource', hasAlpha: true },
     wallJungle: { path: 'assets/wall-jungle.png', sourceKey: 'wallJungleSource', hasAlpha: true },
     bossTropical: { path: 'assets/boss-tropical.png', sourceKey: 'bossTropicalSource', hasAlpha: true },
     plantSeed: { path: 'assets/plant-seed.png', sourceKey: 'plantSeedSource', hasAlpha: true },
@@ -117,6 +121,8 @@ const BAKED_SPRITE_ASSETS = {
     powerupRepair: { path: 'assets/powerup-repair.png', sourceKey: 'powerupRepairSource' },
     powerupBoost: { path: 'assets/powerup-boost.png', sourceKey: 'powerupBoostSource' },
     powerupBomb: { path: 'assets/powerup-bomb.png', sourceKey: 'powerupBombSource' },
+    powerupTorrent: { path: 'assets/powerup-torrent.png', sourceKey: 'powerupTorrentSource', hasAlpha: true },
+    powerupPhase: { path: 'assets/powerup-phase.png', sourceKey: 'powerupPhaseSource', hasAlpha: true },
     // Crystal asteroid canyon walls for corridor levels.
     wall: { path: 'assets/canyon-wall-atlas-v2.png', sourceKey: 'wallSource',
         variants: 4, textureWidth: 96, textureHeight: 320 }
@@ -225,6 +231,20 @@ const SPRITES = {
         crop: { x: 373, y: 2, width: 1643, height: 1110 },
         displayWidth: 112,
         body: { w: 0.49, h: 0.50, ox: 0.16, oy: 0.30 }
+    },
+    enemyReefSkimmer: {
+        sourceKey: 'enemyReefSkimmerSource',
+        path: 'assets/enemy-reef-skimmer.png',
+        hasAlpha: true,
+        displayWidth: 104,
+        body: { w: 0.72, h: 0.42, ox: 0.10, oy: 0.28 }
+    },
+    enemyReefAngler: {
+        sourceKey: 'enemyReefAnglerSource',
+        path: 'assets/enemy-reef-angler.png',
+        hasAlpha: true,
+        displayWidth: 124,
+        body: { w: 0.68, h: 0.60, ox: 0.16, oy: 0.20 }
     },
     splitter: {
         sourceKey: 'splitterSource',
@@ -420,6 +440,29 @@ Object.entries(HULK_CELLS).forEach(([key, [x, y, width, height]]) => {
         SPRITES[key + '-' + variant] = Object.assign({}, asset, {
             crop: { x: px, y: py, width: pw, height: ph }
         });
+    }
+});
+// Neon Reef (L17) terrain. Three dense solids plus a decor-only bloom.
+// Source painter: art-candidates/neon-reef/bake-reef-art.mjs (deterministic).
+const REEF_CELL_DEFS = {
+    reefWall: { path: 'assets/levels/terrain/reef-wall.png',
+        sourceKey: 'reefWallSource', hasAlpha: true },
+    reefArch: { path: 'assets/levels/terrain/reef-arch.png',
+        sourceKey: 'reefArchSource', hasAlpha: true },
+    reefPylon: { path: 'assets/levels/terrain/reef-pylon.png',
+        sourceKey: 'reefPylonSource', hasAlpha: true }
+};
+const REEF_DECOR_DEFS = {
+    reefBloom: { path: 'assets/levels/terrain/reef-bloom.png',
+        sourceKey: 'reefBloomSource', hasAlpha: true }
+};
+Object.entries(REEF_CELL_DEFS).forEach(([key, asset]) => { SPRITES[key] = asset; });
+Object.entries(REEF_DECOR_DEFS).forEach(([key, asset]) => { SPRITES[key] = asset; });
+const REEF_SOLID_KEYS = Object.keys(REEF_CELL_DEFS);
+REEF_SOLID_KEYS.forEach((key, solidIndex) => {
+    for (let variant = 1; variant <= 3; variant++) {
+        const pick = REEF_CELL_DEFS[REEF_SOLID_KEYS[(solidIndex + variant - 1) % REEF_SOLID_KEYS.length]];
+        SPRITES[key + '-' + variant] = Object.assign({}, pick);
     }
 });
 const AUDIO_TRACKS = {

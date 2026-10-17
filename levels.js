@@ -333,7 +333,8 @@
         pincer: 1.0, oppositeInterceptors: 1.0, riserColumns: 1.0,
         sandwich: 1.0, mineCurtain: 1.0,
         splitterPair: 1.2, crossfireStrafe: 1.2, pincerDive: 1.2,
-        splitterAmbush: 1.4, orbiterRing: 1.4, mixedGauntlet: 1.4
+        splitterAmbush: 1.4, orbiterRing: 1.4, mixedGauntlet: 1.4,
+        reefSurge: 1.1, tideWeave: 1.2
     };
 
     function scoreWaveKeys(keys) {
@@ -1679,8 +1680,104 @@
         ])
     });
 
-    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16];
-    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16].forEach(level => { level.bonus = true; });
+    function reefGate(center, span, gap, index, phase, cue, escortType) {
+        const open = [center - gap / 2, center + gap / 2];
+        const blocks = [];
+        const length = phase === 2 ? 110 : 145;
+        [[0, open[0]], [open[1], span]].forEach(function (range) {
+            const lo = range[0];
+            const hi = range[1];
+            const count = Math.max(1, Math.ceil((hi - lo) / 120));
+            const breadth = (hi - lo) / count;
+            for (let tile = 0; tile < count; tile++) {
+                const cap = hi === open[0] ? tile === count - 1 : tile === 0;
+                blocks.push({
+                    cross: lo + (tile + 0.5) * breadth,
+                    breadth: breadth,
+                    length: cap && phase !== 2 ? length - 25 : length,
+                    along: lo === 0 ? 45 : -25,
+                    texture: cap && phase > 0 ? 'reefArch'
+                        : ((tile + index) % 2 ? 'reefPylon' : 'reefWall'),
+                    artVariant: 1 + (tile + index) % 3
+                });
+            }
+        });
+        return {
+            progressMs: index * (phase === 2 ? 4000 : 3600),
+            blocks: blocks,
+            openBands: [open],
+            routeCenter: center,
+            cue: index === 0 ? cue : null,
+            escort: escortType && index > 0 ? { cross: center, type: escortType } : null
+        };
+    }
+    function reefSegment(id, durationMs, keys, next, centers, cue, phase, escortType, drops, difficulty) {
+        const recovery = phase === 2;
+        const span = 600;
+        const gap = recovery ? 360 : 224;
+        const events = centers.map(function (ratio, index) {
+            return reefGate(Math.round(span * ratio), span, gap, index, phase, cue, recovery ? null : escortType);
+        });
+        const cycle = recovery ? ['repair', 'shield'] : (drops || ['weapon', 'shield', 'repair', 'boost', 'bomb']);
+        const powerups = events.map(function (event, index) {
+            return {
+                progressMs: event.progressMs,
+                type: cycle[index % cycle.length],
+                terrainSpeed: true, x: 910, y: event.routeCenter
+            };
+        });
+        events.forEach(function (event, index) {
+            // Recovery keeps its repair/shield gate drops and still feeds the
+            // Supernova weapon clock (14s expiry) so the rank survives to the
+            // finale; pressure segments bonus only odd gates.
+            if (recovery || index % 2 === 1) {
+                powerups.push({ progressMs: event.progressMs + 700,
+                    type: 'weapon', terrainSpeed: true, x: 910, y: event.routeCenter });
+            }
+        });
+        powerups.sort(function (a, b) { return a.progressMs - b.progressMs; });
+        return {
+            id: id, kind: 'waves', durationMs: durationMs, progressDriven: true,
+            scrollMode: 'horizontal', combatOrientation: 'right',
+            wavePatternKeys: keys, powerups: powerups, terrainEvents: events,
+            difficulty: Object.assign({ firstWaveDelayMs: 1500,
+                waveIntervalMinMs: 2400, waveIntervalMaxMs: 3000 }, difficulty || {}),
+            next: next
+        };
+    }
+    const LEVEL_17 = defineLevel({
+        id: 17, name: 'NEON REEF', tier: 3,
+        introHint: 'RIDE THE CURRENT • SILENCE THE CHOIR',
+        art: { background: 'neonReef', backgroundDim: 0.9, scenery: 'reefScenery', wall: 'reefWall', boss: 'neonChoir' },
+        music: { waves: 'gauntlet', boss: 'finalBoss' },
+        durationMs: 70000, bossScore: 3600, bossKills: 1, bossHealth: 240,
+        difficultyModes: PROMOTED_MODES,
+        bossEncounters: { final: { behavior: 'neonChoir', health: 240, maxPhase: 3, entry: 'horizontal',
+            arena: 'flat', label: 'WARNING: NEON CHOIR' } },
+        segments: [
+            reefSegment('reefTeach', 14000, ['reefSurge'], 'pylonWeave',
+                [0.50, 0.42, 0.30, 0.50], 'REEF GATES', 0, 'reefSkimmer',
+                ['weapon', 'torrent', 'shield', 'boost'],
+                { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4200 }),
+            reefSegment('pylonWeave', 24000,
+                ['reefSurge', 'tideWeave', 'splitterPair', 'pincer', 'skyDive', 'floorRise'], 'quietLagoon',
+                [0.30, 0.62, 0.38, 0.68, 0.32, 0.55], 'PYLON WEAVE', 1, 'reefSkimmer',
+                ['weapon', 'phase', 'repair', 'torrent', 'shield', 'bomb']),
+            reefSegment('quietLagoon', 10000, ['diagonal'], 'tideSurge',
+                [0.50, 0.52], 'QUIET LAGOON', 2, null, null,
+                { waveIntervalMinMs: 4000, waveIntervalMaxMs: 4600 }),
+            reefSegment('tideSurge', 22000,
+                ['reefSurge', 'tideWeave', 'splitterAmbush', 'oppositeInterceptors', 'vFormation', 'skyDive', 'floorRise'],
+                'finalBoss', [0.36, 0.66, 0.28, 0.72, 0.40, 0.60],
+                'TIDE SURGE', 3, 'reefSkimmer',
+                ['weapon', 'torrent', 'phase', 'repair', 'boost', 'bomb']),
+            { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
+                combatOrientation: 'right', wavePatternKeys: [], powerups: [], next: null }
+        ]
+    });
+
+    const LEVEL_DEFS_SHIPPED = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16, LEVEL_17];
+    [LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7, LEVEL_8, LEVEL_9, LEVEL_10, LEVEL_11, LEVEL_12, LEVEL_13, LEVEL_14, LEVEL_15, LEVEL_16, LEVEL_17].forEach(level => { level.bonus = true; });
 
     /**
      * Patch LEVEL_3 in place for tools/tests. Merges with the shipped def via

@@ -131,7 +131,9 @@ const BOSS_MISSILE_SPEED = -380;
 const MAX_WEAPON_LEVEL = 3;
 const LASER_MELT_MS = 3000;
 const LASER_RECHARGE_MS = 3000;
-const TOP_TIER_WEAPONS = ['spread', 'laser'];
+const TOP_TIER_WEAPONS = ['spread', 'laser', 'torrent'];
+const TORRENT_COOLDOWN_MS = 185;
+const PHASE_CLOAK_MS = 5000;
 const BOSS_MAX_HEALTH = 240;
 const BOSS_PHASE_2_HEALTH_RATIO = 0.67;
 const BOSS_PHASE_3_HEALTH_RATIO = 0.34;
@@ -343,7 +345,9 @@ const ENEMY_WAVE_PATTERNS = [
     { key: 'sporeDrift', spawn: spawnSporeDriftWave },
     { key: 'lanternDrift', spawn: spawnLanternDriftWave },
     { key: 'emberSurge', spawn: spawnEmberSurgeWave },
-    { key: 'mirrorFan', spawn: spawnMirrorFanWave }
+    { key: 'mirrorFan', spawn: spawnMirrorFanWave },
+    { key: 'reefSurge', spawn: spawnReefSurgeWave },
+    { key: 'tideWeave', spawn: spawnTideWeaveWave }
 ];
 
 // Black hole defaults (PR6) — levelDef.blackHole may override.
@@ -415,6 +419,20 @@ const POWERUP_TYPES = {
         label: 'LASER',
         color: '#66f6ff',
         weight: 0
+    },
+    torrent: {
+        key: 'torrent',
+        texture: 'powerupTorrent',
+        label: 'TORRENT',
+        color: '#7dffea',
+        weight: 0
+    },
+    phase: {
+        key: 'phase',
+        texture: 'powerupPhase',
+        label: 'PHASE CLOAK',
+        color: '#c56aff',
+        weight: 12
     }
 };
 
@@ -606,6 +624,38 @@ const ENEMY_TYPES = {
         shotMaxDy: 260,
         shotCooldownMin: 1500,
         shotCooldownMax: 2400
+    },
+    reefSkimmer: {
+        texture: 'enemyReefSkimmer',
+        verticalTexture: 'enemyReefSkimmer',
+        speed: -215,
+        health: 2,
+        killScore: 190,
+        tracksPlayer: false,
+        canShootDefault: true,
+        shotSpeed: -420,
+        shotAimScale: 1.3,
+        shotMaxDy: 300,
+        shotCooldownMin: 900,
+        shotCooldownMax: 1500,
+        move: 'reefWeave'
+    },
+    reefAngler: {
+        texture: 'enemyReefAngler',
+        verticalTexture: 'enemyReefAngler',
+        speed: -70,
+        health: 5,
+        killScore: 300,
+        boostRefillOffset: 4,
+        tracksPlayer: false,
+        canShootDefault: true,
+        usesTideShot: true,
+        shotSpeed: -170,
+        shotAimScale: 0.7,
+        shotMaxDy: 220,
+        shotCooldownMin: 1600,
+        shotCooldownMax: 2400,
+        move: 'reefHover'
     }
 };
 
@@ -706,6 +756,8 @@ let levelCompleted = false;
 let victoryPending = false;
 let awaitingNextLevel = false;
 let playerInvulnerableUntil = 0;
+let playerPhaseUntil = 0;
+let playerPhaseShown = false;
 let gamePhase = 'waves';
 // Orientation surface (PR1): L1/L2 stay horizontal/right; L3 top-down sets vertical/up.
 let scrollMode = 'horizontal'; // 'horizontal' | 'vertical'
@@ -1343,7 +1395,7 @@ function create() {
         bosses: new Set(Object.keys(NovaWingBosses.catalog)),
         assets: new Set(Object.keys(SPRITES)),
         tracks: new Set(Object.keys(window.NovaWingAssets.tracks)),
-        powerups: new Set(['weapon', 'shield', 'repair', 'boost', 'bomb', 'laser'])
+        powerups: new Set(['weapon', 'shield', 'repair', 'boost', 'bomb', 'laser', 'torrent', 'phase'])
     });
     window.NovaWingAssets.install(this);
     createPlayerAnimations(this);
@@ -1468,6 +1520,8 @@ function create() {
     levelEnded = false;
     levelCompleted = false;
     playerInvulnerableUntil = 0;
+    playerPhaseUntil = 0;
+    playerPhaseShown = false;
     gamePhase = 'waves';
     scrollMode = 'horizontal';
     combatOrientation = 'right';
@@ -2035,6 +2089,7 @@ function update(time, delta) {
         const b = list[i];
         if (!b.active) continue;
         if (b.sporeWeave) updateSporeWeave(b, simTime);
+        if (b.tideSeeker) updateTideSeeker(b, frameDelta);
         if (b.isLobbed && b.body && Number.isFinite(b.lobGravity)) {
             const step = playtestStepSeconds(frameDelta, 0.008, 0.05);
             if (isVerticalScroll()) {
@@ -2557,6 +2612,12 @@ function collectPowerup(playerSprite, powerup) {
         case 'laser':
             applyLaserPowerup(this, x, y);
             break;
+        case 'torrent':
+            applyTorrentPowerup(this, x, y);
+            break;
+        case 'phase':
+            applyPhasePowerup(this, x, y);
+            break;
         case 'weapon':
         default:
             applyWeaponPowerup(this, x, y);
@@ -2567,6 +2628,8 @@ function collectPowerup(playerSprite, powerup) {
 function applyCoopPowerup(scene, ship, state, type, x, y) {
     if (type.key === 'weapon') grantWeaponRank(state);
     else if (type.key === 'laser') grantLaserWeapon(state);
+    else if (type.key === 'torrent') grantTorrentWeapon(state);
+    else if (type.key === 'phase') grantPhaseCloak(scene, ship, state);
     else if (type.key === 'shield') state.hasShield = true;
     else if (type.key === 'repair') state.lives = Math.min(MAX_LIVES, state.lives + 1);
     else if (type.key === 'boost') { state.boostEnergy = BOOST_MAX; state.boostLocked = false; }
@@ -2696,6 +2759,49 @@ function applyLaserPowerup(scene, x, y) {
     grantLaserWeapon(null);
     updateWeaponText();
     showFloatingText(scene, x, y - 24, 'LASER', POWERUP_TYPES.laser.color);
+}
+
+function grantTorrentWeapon(personalState) {
+    const personal = Boolean(personalState && personalState !== coopState);
+    if (personal) {
+        personalState.weaponLevel = MAX_WEAPON_LEVEL;
+        if (!personalState.weaponCharges) personalState.weaponCharges = [];
+        syncWeaponChargesToLevel(personalState.weaponCharges, MAX_WEAPON_LEVEL);
+        personalState.topTierWeapon = 'torrent';
+        return;
+    }
+    weaponLevel = MAX_WEAPON_LEVEL;
+    syncWeaponChargesToLevel(weaponCharges, MAX_WEAPON_LEVEL);
+    topTierWeapon = 'torrent';
+    if (coopState) {
+        coopState.weaponLevel = weaponLevel;
+        coopState.topTierWeapon = 'torrent';
+    }
+}
+
+function applyTorrentPowerup(scene, x, y) {
+    grantTorrentWeapon(null);
+    updateWeaponText();
+    showFloatingText(scene, x, y - 24, 'TORRENT', POWERUP_TYPES.torrent.color);
+}
+
+function grantPhaseCloak(scene, ship, personalState) {
+    const now = scene ? playtestNow(scene) : playtestClockMs;
+    const until = now + PHASE_CLOAK_MS;
+    if (personalState && personalState !== coopState) {
+        personalState.invulnerableUntil = Math.max(personalState.invulnerableUntil || 0, until);
+        personalState.phaseUntil = Math.max(personalState.phaseUntil || 0, until);
+        return;
+    }
+    playerInvulnerableUntil = Math.max(playerInvulnerableUntil, until);
+    playerPhaseUntil = Math.max(playerPhaseUntil, until);
+    if (coopState) coopState.invulnerableUntil = playerInvulnerableUntil;
+}
+
+function applyPhasePowerup(scene, x, y) {
+    grantPhaseCloak(scene, player, null);
+    updateStatusText();
+    showFloatingText(scene, x, y - 24, 'PHASE CLOAK', POWERUP_TYPES.phase.color);
 }
 
 function applyWeaponPowerup(scene, x, y) {
@@ -3028,7 +3134,7 @@ function weaponRank(pilotState) {
 
 function topTierSelected(pilotState) {
     const id = (pilotState && pilotState !== coopState) ? pilotState.topTierWeapon : topTierWeapon;
-    return id === 'laser' ? 'laser' : 'spread';
+    return TOP_TIER_WEAPONS.includes(id) ? id : 'spread';
 }
 
 function activeWeaponId(pilotState) {
@@ -3072,7 +3178,7 @@ function cycleTopTierWeapon(pilotState) {
         const ship = pilotState && pilotState.ship ? pilotState.ship : player;
         const x = ship && ship.active ? ship.x : 400;
         const y = ship && ship.active ? ship.y - 28 : 160;
-        showFloatingText(scene, x, y, next === 'laser' ? 'LASER' : 'SPREAD', '#66f6ff');
+        showFloatingText(scene, x, y, next === 'laser' ? 'LASER' : next === 'torrent' ? 'TORRENT' : 'SPREAD', '#66f6ff');
     }
     if (typeof updateWeaponText === 'function') updateWeaponText();
     if (coopEnabled && typeof updateCoopText === 'function') updateCoopText();
@@ -3138,6 +3244,10 @@ function fireBullet(time, shooter = player, pilotState = null) {
         startLaserBurst.call(this, time, shooter, pilotState);
         return;
     }
+    if (activeWeaponId(pilotState) === 'torrent') {
+        fireTorrentLances.call(this, time, shooter, pilotState);
+        return;
+    }
     const muzzle = getPlayerMuzzleAnchor(shooter);
     const currentWeapon = pilotState ? pilotState.weaponLevel : weaponLevel;
     const fired = [];
@@ -3177,6 +3287,35 @@ function fireBullet(time, shooter = player, pilotState = null) {
         createMuzzleFlash(this, flash.x, flash.y, currentWeapon);
         if (pilotState) pilotState.lastFired = time + (currentWeapon >= 3 ? 150 : 125);
         else lastFired = time + (currentWeapon >= 3 ? 150 : 125);
+    }
+}
+
+// Torrent: third top-tier weapon. Three heavy lances in a tight line —
+// single-lane boss damage instead of Spread's fan. Same fire path and
+// per-pilot cooldown as the other top-tier guns; no recharge gate.
+function fireTorrentLances(time, shooter, pilotState = null) {
+    const muzzle = getPlayerMuzzleAnchor(shooter);
+    const fired = [];
+    if (combatOrientation === 'up') {
+        fired.push(launchBullet(muzzle.x - 10, muzzle.y, -30, -780, 'heavyBullet', shooter));
+        fired.push(launchBullet(muzzle.x, muzzle.y, 0, -800, 'heavyBullet', shooter));
+        fired.push(launchBullet(muzzle.x + 10, muzzle.y, 30, -780, 'heavyBullet', shooter));
+    } else {
+        fired.push(launchBullet(muzzle.x, muzzle.y - 10, 780, -30, 'heavyBullet', shooter));
+        fired.push(launchBullet(muzzle.x, muzzle.y, 800, 0, 'heavyBullet', shooter));
+        fired.push(launchBullet(muzzle.x, muzzle.y + 10, 780, 30, 'heavyBullet', shooter));
+    }
+    fired.forEach(bullet => { if (bullet) bullet.setTint(0x7dffea); });
+    const firedCount = fired.filter(Boolean).length;
+    if (firedCount > 0) {
+        shotsFired += firedCount;
+        if (pilotState) pilotState.shots += firedCount;
+        else if (coopState) coopState.shots += firedCount;
+        sfx.shoot(MAX_WEAPON_LEVEL, muzzle.x);
+        const flash = getPlayerNoseFlashAnchor(muzzle);
+        createMuzzleFlash(this, flash.x, flash.y, MAX_WEAPON_LEVEL);
+        if (pilotState) pilotState.lastFired = time + TORRENT_COOLDOWN_MS;
+        else lastFired = time + TORRENT_COOLDOWN_MS;
     }
 }
 
@@ -4312,6 +4451,55 @@ function spawnMirrorFanWave(scene) {
     });
 }
 
+function spawnReefSurgeWave(scene) {
+    // Showcase: skimmer V with an angler anchor behind the tip.
+    const tipLane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    const steps = [
+        { laneOffset: 0, delay: 0, x: 860, type: 'reefSkimmer', canShoot: true },
+        { laneOffset: -1, delay: 200, x: 920, type: 'reefSkimmer', canShoot: false },
+        { laneOffset: 1, delay: 200, x: 920, type: 'reefSkimmer', canShoot: true },
+        { laneOffset: 0, delay: 640, x: 940, type: 'reefAngler', canShoot: true }
+    ];
+    steps.forEach(step => {
+        const laneIndex = Phaser.Math.Clamp(tipLane + step.laneOffset, 0, WAVE_LANES.length - 1);
+        scheduleWavePart(scene, step.delay, () => {
+            spawnEnemy.call(scene, {
+                x: step.x,
+                y: getWaveLaneY(laneIndex),
+                type: step.type,
+                canShoot: step.canShoot,
+                nextShotDelay: 950 + step.delay / 4
+            });
+        });
+    });
+}
+
+function spawnTideWeaveWave(scene) {
+    // Skimmer wall with one held safe lane; an angler drifts up the gap.
+    const safeLane = Phaser.Math.Between(1, WAVE_LANES.length - 2);
+    WAVE_LANES.forEach((laneY, laneIndex) => {
+        if (laneIndex === safeLane) return;
+        scheduleWavePart(scene, Math.abs(laneIndex - safeLane) * 140, () => {
+            spawnEnemy.call(scene, {
+                x: 860 + Math.abs(laneIndex - safeLane) * 36,
+                y: getWaveLaneY(laneIndex),
+                type: 'reefSkimmer',
+                canShoot: laneIndex % 2 === 0,
+                nextShotDelay: 1100
+            });
+        });
+    });
+    scheduleWavePart(scene, 900, () => {
+        spawnEnemy.call(scene, {
+            x: 940,
+            y: getWaveLaneY(safeLane),
+            type: 'reefAngler',
+            canShoot: true,
+            nextShotDelay: 1400
+        });
+    });
+}
+
 function spawnSplitterDrones(x, y) {
     if (levelEnded) return;
 
@@ -4515,6 +4703,7 @@ function applyEnemyTypeProfile(enemy, type, typeDef, options, spawnX) {
     enemy.usesRadialShot = Boolean(typeDef.usesRadialShot);
     enemy.usesLobShot = Boolean(typeDef.usesLobShot);
     enemy.usesSporeShot = Boolean(typeDef.usesSporeShot);
+    enemy.usesTideShot = Boolean(typeDef.usesTideShot);
     if (Number.isFinite(options.holdY)) enemy.holdY = options.holdY;
     enemy.killScore = Number.isFinite(typeDef.killScore) ? typeDef.killScore : REGULAR_KILL_SCORE;
     enemy.boostRefill = resolveEnemyBoostRefill(typeDef);
@@ -5367,6 +5556,8 @@ function spawnPowerup(plan = {}) {
         : type.key === 'shield' ? 0x55ffaa
         : type.key === 'repair' ? 0xff6688
         : type.key === 'boost' ? 0x55ccff
+        : type.key === 'torrent' ? 0x7dffea
+        : type.key === 'phase' ? 0xc56aff
         : 0x66f6ff);
     aura.setBlendMode(Phaser.BlendModes.ADD);
     aura.setAlpha(vertical ? 0.5 : 0.35);
@@ -5852,6 +6043,23 @@ function updateExpansionBoss(time, frameDelta) {
                 gfx.lineBetween(-dw * 0.32, -dh * 0.32, bloom.x - target.x, bloom.y - target.y);
             });
         }
+    } else if (state.id === 'neonChoir') {
+        const dw = target.displayWidth;
+        const dh = target.displayHeight;
+        [-0.26, 0, 0.26].forEach((fy, i) => {
+            gfx.fillStyle(i === 1 ? 0xff4fd8 : 0x2ee6c8, charged ? 0.85 : 0.25);
+            gfx.fillCircle(-dw * 0.34, dh * fy, charged ? 7 + Math.sin(time * 0.012 + i * 2) * 2 : 4);
+            if (charged) {
+                gfx.lineStyle(1, spec.color, 0.5);
+                gfx.strokeCircle(-dw * 0.34, dh * fy, 12 + Math.sin(time * 0.01 + i) * 3);
+            }
+        });
+        if (charged && state.plan && state.plan.motes) {
+            gfx.lineStyle(1, spec.color, 0.4);
+            state.plan.motes.forEach(mote => {
+                gfx.lineBetween(-dw * 0.34, 0, mote.x - target.x, mote.y - target.y);
+            });
+        }
     } else {
         const muzzleX = -target.displayWidth * 0.32;
         for (const offset of [-32, 32]) {
@@ -5894,6 +6102,14 @@ function updateExpansionBoss(time, frameDelta) {
                 activatesAt: action.activatesAt, endsAt: action.endsAt };
             target.encounterWarnings.push(ring);
         });
+        if (plan.motes) plan.motes.forEach(mote => {
+            const ring = segmentScope.own(this.add.circle(mote.x, mote.y, mote.r, spec.color, 0.10).setDepth(5));
+            ring.setStrokeStyle(2, spec.color, 0.9);
+            ring.isBloomTelegraph = true;
+            ring.combatTelegraph = { kind: 'mote', x: mote.x, y: mote.y, r: mote.r,
+                activatesAt: action.activatesAt, endsAt: action.endsAt };
+            target.encounterWarnings.push(ring);
+        });
         sfx.laserWarn(target.x);
     } else if (action.kind === 'attack') {
         target.encounterWarnings.forEach(w => { if (w.active && !w.isBloomTelegraph) w.destroy(); });
@@ -5932,6 +6148,37 @@ function detonateSporeBloom(target, bloom) {
         spore.setDepth(2);
         spore.setTint(0xff9430);
         spore.body.setSize(spore.width * 0.7, spore.height * 0.7, true);
+    }
+}
+
+function detonateTideMote(target, mote) {
+    if (!target || !target.active || boss !== target || gamePhase !== 'boss') return;
+    (target.encounterWarnings || []).forEach(warning => {
+        const mark = warning && warning.combatTelegraph;
+        if (warning.active && warning.isBloomTelegraph && mark &&
+            mark.x === mote.x && mark.y === mote.y) warning.destroy();
+    });
+    createExplosion(this, mote.x, mote.y, 10, { palette: 'cyan', flash: true });
+    sfx.enemyShoot(mote.x);
+    const now = playtestNow(this);
+    // Two seekers per mote: three stacked with the lanes and phase-3 volleys
+    // into more homing pressure than the rest of the campaign asks for.
+    const count = 2;
+    const speed = 150 * difficultyNumber('bossShotSpeedScale', 1);
+    for (let i = 0; i < count; i++) {
+        if (enemyBullets.getChildren().filter(b => b.active).length >= 100) return;
+        const angle = (i / count) * Math.PI * 2 + Math.PI / 6;
+        const orb = enemyBullets.get(mote.x, mote.y, 'enemyBullet');
+        if (!orb) return;
+        orb.setTexture('enemyBullet');
+        activateSprite(orb, mote.x, mote.y);
+        orb.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+        orb.setAngle(0);
+        orb.setDepth(2);
+        orb.setTint(0x2ee6c8);
+        orb.setScale(1.15);
+        orb.body.setSize(orb.width * 0.7, orb.height * 0.7, true);
+        orb.tideSeeker = { t0: now, steerMs: 2200, turn: 2.6 };
     }
 }
 
@@ -5996,6 +6243,14 @@ function fireExpansionBossAttack(target, plan, endsAt) {
         plan.blooms.forEach(bloom => {
             segmentScope.delay(this, Math.max(1, bloom.fuseMs || 950), () => {
                 detonateSporeBloom.call(this, target, bloom);
+            });
+        });
+        sfx.missile(target.x);
+    }
+    if (plan.motes) {
+        plan.motes.forEach(mote => {
+            segmentScope.delay(this, Math.max(1, mote.fuseMs || 1100), () => {
+                detonateTideMote.call(this, target, mote);
             });
         });
         sfx.missile(target.x);
@@ -7520,6 +7775,11 @@ function maybeFireEnemyShot(enemy, time) {
         return;
     }
 
+    if (enemy.usesTideShot) {
+        if (fireEnemyTideShot.call(this, enemy, time)) enemy.enemyAnimationFiredAt = time;
+        return;
+    }
+
     // Orbiter: 4-way radial burst
     if (enemy.usesRadialShot) {
         const speed = 280;
@@ -7588,6 +7848,52 @@ function updateSporeWeave(shot, time) {
     const mag = Math.hypot(weave.baseVx, weave.baseVy) || 1;
     const k = Math.sin((time - weave.t0) * weave.freq) * weave.amp;
     shot.setVelocity(weave.baseVx - weave.baseVy / mag * k, weave.baseVy + weave.baseVx / mag * k);
+}
+
+// Tide seeker: a slow orb that bends toward the nearest live pilot for a
+// short steering window, then flies straight. Dodge late, not early.
+function fireEnemyTideShot(enemy, time) {
+    if (!enemy || !enemy.active) return false;
+    const fire = getEnemyFireVector(enemy);
+    const shot = enemyBullets.get(fire.x, fire.y);
+    if (!shot) return false;
+    shot.setTexture('enemyBullet');
+    activateSprite(shot, fire.x, fire.y);
+    shot.setVelocity(fire.vx, fire.vy);
+    shot.setAngle(0);
+    shot.setDepth(2);
+    shot.setTint(0x2ee6c8);
+    shot.setScale(1.15);
+    shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
+    shot.tideSeeker = { t0: time, steerMs: 2400, turn: 3.2 };
+    sfx.enemyShoot(enemy.x);
+    return true;
+}
+
+function updateTideSeeker(shot, frameDelta) {
+    const seek = shot.tideSeeker;
+    if (!seek || !shot.body) return;
+    const scene = shot.scene;
+    const now = scene ? playtestNow(scene) : 0;
+    if (now - seek.t0 > seek.steerMs) { shot.tideSeeker = null; return; }
+    const p1Live = Boolean(player && player.active);
+    const p2Live = Boolean(playerTwo && playerTwo.active);
+    let target = null;
+    if (p1Live && p2Live) {
+        const d1 = Math.hypot(player.x - shot.x, player.y - shot.y);
+        const d2 = Math.hypot(playerTwo.x - shot.x, playerTwo.y - shot.y);
+        target = d2 < d1 ? playerTwo : player;
+    } else target = p1Live ? player : (p2Live ? playerTwo : null);
+    if (!target) return;
+    const step = playtestStepSeconds(frameDelta, 0.008, 0.05);
+    const speed = Math.max(60, Math.hypot(shot.body.velocity.x, shot.body.velocity.y));
+    const current = Math.atan2(shot.body.velocity.y, shot.body.velocity.x);
+    const wanted = Math.atan2(target.y - shot.y, target.x - shot.x);
+    let delta = wanted - current;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    const next = current + Phaser.Math.Clamp(delta, -seek.turn * step, seek.turn * step);
+    shot.setVelocity(Math.cos(next) * speed, Math.sin(next) * speed);
 }
 
 function fireEnemyMissile(enemy) {
@@ -7735,12 +8041,33 @@ function updateStatusText() {
     if (!statusText) return;
     const parts = [];
     if (hasShield) parts.push('SHIELD ONLINE');
+    if (playtestClockMs < playerPhaseUntil) parts.push('PHASE CLOAK');
     statusText.setText(parts.join('  '));
-    statusText.setFill(hasShield ? '#55ffaa' : '#aab2c8');
+    statusText.setFill(parts.length ? '#55ffaa' : '#aab2c8');
+}
+
+function updatePhaseGhost(ship, until, now) {
+    if (!ship || !ship.active) return;
+    if (until > now) {
+        ship.setAlpha(0.55 + Math.sin(now * 0.02) * 0.25);
+    } else if (ship.alpha !== 1) {
+        ship.setAlpha(1);
+    }
 }
 
 function updateShieldVisual(time) {
     if (!shieldVisual || !player) return;
+    const now = Number.isFinite(time) ? time : playtestClockMs;
+
+    // Phase cloak: translucent ghost while the timed invulnerability holds.
+    const phased = now < playerPhaseUntil;
+    if (playerPhaseShown && !phased) updateStatusText();
+    playerPhaseShown = phased;
+    updatePhaseGhost(player, phased ? playerPhaseUntil : 0, now);
+    if (coopEnabled && playerTwo && playerTwo.active && coopState && coopState.p2) {
+        const partnerUntil = coopState.p2.phaseUntil || 0;
+        updatePhaseGhost(playerTwo, now < partnerUntil ? partnerUntil : 0, now);
+    }
 
     if (!hasShield) {
         shieldVisual.setVisible(false);
@@ -7758,7 +8085,7 @@ function updateShieldVisual(time) {
 function getWeaponName(level, topId) {
     const rank = Number.isFinite(level) ? level : weaponLevel;
     const tier = topId || topTierWeapon;
-    if (rank >= MAX_WEAPON_LEVEL) return tier === 'laser' ? 'Laser' : 'Spread';
+    if (rank >= MAX_WEAPON_LEVEL) return tier === 'laser' ? 'Laser' : tier === 'torrent' ? 'Torrent' : 'Spread';
     if (rank >= 2) return 'Twin';
     return 'Single';
 }
@@ -8022,6 +8349,33 @@ function updateEnemyMovement(enemy, frameDelta) {
         return;
     }
 
+    if (enemy.enemyType === 'reefSkimmer') {
+        updateScrollVelocity(enemy);
+        enemy.weavePhase = (enemy.weavePhase || 0) + 2.6 * dt;
+        const amp = enemy.weaveAmplitude || 130;
+        const target = getEnemyTarget(enemy);
+        if (isVerticalScroll()) {
+            const bias = target ? Phaser.Math.Clamp((target.x - enemy.x) * 0.6, -60, 60) : 0;
+            enemy.setVelocityX(Math.cos(enemy.weavePhase) * amp + bias);
+        } else {
+            const bias = target ? Phaser.Math.Clamp((target.y - enemy.y) * 0.6, -60, 60) : 0;
+            enemy.setVelocityY(Math.cos(enemy.weavePhase) * amp + bias);
+        }
+        return;
+    }
+
+    if (enemy.enemyType === 'reefAngler') {
+        updateScrollVelocity(enemy);
+        if (!Number.isFinite(enemy.lobberPhase)) enemy.lobberPhase = gameplayRandom() * Math.PI * 2;
+        const now = enemy.scene ? playtestNow(enemy.scene) : 0;
+        if (enemy.x < 640) enemy.setVelocityX(-24);
+        let bob = Math.sin(now * 0.0018 + enemy.lobberPhase) * 48;
+        if (enemy.y < 100) bob = Math.abs(bob) + 20;
+        else if (enemy.y > 500) bob = -Math.abs(bob) - 20;
+        enemy.setVelocityY(bob);
+        return;
+    }
+
     if (enemy.enemyType === 'mineDropper') {
         updateScrollVelocity(enemy);
         const scene = enemy.scene;
@@ -8204,7 +8558,8 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
     const w = enemy.displayWidth;
     const h = enemy.displayHeight;
     const pulse = 0.5 + Math.sin(phase * 4.7) * 0.3 + Math.sin(phase * 7.1) * 0.2;
-    const color = type === 'orbiter' || type === 'strafer' ? 0xc56aff
+    const color = type === 'reefSkimmer' || type === 'reefAngler' ? 0x2ee6c8
+        : type === 'orbiter' || type === 'strafer' ? 0xc56aff
         : type === 'riser' || type === 'interceptor' ? 0x56dbff : 0xffaa45;
     const untilShot = enemy.nextShotAt - time;
     const charge = enemy.canShoot && (enemy.usesRadialShot || enemyInFireRange(enemy)) && untilShot >= 0 && untilShot < 320
@@ -8270,6 +8625,20 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
         glow(0, h * 0.24, 2 + deploy * 4 + flash * 3, 0.25 + deploy * 0.6 + flash * 0.2);
         glow(-w * 0.22, -h * 0.17, 2, 0.3 + pulse * 0.35);
         glow(w * 0.22, -h * 0.17, 2, 0.65 - pulse * 0.35);
+    } else if (type === 'reefSkimmer') {
+        // Wake fins: twin contrails that stiffen as the shot charges.
+        const opening = Math.max(charge, flash);
+        for (const side of [-1, 1]) {
+            const baseX = w * 0.18, baseY = side * h * 0.16;
+            const len = w * (0.22 + opening * 0.14);
+            fx.lineStyle(2, 0x2ee6c8, 0.35 + pulse * 0.2 + opening * 0.4);
+            fx.lineBetween(baseX, baseY, baseX + len, baseY + side * pulse * 3);
+        }
+        glow(-w * 0.34, 0, 2 + opening * 3 + pulse, 0.3 + opening * 0.6);
+    } else if (type === 'reefAngler') {
+        // The lure bulb breathes; the jaw glow swells with the tide charge.
+        glow(-w * 0.42, -h * 0.34, 2.5 + pulse * 1.5, 0.4 + pulse * 0.3);
+        glow(-w * 0.36, h * 0.10, 2 + charge * 4 + flash * 4, 0.3 + charge * 0.5 + flash * 0.3);
     } else {
         const noseUp = type === 'riser';
         const direction = enemy.flipX ? -1 : 1;
@@ -11074,6 +11443,8 @@ function resetPooledEnemyState(sprite) {
     sprite.faceAngle = 0;
     sprite.usesLobShot = false;
     sprite.usesSporeShot = false;
+    sprite.usesTideShot = false;
+    sprite.tideSeeker = null;
     sprite.holdY = null;
     sprite.weavePhase = null;
     sprite.lobberPhase = null;
@@ -11396,8 +11767,10 @@ function drawBackgroundLayers(scene, frameDelta, time) {
             (scene.environmentProps || []).forEach(prop => prop.destroy());
             scene.environmentPropsLevel = currentLevel;
             const key = currentLevel === 5 ? 'mineralRock' : currentLevel === 9 ? 'abyssalRib'
-                : currentLevel === 10 ? 'stormRing' : currentLevel === 11 ? 'duneHelm' : 'wreckageHull';
-            const propShape = key === 'abyssalRib' || key === 'duneHelm' ? 'tall' : key === 'stormRing' ? 'square' : 'wide';
+                : currentLevel === 10 ? 'stormRing' : currentLevel === 11 ? 'duneHelm'
+                : currentLevel === 17 ? 'reefBloom' : 'wreckageHull';
+            const propShape = key === 'abyssalRib' || key === 'duneHelm' ? 'tall'
+                : key === 'stormRing' || key === 'reefBloom' ? 'square' : 'wide';
             scene.environmentProps = [0, 1, 2, 3].map(i => scene.add.image(
                 i * 240, 90 + (i % 3) * 180, key).setDisplaySize(
                     propShape === 'tall' ? 80 + i * 18 : propShape === 'square' ? 88 + i * 22 : 110 + i * 24,
@@ -11413,6 +11786,8 @@ function drawBackgroundLayers(scene, frameDelta, time) {
                 prop.x -= speed;
                 if (prop.x < -160) prop.x = 960;
             }
+            // Neon Reef: blooms ride the current with a slow vertical surge.
+            if (currentLevel === 17) prop.y += Math.sin(time * 0.001 + i * 1.7) * frameDelta * 0.008;
             prop.rotation += frameDelta * 0.000015 * (i % 2 ? 1 : -1);
         });
     } else if (scene.environmentProps) {
@@ -13469,7 +13844,8 @@ function getBotSnapshot() {
                 w: b.w,
                 h: b.h,
                 isLaser: Boolean(bullet.isBossLaser),
-                expiresAt: bullet.isBossLaser ? bullet.combatExpiresAt : null
+                expiresAt: bullet.isBossLaser ? bullet.combatExpiresAt : null,
+                homing: Boolean(bullet.tideSeeker)
             };
         }),
         playerBullets: collectActiveSpriteSnapshots(typeof bullets !== 'undefined' ? bullets : null, bullet => {
@@ -13624,7 +14000,7 @@ window.__novawingDebug = {
         const state = getCoopPilotState(ship);
         if (!scene || !ship || !state) return null;
         if (options && options.lethal) state.lives = 1;
-        if (ship === player) { lives = state.lives; hasShield = false; playerInvulnerableUntil = 0; }
+        if (ship === player) { lives = state.lives; hasShield = false; playerInvulnerableUntil = 0; playerPhaseUntil = 0; }
         state.hasShield = false;
         state.invulnerableUntil = 0;
         damagePlayer.call(scene, ship);
@@ -13671,6 +14047,7 @@ window.__novawingDebug = {
         if (opts.lethal) lives = 1;
         hasShield = false;
         playerInvulnerableUntil = 0;
+        playerPhaseUntil = 0;
         damagePlayer.call(scene);
         return {
             lives: lives,
@@ -13784,6 +14161,10 @@ window.__novawingDebug = {
         fireBullet.call(scene, readyAt);
         const restarted = laserState.activeUntil > meltUntil;
         cycleTopTierWeapon(null);
+        // With three top-tier guns the first cycle lands on Torrent; keep
+        // cycling so the probe leaves the pilot on Spread as before.
+        let guard = TOP_TIER_WEAPONS.length;
+        while (activeWeaponId(null) !== 'spread' && guard-- > 0) cycleTopTierWeapon(null);
         const bulletsBefore = count(bullets);
         fireBullet.call(scene, readyAt + 5000);
         laserState.activeUntil = playtestClockMs;

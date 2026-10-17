@@ -107,7 +107,12 @@ function evaluateAction(snap, stick, boost, durationMs) {
             if (sweptOverlap(previous, p, body, physicsBefore, physicsMs)) record(body.kind, elapsed, body);
         }
         for (const lane of telegraphs) {
-            if (snap.time + elapsed >= lane.activatesAt && snap.time + elapsed <= lane.endsAt && overlap(p, lane)) {
+            if (snap.time + elapsed < lane.activatesAt || snap.time + elapsed > lane.endsAt) continue;
+            if (Number.isFinite(lane.r)) {
+                // Bloom/mote discs detonate where they are drawn: keep out
+                // of the disc instead of treating it as a passing lane.
+                if (Math.hypot(p.x - lane.x, p.y - lane.y) < lane.r + 8) record('telegraphed-blast', elapsed);
+            } else if (overlap(p, lane)) {
                 record('telegraphed-laser', elapsed);
             }
         }
@@ -168,7 +173,11 @@ function plan(snap, durationMs = 160, preferred = null) {
         if (vertical) goalX = Math.max(p.x - 140, Math.min(p.x + 140, goalX));
         else goalY = Math.max(p.y - 140, Math.min(p.y + 140, goalY));
     }
-    const pickup = (snap.powerups || []).filter(q => q.type === 'weapon' || q.type === 'shield' || q.type === 'repair')
+    // Every pickup is beneficial on collect (bomb detonates, boost refills,
+    // laser/torrent upgrade the top rank, phase cloaks), so chase any close
+    // one outside boss fights.
+    const PICKUP_TYPES = new Set(['weapon', 'laser', 'torrent', 'shield', 'repair', 'boost', 'bomb', 'phase']);
+    const pickup = (snap.powerups || []).filter(q => PICKUP_TYPES.has(q.type))
         .sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
     if (!snap.boss && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
         goalX = pickup.x; goalY = pickup.y;
@@ -228,7 +237,7 @@ function plan(snap, durationMs = 160, preferred = null) {
         const drillable = (hit) => {
             const d = hit && hit.detail;
             if (!d || hit.kind !== 'enemy' || d.health == null || d.health > 2) return false;
-            if (d.type !== 'regular' && d.type !== 'riser' && d.type !== 'splitterDrone') return false;
+            if (d.type !== 'regular' && d.type !== 'riser' && d.type !== 'splitterDrone' && d.type !== 'reefSkimmer') return false;
             const axial = vertical ? a.end.y - d.y : d.x - a.end.x;
             const lateral = vertical ? Math.abs(d.x - a.end.x) : Math.abs(d.y - a.end.y);
             if (!(axial > 0 && axial < 420 && lateral < 40)) return false;
@@ -259,6 +268,14 @@ function plan(snap, durationMs = 160, preferred = null) {
             if (e.type !== 'interceptor' && e.type !== 'dart') continue;
             const d = Math.hypot(a.end.x - e.x, a.end.y - e.y);
             if (d < 150) score -= (150 - d) * 3;
+        }
+        // Tide seekers home the same way: linear prediction under-reads
+        // them, so keep a smaller bubble around flagged bullets. Bullets
+        // without the flag score exactly as before.
+        for (const b of (snap.enemyBullets || [])) {
+            if (!b.homing) continue;
+            const d = Math.hypot(a.end.x - b.x, a.end.y - b.y);
+            if (d < 110) score -= (110 - d) * 2;
         }
         // Phase-3 volleys fan out of extra launchers; the muzzle corridor
         // widens so the ship clears the whole spread, not just its center.
