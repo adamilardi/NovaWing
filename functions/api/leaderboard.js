@@ -1,4 +1,6 @@
 import RunRules from '../../shared/run-rules.cjs';
+import Version from '../../shared/version.cjs';
+const { sanitizeGameVersion } = Version;
 const { isPlausibleCompletedRun, isPlausibleTime, sanitizeLeaderboardScope } = RunRules;
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
@@ -325,16 +327,6 @@ function normalizeEntry(entry) {
         createdAt: entry.createdAt
     };
 }
-
-function sanitizeGameVersion(value) {
-    const cleaned = String(value || '')
-        .replace(/[^\w.-]/g, '')
-        .trim()
-        .slice(0, 24);
-
-    return cleaned || '1.0.0';
-}
-
 
 function getRequestVersion(request) {
     const url = new URL(request.url);

@@ -1,15 +1,13 @@
 {
+  // HISTORICAL: the ailardi-arcade Worker router (src/index.mjs) is retained
+  // for reference only. Live traffic is served by Cloudflare Pages projects
+  // directly (see AGENTS.md), so this config deliberately defines no routes:
+  // attaching it to a domain would shadow the live ailardi.com Pages site.
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "ailardi-arcade",
   "main": "src/index.mjs",
   "compatibility_date": "2026-06-18",
   "workers_dev": false,
-  "routes": [
-    {
-      "pattern": "ailardi.com",
-      "custom_domain": true
-    }
-  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

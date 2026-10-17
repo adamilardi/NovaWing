@@ -1,3 +1,5 @@
+// HISTORICAL: documents the retained pre-Pages Worker router behavior.
+// The pages.dev origins below are the old traffic path, not live config.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { gameForPath } from '../src/index.mjs';

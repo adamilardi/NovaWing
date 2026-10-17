@@ -1,4 +1,6 @@
 import RunRules from '../../shared/run-rules.cjs';
+import Version from '../../shared/version.cjs';
+const { sanitizeGameVersion } = Version;
 const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs, sanitizeLeaderboardScope } = RunRules;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 // A full campaign opens one campaign token plus one token per level.
@@ -295,15 +297,6 @@ async function getClientKey(request) {
     return Array.from(new Uint8Array(digest))
         .map(byte => byte.toString(16).padStart(2, '0'))
         .join('');
-}
-
-function sanitizeGameVersion(value) {
-    const cleaned = String(value || '')
-        .replace(/[^\w.-]/g, '')
-        .trim()
-        .slice(0, 24);
-
-    return cleaned || '1.0.0';
 }
 
 function jsonResponse(request, payload, status = 200) {

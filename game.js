@@ -33,6 +33,8 @@ const config = {
 
 const game = new Phaser.Game(config);
 
+// Mirror of the package.json version (the browser bundle cannot require it);
+// tests/version-truth.test.cjs fails the suite on drift.
 const GAME_VERSION = '1.2.1';
 // Level catalog lives in levels.js (loaded before this file). Campaign length is
 // live via getTotalLevels() — do not freeze TOTAL_LEVELS for victory/clamps.

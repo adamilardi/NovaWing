@@ -1,3 +1,7 @@
 # NovaWing RL training (Python train → JSON deploy for browser pilot)
-torch>=2.1.0
-numpy>=1.24.0
+#
+# Exact pins verified by rl/tests/test_rl_core.py. CI installs the CPU-only
+# torch wheel for this version via the PyTorch CPU index (same version, no
+# CUDA bundle); GPU machines resolve the matching CUDA build from PyPI.
+torch==2.14.1
+numpy==2.5.4

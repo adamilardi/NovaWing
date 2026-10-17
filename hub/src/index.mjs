@@ -1,3 +1,6 @@
+// HISTORICAL: pre-Pages traffic path, retained for reference only. Live games
+// use direct Pages custom domains and never pass through this Worker
+// (see AGENTS.md). Do not reattach it to a domain.
 const GAMES = [
   { prefix: '/novawing', origin: 'https://novawing.pages.dev' },
   { prefix: '/space-chicken', origin: 'https://space-chicken.pages.dev' },

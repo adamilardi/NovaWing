@@ -19,3 +19,26 @@ jobs:
       # No npm install required: check is pure `node --check` on first-party JS.
       - name: npm run check
         run: npm run check
+
+  rl-python:
+    name: RL Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-rl-${{ hashFiles('rl/requirements.txt') }}
+
+      # CPU-only torch for this pin (same version as requirements.txt);
+      # numpy falls through to PyPI.
+      - name: Install RL requirements
+        run: pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple -r rl/requirements.txt
+
+      - name: RL core tests
+        run: python -m unittest discover -s rl/tests -p "test_*.py"

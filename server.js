@@ -1,4 +1,5 @@
 const { isPlausibleCompletedRun, isPlausibleTime, runTokenTtlMs, sanitizeLeaderboardScope } = require('./shared/run-rules.cjs');
+const { sanitizeGameVersion } = require('./shared/version.cjs');
 const LevelVotes = require('./shared/level-votes.cjs');
 const { build, OUTPUT: PUBLIC_ROOT } = require('./scripts/build.cjs');
 // Simple HTTP server for NovaWing
@@ -131,15 +132,6 @@ function normalizeEntry(entry) {
         continues: Number(entry.continues) || 0,
         createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
     };
-}
-
-function sanitizeGameVersion(value) {
-    const cleaned = String(value || '')
-        .replace(/[^\w.-]/g, '')
-        .trim()
-        .slice(0, 24);
-
-    return cleaned || '1.0.0';
 }
 
 function sanitizeName(value) {

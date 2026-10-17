@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const assets = require('../src/assets.js');
@@ -5,6 +6,7 @@ const assets = require('../src/assets.js');
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'dist');
 const ENTRY_FILES = ['index.html', 'levels.js', 'levels.validation.js', 'audio.js', 'game.js',
+    'vendor/phaser.min.js',
     'src/assets.js', 'src/boss-director.js', 'src/level-flow.js', 'src/audio-director.js', 'src/pilot-facts.js', 'src/pilot-tactics.js', 'src/gameplay-rng.js',
     'src/corridor-math.js', 'src/enemy-math.js', 'src/difficulty-heat.js'];
 
@@ -32,7 +34,31 @@ async function build(output = OUTPUT) {
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.copyFile(path.join(ROOT, file), target);
     }));
+    await stampCacheBusters(output);
     return output;
+}
+
+async function stampCacheBusters(output) {
+    // Rewrite every local <script src> in the copied index.html (including the
+    // document.write fallback string) to ?v=<content hash>, so a shipped URL
+    // changes exactly when its bytes change. Absolute CDN URLs are untouched.
+    const htmlPath = path.join(output, 'index.html');
+    const html = await fs.readFile(htmlPath, 'utf8');
+    const locals = new Set();
+    for (const match of html.matchAll(/<script\s+src="(?!https?:|\/\/)([^"?#]+)(?:\?[^"#]*)?"/g)) {
+        locals.add(match[1]);
+    }
+    const hashes = {};
+    for (const rel of [...locals].sort()) {
+        const bytes = await fs.readFile(path.join(output, rel)).catch(() => null);
+        if (!bytes) throw new Error('index.html references an unpublished script: ' + rel);
+        hashes[rel] = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+    }
+    const stamped = html.replace(
+        /(<script\s+src="(?!https?:|\/\/)([^"?#]+))(?:\?[^"#]*)?(")/g,
+        (full, prefix, rel, suffix) => `${prefix}?v=${hashes[rel]}${suffix}`
+    );
+    await fs.writeFile(htmlPath, stamped);
 }
 
 module.exports = { build, OUTPUT };
