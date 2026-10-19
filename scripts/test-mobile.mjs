@@ -52,6 +52,16 @@ async function launchFromOpening(page) {
         await page.waitForFunction(() => !__novawingDebug.getOpeningState().active);
         return;
     }
+    // Phaser's cached canvasBounds lags the live rect for ~300ms after ready
+    // (observed top 284 vs 177 on iPad); tapping before they agree maps
+    // LAUNCH onto the difficulty row and the title never launches.
+    await page.waitForFunction(() => {
+        const rect = game.canvas.getBoundingClientRect();
+        const bounds = game.scale && game.scale.canvasBounds;
+        if (!bounds) return false;
+        return Math.abs(bounds.x - rect.left) < 1 && Math.abs(bounds.y - rect.top) < 1 &&
+            Math.abs(bounds.width - rect.width) < 1 && Math.abs(bounds.height - rect.height) < 1;
+    });
     const canvas = await page.locator('#game-container canvas').boundingBox();
     const target = page.locator('#game-container canvas');
     const position = { x: canvas.width / 2, y: canvas.height * 425 / 600 };
@@ -132,6 +142,30 @@ async function testDomTouchControls(page) {
     const fireReleased = await state();
     if (fireHeld.touch.touchFireHeld && fireHeld.fire && !fireReleased.touch.touchFireHeld && fireReleased.fire) pass('mobile dock FIRE is hold-to-fire');
     else fail('mobile dock FIRE is hold-to-fire', JSON.stringify({ fireHeld, fireReleased }));
+
+    const nearStick = await page.evaluate(() => {
+        const r = document.querySelector('[data-touch="stick"]').getBoundingClientRect();
+        return { x: r.left + r.width / 2 + r.width / 2 + 25, y: r.top + r.height / 2, id: 9 };
+    });
+    await send('touchStart', [nearStick]);
+    await page.waitForTimeout(60);
+    const nearGrabbed = await state();
+    await send('touchEnd', []);
+    await page.waitForTimeout(30);
+    const nearReleased = await state();
+    if (nearGrabbed.touch.touchMoveActive && nearGrabbed.touch.stickPointerId !== null && !nearReleased.touch.touchMoveActive) pass('mobile near-stick background press steers');
+    else fail('mobile near-stick background press steers', JSON.stringify({ nearGrabbed, nearReleased }));
+
+    const farTouch = await page.evaluate(() => {
+        const r = document.querySelector('[data-touch="stick"]').getBoundingClientRect();
+        return { x: r.left + r.width / 2 + r.width / 2 + 90, y: r.top + r.height / 2, id: 10 };
+    });
+    await send('touchStart', [farTouch]);
+    await page.waitForTimeout(60);
+    const farState = await state();
+    await send('touchEnd', []);
+    if (!farState.touch.touchMoveActive && farState.touch.stickPointerId === null) pass('mobile far background touch does not steer');
+    else fail('mobile far background touch does not steer', JSON.stringify(farState));
 
     const auto = await point('[data-touch="auto"]', 4);
     await send('touchStart', [auto]); await send('touchEnd', []);

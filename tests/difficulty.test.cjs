@@ -50,8 +50,10 @@ test('player presets order combat pressure while preserving hard two-hit counts'
     assert.ok(normal.enemySpeedScale < hard.enemySpeedScale);
     assert.ok(easy.enemyCadenceScale > normal.enemyCadenceScale);
     assert.ok(normal.enemyCadenceScale > hard.enemyCadenceScale);
-    assert.ok(easy.waveIntervalMinMs > normal.waveIntervalMinMs);
-    assert.ok(normal.waveIntervalMinMs > hard.waveIntervalMinMs);
+    assert.ok(easy.waveIntervalScale > 1);
+    assert.ok(hard.waveIntervalScale < 1);
+    assert.equal(easy.waveIntervalMinMs, undefined);
+    assert.equal(hard.waveIntervalMinMs, undefined);
     assert.equal(easy.enemyShotSpeedScale, 0.78);
     assert.ok(easy.enemyShotSpeedScale < normal.enemyShotSpeedScale);
     assert.ok(normal.enemyShotSpeedScale < hard.enemyShotSpeedScale);
@@ -63,6 +65,25 @@ test('player presets order combat pressure while preserving hard two-hit counts'
     assert.equal(Levels.scaleCountedStat(2, hard.enemyHealthScale), 2);
     assert.equal(Levels.scaleCountedStat(2, normal.enemyHealthScale), 2);
     assert.equal(Levels.scaleCountedStat(2, easy.enemyHealthScale), 1);
+});
+
+test('mode overlays scale segment wave timing instead of replacing gate breathers (C2)', () => {
+    const l4 = Levels.getEffectiveLevelDefs().find(level => level.id === 4);
+    assert.ok(l4, 'L4 exists');
+    const smelter = l4.segments.find(segment => segment.id === 'smelter');
+    assert.ok(smelter, 'smelter segment exists');
+    // The +800 ms gate breather is baked into the segment by the L4-11 pass.
+    assert.ok(smelter.difficulty.waveIntervalMinMs >= 3500);
+    const effectiveMin = mode => {
+        const bag = Levels.resolveSegmentBag(l4, smelter, mode);
+        assert.equal(bag.waveIntervalMinMs, smelter.difficulty.waveIntervalMinMs,
+            mode + ' preserves the authored breather');
+        return bag.waveIntervalMinMs * (bag.waveIntervalScale == null ? 1 : bag.waveIntervalScale);
+    };
+    assert.equal(Levels.resolveSegmentBag(l4, smelter, 'easy').waveIntervalScale, 1.25);
+    assert.equal(Levels.resolveSegmentBag(l4, smelter, 'hard').waveIntervalScale, 0.75);
+    assert.ok(effectiveMin('easy') > effectiveMin('normal'), 'cadet breathes slowest');
+    assert.ok(effectiveMin('normal') > effectiveMin('hard'), 'supernova presses hardest');
 });
 
 test('easy and normal grant arcade continues and supernova does not', () => {
@@ -103,6 +124,9 @@ test('L3 gauntlet teaches vertical fire before mines and eases Space Cadet', () 
     assert.ok(normal.typedFireChance < hard.typedFireChance);
     assert.ok(easy.waveIntervalMinMs > normal.waveIntervalMinMs);
     assert.ok(normal.waveIntervalMinMs > hard.waveIntervalMinMs);
+    assert.equal(easy.waveIntervalScale, 1);
+    assert.equal(normal.waveIntervalScale, 1);
+    assert.equal(hard.waveIntervalScale, 1);
     assert.ok(easy.blackHolePreviewAtMs > normal.blackHolePreviewAtMs);
     assert.ok(normal.blackHolePreviewAtMs > hard.blackHolePreviewAtMs);
     assert.ok(l3.difficultyModes.easy.bossTempoScale > l3.difficultyModes.normal.bossTempoScale);
@@ -116,7 +140,7 @@ test('difficulty query preset is overlaid by explicit numeric knobs only', () =>
 
     assert.equal(overlay.enemyHealthScale, 0.8);
     assert.equal(overlay.enemyCadenceScale, 1.7);
-    assert.equal(overlay.waveIntervalMinMs, easy.waveIntervalMinMs);
+    assert.equal(overlay.waveIntervalScale, easy.waveIntervalScale);
     assert.equal(overlay.unknown, undefined);
 
     const numericOnly = Levels.readDifficultyQueryOverlay(

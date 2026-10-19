@@ -225,10 +225,38 @@ export async function casePolish(browser, base, evidenceDir) {
             return { listToNote: top(note) - bottom(list), noteToBack: top(back) - bottom(note) };
         });
         assert.ok(boardGap.listToNote > 6 && boardGap.noteToBack > 6, 'leaderboard rows overlap the footer: ' + JSON.stringify(boardGap));
-        await clickText('CAMPAIGN');
+        await clickText('CAMP');
         await page.waitForFunction(() => getActiveScene().children.list.some(node =>
             node.active && typeof node.text === 'string' && node.text.includes('unclaimed')
         ));
+        const tabOverlap = await page.evaluate(() => {
+            const tabs = getActiveScene().children.list.filter(node =>
+                node.active && node.visible && node.input && typeof node.text === 'string' &&
+                (/^L\d+$/.test(node.text) || node.text === 'CAMP'));
+            const rows = new Map();
+            for (const tab of tabs) {
+                const key = Math.round(tab.y);
+                if (!rows.has(key)) rows.set(key, []);
+                rows.get(key).push(tab);
+            }
+            let worst = Infinity;
+            for (const row of rows.values()) {
+                row.sort((a, b) => a.x - b.x);
+                for (let i = 1; i < row.length; i++) {
+                    const gap = (row[i].x - row[i].width / 2) - (row[i - 1].x + row[i - 1].width / 2);
+                    worst = Math.min(worst, gap);
+                }
+            }
+            return { tabs: tabs.length, rows: rows.size, worstGap: worst };
+        });
+        assert.equal(tabOverlap.tabs, 18, 'fastest tabs missing: ' + JSON.stringify(tabOverlap));
+        assert.ok(tabOverlap.worstGap > 2, 'fastest tabs overlap: ' + JSON.stringify(tabOverlap));
+        const clampX = await page.evaluate(() => {
+            showFloatingText(getActiveScene(), 10, 300, 'CLAMPTEST', '#ffffff', {});
+            const node = getActiveScene().children.list.find(n => n.active && n.text === 'CLAMPTEST');
+            return node ? node.x : -1;
+        });
+        assert.equal(clampX, 70, 'ship-following toast not clamped into the canvas');
         await page.keyboard.press('Escape');
         assert.equal(await page.evaluate(() => __novawingDebug.getOpeningState().leaderboardOpen), false);
         assert.equal(await page.evaluate(() => openingActive), true);
@@ -245,6 +273,14 @@ export async function casePolish(browser, base, evidenceDir) {
         assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 740 && bounds.y + bounds.height <= 360);
         await page.screenshot({ path: path.join(evidenceDir, 'polish-opening-small.png') });
         await page.setViewportSize({ width: 960, height: 720 });
+        // Phaser Scale Manager relayout is async: a click point computed
+        // against the transient canvas rect lands on the wrong control
+        // (observed: LAUNCH click hitting CO-OP, restarting the scene).
+        await page.waitForFunction(() => {
+            const rect = game.canvas.getBoundingClientRect();
+            return Math.abs(rect.width - 960) < 1 && Math.abs(rect.height - 720) < 1 &&
+                Math.abs(rect.left) < 1 && Math.abs(rect.top) < 1;
+        });
         await input.fill('PolishPilot');
         assert.equal(await page.evaluate(() => localStorage.getItem('novawing-player-name')), 'PolishPilot');
         await clickText('LAUNCH');
@@ -330,7 +366,7 @@ export async function casePolish(browser, base, evidenceDir) {
         const failedBoot = await browser.newContext();
         try {
             const failedPage = await failedBoot.newPage();
-            await failedPage.route('**/phaser.min.js', route => route.abort());
+            await failedPage.route('**/phaser.min.js*', route => route.abort());
             await failedPage.goto(new URL('/', base).href);
             await failedPage.locator('#boot-hint.is-error').waitFor();
             assert.match(await failedPage.locator('#boot-hint').innerText(), /could not load/i);

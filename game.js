@@ -711,6 +711,7 @@ let bossNextVolleyAt = 0;
 let bossNextDroneAt = 0;
 let bossNextLaserAt = 0;
 let bossPhase = 1;
+let bossPhaseStartedAt = 0;
 let lastFired = 0;
 let score = 0;
 let lives = 3;
@@ -2124,7 +2125,10 @@ function update(time, delta) {
             const w = list[i];
             if (!w.active) continue;
             updateScrollVelocity(w);
-            if (isOffscreen(w, 90)) releaseSprite(w);
+            // Pad covers the furthest terrain spawn (x = 910 + along, max
+            // 975): staggered gate faces must survive until they scroll in,
+            // not die on their birth frame. tests/terrain-spawn-range pins it.
+            if (isOffscreen(w, 160)) releaseSprite(w);
         }
     }
 
@@ -2333,7 +2337,13 @@ function hitBoss(bullet, bossSprite) {
         damageGardenEngine.call(this, bossSprite, hitX, hitY, damage, impactAngle);
         return;
     }
-    bossHealth = Math.max(0, bossHealth - damage);
+    const gateFloor = bossPhaseDamageFloor();
+    if (gateFloor > 0 && bossHealth <= gateFloor) {
+        createExplosion(this, hitX, hitY, 6, { palette: 'orange', flash: false });
+        sfx.spark(hitX);
+        return;
+    }
+    bossHealth = Math.max(gateFloor, bossHealth - damage);
     if (bossHealth > 0) {
         updateBossPhase.call(this);
     }
@@ -2954,7 +2964,7 @@ function detonateScreenBomb(scene, originX, originY) {
 
     if (boss && boss.active && gamePhase === 'boss' && NovaWingBosses.vulnerable(boss.encounterState)) {
         const bombDamage = 28;
-        bossHealth = Math.max(0, bossHealth - bombDamage);
+        bossHealth = Math.max(bossPhaseDamageFloor(), bossHealth - bombDamage);
         if (bossHealth > 0) {
             updateBossPhase.call(scene);
         }
@@ -3373,8 +3383,11 @@ function scheduleNextEnemyWave(scene, delayMs) {
 }
 
 function nextWaveDelayMs() {
-    const min = difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS);
-    const max = Math.max(min, difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS));
+    // Modes scale the authored segment interval (gate breathers included)
+    // instead of replacing it; tuned per-mode absolutes pin the scale to 1.
+    const intervalScale = difficultyNumber('waveIntervalScale', 1);
+    const min = Math.round(difficultyNumber('waveIntervalMinMs', WAVE_INTERVAL_MIN_MS) * intervalScale);
+    const max = Math.max(min, Math.round(difficultyNumber('waveIntervalMaxMs', WAVE_INTERVAL_MAX_MS) * intervalScale));
     let delay;
     if (!difficultyFlag('randomWaves', false)) {
         delay = Phaser.Math.Between(min, max);
@@ -5330,7 +5343,10 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     // their authored proportions at any block size; collision is unchanged.
     const cover = Math.max(width / sourceW, height / sourceH);
     wall.setScale(cover, cover);
-    wall.setCrop((sourceW - width / cover) / 2, (sourceH - height / cover) / 2, width / cover, height / cover);
+    const crop = (typeof NovaWingWallSpawn !== 'undefined' && NovaWingWallSpawn.coverCropRect)
+        ? NovaWingWallSpawn.coverCropRect(sourceW, sourceH, width, height)
+        : { x: (sourceW - width / cover) / 2, y: (sourceH - height / cover) / 2, w: width / cover, h: height / cover };
+    wall.setCrop(crop.x, crop.y, crop.w, crop.h);
     wall.setDepth(1);
     // Normal walls keep full art color; sealing dead-end walls warm up as a danger cue.
     if (options.danger) {
@@ -5354,6 +5370,10 @@ function spawnWallBlock(x, y, width, height, options = {}) {
         const insetX = Math.max(2, Math.round(sourceW * 0.06));
         const insetY = Math.max(2, Math.round(sourceH * 0.04));
         wall.body.setSize(sourceW - insetX * 2, sourceH - insetY * 2, true);
+        // Pooled bodies keep the prevFrame of their last life (or creation);
+        // the reposition above would otherwise replay as motion in the next
+        // postUpdate, flinging large-art walls offscreen on frame one.
+        if (wall.body.prevFrame) wall.body.prevFrame.copy(wall.body.position);
     }
     // Stamp the spawn frame for the collision grace above. Walls spawn
     // offscreen and scroll in, so two skipped frames cost nothing legit.
@@ -5686,6 +5706,7 @@ function startBossFight(encounterKey) {
     syncLevelMusic('boss');
     bossHealth = bossMaxHealth;
     bossPhase = 1;
+    bossPhaseStartedAt = playtestNow(this);
     bossNextVolleyAt = playtestNow(this) + 1400;
     bossNextDroneAt = Infinity;
     bossNextLaserAt = Infinity;
@@ -5728,6 +5749,7 @@ function startBossFight(encounterKey) {
         boss.encounterWarnings = [];
     }
     boss.maxPhase = Number.isFinite(profile.maxPhase) ? profile.maxPhase : 3;
+    boss.minPhaseMs = Number.isFinite(profile.minPhaseMs) ? profile.minPhaseMs : 0;
     boss.escapeHpRatio = Number.isFinite(profile.escapeHpRatio) ? profile.escapeHpRatio : null;
     const aspect = boss.height > 0 ? boss.width / boss.height : 1.9;
     boss.setDisplaySize(targetWidth, Math.round(targetWidth / aspect));
@@ -6384,11 +6406,26 @@ function fireBossVolley(time) {
     sfx.missile(boss ? boss.x : 700);
 }
 
+function bossPhaseDamageFloor() {
+    // Phase-gated encounters (profile minPhaseMs) hold HP at the next phase
+    // threshold until the current phase has read for its minimum; aimed fire
+    // can reach the gate early but cannot skip the phase. The kill is never
+    // gated: phase 3 always has floor 0. Call sites: hitBoss, detonateBomb.
+    const minMs = boss && Number.isFinite(boss.minPhaseMs) ? boss.minPhaseMs : 0;
+    if (!(minMs > 0) || !boss || !boss.active) return 0;
+    if (playtestNow(getActiveScene()) - bossPhaseStartedAt >= minMs) return 0;
+    const maxHealth = bossMaxHealth || BOSS_MAX_HEALTH;
+    if (bossPhase <= 1) return Math.ceil(maxHealth * BOSS_PHASE_2_HEALTH_RATIO);
+    if (bossPhase === 2) return Math.ceil(maxHealth * BOSS_PHASE_3_HEALTH_RATIO);
+    return 0;
+}
+
 function updateBossPhase() {
     const nextPhase = getBossPhase();
     if (nextPhase <= bossPhase) return;
 
     bossPhase = nextPhase;
+    bossPhaseStartedAt = playtestNow(this);
     const now = playtestNow(this);
     const message = boss && boss.encounterState
         ? 'PHASE ' + bossPhase + ': ' + NovaWingBosses.catalog[boss.encounterState.id].phases[bossPhase - 1]
@@ -9328,7 +9365,9 @@ function restoreArcadeContinue(scene) {
     updateCoopText();
     updateBoostUi();
     updatePauseHud();
-    showFloatingText(scene, 400, 140, 'CONTINUE', '#ffe66d', { screenSpace: true });
+    // Mid-screen: top-center is owned by the boss bar (102), phase banner
+    // (110), and weapon hint (150) — a CONTINUE flash there overprints them.
+    showFloatingText(scene, 400, 300, 'CONTINUE', '#ffe66d', { screenSpace: true });
     flashVignette(scene, 0xffe66d, 0.32);
 }
 
@@ -9849,9 +9888,12 @@ function showOpeningLeaderboard(scene, initialScope) {
     const tabScopes = getLeaderboardScopes();
     const tabLeft = 200;
     const tabRight = 600;
+    const tabsPerRow = Math.ceil(tabScopes.length / 2);
     const tabs = tabScopes.map((scope, index) => {
-        const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
-        const text = scene.add.text(tabLeft + t * (tabRight - tabLeft), 196, scope === 'campaign' ? 'CAMPAIGN' : 'L' + scope.slice('level-'.length), {
+        const tabRow = Math.floor(index / tabsPerRow);
+        const tabCol = index % tabsPerRow;
+        const t = tabsPerRow <= 1 ? 0.5 : tabCol / (tabsPerRow - 1);
+        const text = scene.add.text(tabLeft + t * (tabRight - tabLeft), 188 + tabRow * 22, scope === 'campaign' ? 'CAMP' : 'L' + scope.slice('level-'.length), {
             fontFamily: 'monospace', resolution: 2, fontSize: touchLayout ? '17px' : '15px', fill: '#8aa0c8'
         }).setOrigin(0.5).setDepth(92).setScrollFactor(0).setInteractive({ useHandCursor: true });
         text.on('pointerdown', () => {
@@ -10335,6 +10377,7 @@ function getTouchLayout() {
 
 function maybeShowOrientationHint(scene) {
     if (!scene || !isMobileOrTabletDevice()) return;
+    if (typeof openingActive !== 'undefined' && openingActive) return;
     const now = scene.time ? scene.time.now : Date.now();
     if (isPortraitViewport()) {
         if (orientationHintText && orientationHintText.active) return;
@@ -11232,29 +11275,57 @@ function createDomTouchControls(scene) {
     };
     const onStickMove = event => { if (controls.stickPointerId === event.pointerId) { stopPointer(event); updateStick(event); } };
     const onStickEnd = event => { if (controls.stickPointerId === event.pointerId) releaseStick(); };
+    const onNearStickDown = event => {
+        // Forgive thumbs that land just outside the visible stick ring. The
+        // dock is pointer-transparent outside its buttons, so near-misses
+        // land on body and would otherwise do nothing; claim background
+        // touches near the stick so they steer. Buttons, canvas, and overlays
+        // keep their own touches (strict target check), so a claimed touch is
+        // never stolen from another control.
+        if (dock.style.display === 'none' || controls.stickPointerId !== null) return;
+        const target = event.target;
+        if (target !== document.body && target !== document.documentElement && target !== dock) return;
+        const rect = stick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const grab = rect.width / 2 + 40;
+        if (Math.hypot(event.clientX - cx, event.clientY - cy) > grab) return;
+        onStickDown(event);
+    };
     const onFireDown = event => { if (controls.firePointerId !== null) return; stopPointer(event); controls.firePointerId = event.pointerId; capturePointer(fire, event.pointerId); touchFireHeld = true; fire.classList.add('is-active'); if (sfx) sfx.unlock(); };
     const onBoostDown = event => { if (controls.boostPointerId !== null) return; stopPointer(event); controls.boostPointerId = event.pointerId; capturePointer(boost, event.pointerId); touchBoostHeld = true; boost.classList.add('is-active'); if (sfx) sfx.unlock(); };
     const onAuto = event => { stopPointer(event); mobileAutoFire = !mobileAutoFire; resetDomTouchVisuals(controls); showFloatingText(scene, 400, 120, mobileAutoFire ? 'AUTO-FIRE ON' : 'AUTO-FIRE OFF', '#66f6ff', { screenSpace: true }); };
     const onPause = event => { stopPointer(event); togglePause(scene); };
     const onMute = event => { stopPointer(event); toggleMute(); resetDomTouchVisuals(controls); };
     const onWeapon = event => { stopPointer(event); cycleTopTierWeapon(null); if (sfx) sfx.unlock(); };
-    let utilityPointerAt = -Infinity;
-    const utilityPointer = action => event => { utilityPointerAt = performance.now(); action(event); };
-    const utilityClick = action => event => {
-        // Pointerdown is immediate on touch; keyboard clicks have detail=0 and
-        // remain available even immediately after a pointer action.
-        if (event.detail !== 0 && performance.now() - utilityPointerAt < 450) return;
-        action(event);
+    // Pointerdown fires immediately; the follow-up click is always a duplicate
+    // within the window, whatever its detail (synthetic and some real-device
+    // taps report detail=0). Stamps are per-button so a tap on one control
+    // never eats a keyboard activation on another.
+    const utilityButton = action => {
+        let pointerAt = -Infinity;
+        return {
+            down: event => { pointerAt = performance.now(); action(event); },
+            click: event => {
+                if (performance.now() - pointerAt < 450) return;
+                action(event);
+            }
+        };
     };
-    const onAutoDown = utilityPointer(onAuto);
-    const onPauseDown = utilityPointer(onPause);
-    const onMuteDown = utilityPointer(onMute);
-    const onWeaponDown = utilityPointer(onWeapon);
-    const onAutoClick = utilityClick(onAuto);
-    const onPauseClick = utilityClick(onPause);
-    const onMuteClick = utilityClick(onMute);
-    const onWeaponClick = utilityClick(onWeapon);
+    const autoButton = utilityButton(onAuto);
+    const pauseButton = utilityButton(onPause);
+    const muteButton = utilityButton(onMute);
+    const weaponButton = utilityButton(onWeapon);
+    const onAutoDown = autoButton.down;
+    const onPauseDown = pauseButton.down;
+    const onMuteDown = muteButton.down;
+    const onWeaponDown = weaponButton.down;
+    const onAutoClick = autoButton.click;
+    const onPauseClick = pauseButton.click;
+    const onMuteClick = muteButton.click;
+    const onWeaponClick = weaponButton.click;
     const onCancel = () => { releaseStick(); releaseFire(); releaseBoost(); };
+    document.addEventListener('pointerdown', onNearStickDown, true);
     stick.addEventListener('pointerdown', onStickDown, { passive: false });
     stick.addEventListener('pointermove', onStickMove, { passive: false });
     stick.addEventListener('pointerup', onStickEnd); stick.addEventListener('pointercancel', onStickEnd); stick.addEventListener('lostpointercapture', onStickEnd);
@@ -11268,6 +11339,7 @@ function createDomTouchControls(scene) {
     }
     window.addEventListener('blur', onCancel); document.addEventListener('visibilitychange', onCancel);
     controls.cleanup = () => {
+        document.removeEventListener('pointerdown', onNearStickDown, true);
         stick.removeEventListener('pointerdown', onStickDown); stick.removeEventListener('pointermove', onStickMove); stick.removeEventListener('pointerup', onStickEnd); stick.removeEventListener('pointercancel', onStickEnd); stick.removeEventListener('lostpointercapture', onStickEnd);
         fire.removeEventListener('pointerdown', onFireDown); fire.removeEventListener('pointerup', releaseFire); fire.removeEventListener('pointercancel', releaseFire); fire.removeEventListener('lostpointercapture', releaseFire);
         boost.removeEventListener('pointerdown', onBoostDown); boost.removeEventListener('pointerup', releaseBoost); boost.removeEventListener('pointercancel', releaseBoost); boost.removeEventListener('lostpointercapture', releaseBoost);
@@ -12598,7 +12670,10 @@ function loadPosterRecord(difficulty) {
 }
 
 function showFloatingText(scene, x, y, message, color, options = {}) {
-    const text = scene.add.text(x, y, message, {
+    // Ship-following toasts (pickups, shield breaks) would otherwise hang
+    // half off the canvas when earned at the rails.
+    const clampedX = Phaser.Math.Clamp(x, 70, 730);
+    const text = scene.add.text(clampedX, y, message, {
         fontSize: '17px',
         fill: color,
         fontFamily: 'monospace', resolution: 2,
@@ -12787,7 +12862,7 @@ function endLevel(title, color, options = {}) {
     }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
     let selectedLeaderboardScope = displayScopeBase;
-    const leaderboardChampion = this.add.text(555, 198, '', {
+    const leaderboardChampion = this.add.text(555, 204, '', {
         fontSize: '16px',
         fill: '#ffe66d',
         fontFamily: 'monospace', resolution: 2,
@@ -12826,18 +12901,22 @@ function endLevel(title, color, options = {}) {
     };
 
     const tabScopes = getLeaderboardScopes();
-    const tabLeft = 430;
-    const tabRight = 680;
+    const tabLeft = 400;
+    const tabRight = 710;
+    const resultTabsPerRow = Math.ceil(tabScopes.length / 2);
     const tabDefs = tabScopes.map((scope, index) => {
-        const t = tabScopes.length <= 1 ? 0.5 : index / (tabScopes.length - 1);
+        const tabRow = Math.floor(index / resultTabsPerRow);
+        const tabCol = index % resultTabsPerRow;
+        const t = resultTabsPerRow <= 1 ? 0.5 : tabCol / (resultTabsPerRow - 1);
         return {
             scope: scope,
-            label: scope === 'campaign' ? 'CAMPAIGN' : 'L' + scope.slice('level-'.length),
-            x: tabLeft + t * (tabRight - tabLeft)
+            label: scope === 'campaign' ? 'CAMP' : 'L' + scope.slice('level-'.length),
+            x: tabLeft + t * (tabRight - tabLeft),
+            y: 170 + tabRow * 20
         };
     });
     const tabTexts = tabDefs.map(tab => {
-        const text = this.add.text(tab.x, 180, tab.label, {
+        const text = this.add.text(tab.x, tab.y, tab.label, {
             fontSize: '13px',
             fill: tab.scope === displayScopeBase ? '#ffe66d' : '#8aa0c8',
             fontFamily: 'monospace', resolution: 2

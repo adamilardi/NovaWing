@@ -149,6 +149,11 @@
             .touch-auto { right: max(118px, env(safe-area-inset-right, 0px)); bottom: 130px; }
             .touch-utility { left: 4px; top: 6px; transform: none; }
         }
+        @media (orientation: portrait) and (max-width: 370px) {
+            /* 320–370px phones: no room beside the utility row, so AUTO
+               sits between stick and fire, clear of both. */
+            .touch-auto { right: auto; left: 132px; bottom: 67px; transform: none; }
+        }
         @media (orientation: landscape) {
             html.touch-device #game-container {
                 width: calc(100% - 264px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));

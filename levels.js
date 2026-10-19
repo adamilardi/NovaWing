@@ -106,6 +106,9 @@
         firstWaveDelayMs: 650,
         waveIntervalMinMs: 1650,
         waveIntervalMaxMs: 2300,
+        // Multiplies authored segment intervals (gate breathers included);
+        // modes scale timing instead of replacing it (see C2).
+        waveIntervalScale: 1,
         enemyHealthScale: 1,
         enemySpeedScale: 1,
         enemyShotSpeedScale: 1,
@@ -182,8 +185,7 @@
             enemyFireChance: 0.18,
             interceptorFireChance: 0.4,
             typedFireChance: 0.55,
-            waveIntervalMinMs: 2100,
-            waveIntervalMaxMs: 2800,
+            waveIntervalScale: 1.25,
             enemyHealthScale: 0.7,
             enemySpeedScale: 0.9,
             enemyShotSpeedScale: 0.78,
@@ -209,8 +211,7 @@
             enemyFireChance: 0.62,
             interceptorFireChance: 0.95,
             typedFireChance: 1,
-            waveIntervalMinMs: 1250,
-            waveIntervalMaxMs: 1700,
+            waveIntervalScale: 0.75,
             // Supernova raises pressure through speed and density, not HP.
             enemyHealthScale: 1,
             enemySpeedScale: 1.12,
@@ -893,6 +894,7 @@
                         typedFireChance: 0.32,
                         waveIntervalMinMs: 2500,
                         waveIntervalMaxMs: 3300,
+                        waveIntervalScale: 1,
                         enemySpeedScale: 0.8,
                         enemyShotSpeedScale: 0.68,
                         blackHolePreviewAtMs: 82000,
@@ -904,6 +906,7 @@
                         typedFireChance: 0.48,
                         waveIntervalMinMs: 2300,
                         waveIntervalMaxMs: 3000,
+                        waveIntervalScale: 1,
                         enemySpeedScale: 0.92,
                         enemyShotSpeedScale: 0.88,
                         blackHolePreviewAtMs: 80000,
@@ -915,6 +918,7 @@
                         typedFireChance: 1,
                         waveIntervalMinMs: 1050,
                         waveIntervalMaxMs: 1450,
+                        waveIntervalScale: 1,
                         blackHolePreviewAtMs: 48000
                     }
                 },
@@ -1000,7 +1004,7 @@
         music: { waves: 'gauntlet', boss: 'singularity' },
         durationMs: 78000, bossScore: 3000, bossHealth: 310,
         difficultyModes: EXPANSION_MODES,
-        bossEncounters: { final: { behavior: 'auroraSentinel', health: 245, maxPhase: 3, entry: 'warpCenter',
+        bossEncounters: { final: { behavior: 'auroraSentinel', health: 196, maxPhase: 3, entry: 'warpCenter',
             arena: 'flat', label: 'WARNING: AURORA SENTINEL' } },
         segments: [
             expansionWaves('iceApproach', 22000, ['verticalRegular', 'verticalV'], 'riftCrossfire', true,
@@ -1091,7 +1095,7 @@
         music: { waves: 'canyon', boss: 'canyonBoss' },
         durationMs: 74000, bossScore: 3200, bossHealth: 300,
         difficultyModes: EXPANSION_MODES,
-        bossEncounters: { final: { behavior: 'prismCaster', health: 240, maxPhase: 3, entry: 'horizontal',
+        bossEncounters: { final: { behavior: 'prismCaster', health: 240, maxPhase: 3, minPhaseMs: 4000, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: PRISM CASTER' } },
         segments: [
             expansionWaves('outerLens', 22000, ['diagonal', 'vFormation', 'chaser', 'skyDive', 'floorRise'], 'splitterBay', false,
@@ -1748,7 +1752,7 @@
     const LEVEL_17 = defineLevel({
         id: 17, name: 'NEON REEF', tier: 3,
         introHint: 'RIDE THE CURRENT • SILENCE THE CHOIR',
-        art: { background: 'neonReef', backgroundDim: 0.9, scenery: 'reefScenery', wall: 'reefWall', boss: 'neonChoir' },
+        art: { background: 'neonReef', backgroundDim: 0.6, scenery: 'reefScenery', wall: 'reefWall', boss: 'neonChoir' },
         music: { waves: 'gauntlet', boss: 'finalBoss' },
         durationMs: 70000, bossScore: 3600, bossKills: 1, bossHealth: 240,
         difficultyModes: PROMOTED_MODES,

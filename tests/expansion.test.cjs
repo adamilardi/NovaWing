@@ -40,6 +40,16 @@ test('expansion has four complete reachable encounter arcs and durable selected 
     assert.equal(levels[5].segments.find(s => s.kind === 'transition').cinematic, 'perspectiveFlip');
 });
 
+test('reviewer boss tuning pins hold: sentinel trimmed, caster phase-gated', () => {
+    const levels = Levels.getEffectiveLevelDefs();
+    const sentinel = levels.find(level => level.id === 5).bossEncounters.final;
+    assert.equal(sentinel.behavior, 'auroraSentinel');
+    assert.equal(sentinel.health, 196);
+    const caster = levels.find(level => level.id === 8).bossEncounters.final;
+    assert.equal(caster.behavior, 'prismCaster');
+    assert.equal(caster.minPhaseMs, 4000);
+});
+
 test('authored geometry displaces flight while leaving reachable timed openings and pickups', () => {
     for (const level of Levels.getEffectiveLevelDefs().filter(level => level.id >= 4 && level.id <= 11)) {
         for (const [phase, segment] of level.segments.filter(s => s.kind === 'waves').entries()) {
