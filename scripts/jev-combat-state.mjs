@@ -75,6 +75,31 @@ export function buildFallbackDecision(snapshot, safest, holdMs = 320) {
     };
 }
 
+/** Combined-bot fallback: when the JEV call fails, fly the shared planner's
+ * full recommendation (stick AND boost) — exactly what the simple bot would
+ * do — instead of the unboosted safest stick. Degrades to the safest stick
+ * when the planner itself cannot run. Shape matches a model decision so the
+ * audit log stays uniform. */
+export function buildPlannerFallbackDecision(snapshot, holdMs = 320) {
+    const durationMs = holdDurationMs(snapshot?.phase, holdMs);
+    try {
+        const tactical = plan(snapshot, durationMs);
+        const option = tactical && tactical.options ? tactical.options[tactical.recommended] : null;
+        if (option && Object.prototype.hasOwnProperty.call(AXES, option.stick)) {
+            return {
+                stick: option.stick, boost: Boolean(option.boost), durationMs,
+                end: option.end,
+                predictedCollision: option.predictedCollision ?? false,
+                predictedDamage: option.predictedDamage ?? false,
+                edgeAtMs: option.edgeAtMs ?? null,
+                source: 'planner-fallback', model: 'local-planner', confidence: 0,
+                stateTimeMs: snapshot?.time ?? null, hazards: snapshot?.combatHazards ?? null
+            };
+        }
+    } catch { /* planner unavailable: safest stick below */ }
+    return { ...buildFallbackDecision(snapshot, snapshot?.pilot?.safest, holdMs), source: 'planner-fallback' };
+}
+
 export function jevActionGuidance() {
     return [
         'Take the recommendation, the highest score, unless recent shows a life lost or endpointErrorPx above 12.',

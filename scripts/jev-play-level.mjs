@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { launchBrowser } from './rl/chrome.mjs';
-import { AXES, buildFallbackDecision, buildJevCombatState, formatActionLabel, holdDurationMs, jevActionGuidance, jevGoal, shortlistActionKeys } from './jev-combat-state.mjs';
+import { AXES, buildJevCombatState, buildPlannerFallbackDecision, formatActionLabel, holdDurationMs, jevActionGuidance, jevGoal, shortlistActionKeys } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 import { endpointError, jumpControlledSegment, synchronizeControlledLoop } from './rl/controlled-play.mjs';
 import { OBS_VERSION, OBS_SIZE, ACTION_SIZE, OBS_LAYOUT, encodeObservation, toCanonicalAction } from './rl/obs-encode.mjs';
@@ -323,8 +323,8 @@ async function main() {
             } catch (error) {
                 const detail = safeError(error);
                 jevErrors.push({ atMs: Date.now() - started, ...detail, fallback: true });
-                console.log('jev error, falling back to local safest move:', detail.message);
-                decision = buildFallbackDecision(observation.snapshot, observation.pilot?.safest, HOLD_MS);
+                console.log('jev error, falling back to planner recommendation:', detail.message);
+                decision = buildPlannerFallbackDecision(observation.snapshot, HOLD_MS);
             }
             await apply(decision.stick, decision.boost);
             const elapsed = await stepGame(decision.durationMs);
@@ -410,6 +410,7 @@ async function main() {
             continuesUsed,
             jevDecisions,
             jevErrors: jevErrors.length,
+            plannerFallbacks: actions.filter((a) => a.source === 'planner-fallback').length,
             bossGun,
             pageErrors,
             usage,
@@ -475,6 +476,7 @@ async function main() {
             continuesUsed,
             jevDecisions,
             jevErrors: jevErrors.length,
+            plannerFallbacks: report.plannerFallbacks,
             bossGun,
             pageErrors: pageErrors.length,
             wallSec: Math.round(report.wallMs / 1000),
