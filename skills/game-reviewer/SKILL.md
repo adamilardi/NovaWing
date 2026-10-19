@@ -45,10 +45,12 @@ baked-background seams or stretched sprites, touch controls fully on-screen
 on phone frames. A glitch visible in a shot is a bug even if your play
 session did not hit that frame.
 
-- Boot the level through its real entry route (`?validation=1&level=<id>` for
-  validation levels). Confirm the showcase mechanic appears and is usable.
+- Boot the level through its real entry route (`?level=N` for shipped levels,
+  `?validation=1&level=<id>` for validation levels). Confirm the showcase mechanic appears and is usable.
 - Fly the intended route under live enemy fire on desktop; spot-check mobile.
   A gap test or bot clear does not establish a fair or interesting encounter.
+  An agent flies with Playwright keyboard input per the agent harness in
+  `skills/expert-playtester/SKILL.md`; planner-flown passes are watched, never played.
 - Check pause/resume, death/retry, segment cleanup, boss/end completion, and
   the next-level or victory route as applicable.
 - Read the deterministic gate result and its log; a FAIL gate caps the verdict
@@ -60,21 +62,48 @@ session did not hit that frame.
   into the verdict: persona blockers become `bugs` and `requiredChanges` where
   you agree with them; say explicitly where you disagree and why.
 
+## Difficulty and entry
+
+Fairness is scored on the mode that was actually running. NovaWing's
+player-facing modes are Space Cadet / Hotshot / Supernova (storage ids
+`easy` / `normal` / `hard`); knob tables live in
+`docs/DIFFICULTY_TUNING.md`, ranked continue rules in
+`skills/verify-novawing/features/continues.md`. Judge a new level on
+Supernova unless the user names another mode, per the default balance
+rules in `skills/level-creator/references/novawing.md`.
+
+- Supernova entry: `?level=N&diff=hard&timescale=1&playtestContinues=unlimited`.
+  Hotshot human-rules entry: the same URL without `diff=hard`.
+- Never put `bot` on a judged URL: `?bot=` forces Hotshot, deals 5 lives,
+  skips the opening, and defaults timescale to 8. Every bot-script capture
+  (`npm run screenshots`, play-bot, simple-bot) is a `?bot=` session: it
+  proves a route exists on Hotshot, never Supernova fairness.
+- Confirm the mode in-session before scoring:
+  `__novawingDebug.getBotSnapshot()` reports `difficultyMode` and `lives`.
+  Report both with the verdict.
+- Shipped bonus levels always grant unlimited continues in the game code;
+  on them report deaths and `continuesUsed` alongside the verdict. JEV runs
+  (`scripts/jev-play-level.mjs`) use human rules (3 lives, `diff=normal`,
+  no `bot`), so JEV deaths are the most human-like bot evidence available.
+
 ## Recent gameplay screenshots
 
 `.bot-runs/review/` holds bot-flown captures from the latest `npm run
 screenshots` pass (needs the game serving, e.g. `node server.js`, or
-`NOVAWING_URL` pointing at a live build): `l1-waves-t*.png` (open-space
-combat), `l2-canyon-t*.png` (corridor walls), `l1-boss-t*.png` (boss
-fight), `hud-clamp-t1.png` (ship pinned below the HUD strip),
-`hud-bullets-t1.png` (hostile fire mid-flight), plus `summary.json`
-with per-shot state (enemies/bullets/walls
-alive, bot errors) and any page errors — the run fails when that list is
-non-empty. Refresh them before judging visual changes; a stale shot never
-overrules live play. Use them to pre-screen readability (danger legible in
-~2s, bullets vs pickups, solid vs decoration) and to spot glitchy frames
-(missing sprites, black boxes, NaN-position streaks, HUD overlap, error
-overlays), then confirm every finding in the running game.
+`NOVAWING_URL` pointing at a live build). The default suite covers
+L1/L2/HUD (`l1-waves-t*.png` open-space combat, `l2-canyon-t*.png`
+corridor walls, `l1-boss-t*.png` boss fight, `hud-clamp-t1.png` ship
+pinned below the HUD strip, `hud-bullets-t1.png` hostile fire
+mid-flight). For the level under review run `LEVELS=N` (comma-separated
+for several): `lN-waves-t*.png` and `lN-boss-t*.png` carry that level's
+waves and boss. Every pass writes `summary.json` with per-shot state
+(enemies/bullets/walls alive, bot errors) and any page errors — the run
+fails when that list is non-empty. Refresh shots before judging visual
+changes; a stale shot never overrules live play. Use them to pre-screen
+readability (danger legible in ~2s, bullets vs pickups, solid vs
+decoration) and to spot glitchy frames (missing sprites, black boxes,
+NaN-position streaks, HUD overlap, error overlays), then confirm every
+finding in the running game.
 
 ## Score five axes, 1-5
 
@@ -92,7 +121,7 @@ overlays), then confirm every finding in the running game.
 
 ## Deliver the verdict
 
-Log every play session behind the verdict (`sessions`: entry route, minutes played, what you covered). A verdict without session evidence is rejected; sessions you did not play must never appear. Log the screenshots you evaluated alongside (`shots`: file paths, which build they came from, what each one showed); a verdict without shot evidence is rejected the same way. Shots you did not open must never appear.
+Log every play session behind the verdict (`sessions`: entry route, confirmed mode and lives, minutes played, what you covered). A verdict without session evidence is rejected; sessions you did not play must never appear. Log the screenshots you evaluated alongside (`shots`: file paths, which build they came from, what each one showed); a verdict without shot evidence is rejected the same way. Shots you did not open must never appear.
 
 - `ship_it`: gate green (including the novelty step), no blocker/major bugs, every axis 3+, showcase 4+.
 - `iterate`: fixable problems. List every mandatory fix in `requiredChanges`

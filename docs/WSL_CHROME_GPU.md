@@ -141,3 +141,35 @@ child processes must stay referenced. Unref drops them before DevTools is up.
 `NOVAWING_SWIFTSHADER=1` explicitly selects Linux Chromium. Linux is also used
 on machines without the Windows Chrome installation. A failed Windows launch
 or unavailable hardware WebGL no longer silently falls back to SwiftShader.
+
+## Follow-up: NVIDIA machine (2026-10-18)
+
+New hardware changed the picture. Ryzen 5 7600X3D (12 threads), RTX 5070,
+WSL2 kernel 6.18.54, Mesa 26.0.8. `/dev/dxg` plus `/dev/dri/card0` and
+`renderD128` all exist, and `nvidia-smi` works inside WSL.
+
+The draw reproducer now passes on D3D12: `D3D12 (NVIDIA GeForce RTX 5070)`,
+clear + shader link + draw succeed, `GL_NO_ERROR`, exit 0. The October 11
+segfault was specific to the old AMD stack, not to the Mesa/D3D12 path.
+
+Linux Chromium (Playwright 131, full and headless shell) gets hardware
+WebGL with `--use-gl=angle --use-angle=gl-egl` plus `GALLIUM_DRIVER=d3d12`:
+
+- `ANGLE (Microsoft Corporation, D3D12 (NVIDIA GeForce RTX 5070), OpenGL ES 3.1)`
+- Red-pixel readback passes; a rendered L4 frame eyeballs clean.
+- `--use-gl=egl` is still rejected (SwiftShader); `--use-angle=vulkan`
+  lands on llvmpipe (no usable Vulkan ICD for the 5070 here).
+
+Benchmark (`benchmark-browser.mjs`, L4 `runFor(320)`, same shape as above):
+
+- Linux GPU: 70–80ms, 0 page errors.
+- Linux SwiftShader: 632–730ms (the new CPU alone is ~3x faster than October 11).
+- Windows relay: DOWN on this setup (`winchrome down`, endpoint never serves),
+  so the old default path now fails outright without the opt-in.
+
+`launchBrowser()` in `scripts/rl/chrome.mjs` now tries, in order: Linux GPU
+(renderer-probed, both binary classes), Windows Chrome over the relay
+(renderer-probed), then SwiftShader with a loud warning. `selectLinuxGpuEnv`
+keeps the device selection unit-tested (`scripts/rl/tests/chrome-gpu.test.mjs`).
+`NOVAWING_SWIFTSHADER=1` still forces software. Video runs stay on Linux but
+now get the GPU instead of forced software.

@@ -8,6 +8,12 @@
  *  genesis  crisp FM weapons + warm synth score (default)
  *  snes     warm, band-limited, SPC echo
  *  n64      muffled samples + hangar reverb
+ *
+ * CC0 one-shot samples (Kenney, see assets/audio/sfx/CREDITS.md) layer over
+ * the procedural synth through the same bus, so style kits and echo still
+ * apply. Samples load lazily on first unlock; anything missing or
+ * undecodable falls back to pure procedural audio. Disable with
+ * sfx.setSamplesEnabled(false) or ?samples=0.
  */
 (function (root) {
     'use strict';
@@ -63,6 +69,26 @@
                 filter: 140, q: 0.4, lfo: 0.8, noiseType: 'lowpass', noiseHz: 320
             }
         }
+    };
+
+    // One-shot sample layer: event key -> ogg file + mix volume. Volumes are
+    // conservative; the procedural synth always plays underneath as the body.
+    const SFX_SAMPLES = {
+        'shoot-0': { file: 'assets/audio/sfx/shoot-0.ogg', volume: 0.5 },
+        'shoot-1': { file: 'assets/audio/sfx/shoot-1.ogg', volume: 0.5 },
+        'enemy-shoot': { file: 'assets/audio/sfx/enemy-shoot.ogg', volume: 0.4 },
+        missile: { file: 'assets/audio/sfx/missile.ogg', volume: 0.45 },
+        spark: { file: 'assets/audio/sfx/spark.ogg', volume: 0.35 },
+        explosion: { file: 'assets/audio/sfx/explosion.ogg', volume: 0.6 },
+        blast: { file: 'assets/audio/sfx/blast.ogg', volume: 0.65 },
+        'shield-break': { file: 'assets/audio/sfx/shield-break.ogg', volume: 0.5 },
+        'laser-fire': { file: 'assets/audio/sfx/laser-fire.ogg', volume: 0.55 },
+        'laser-warn': { file: 'assets/audio/sfx/laser-warn.ogg', volume: 0.4 },
+        boost: { file: 'assets/audio/sfx/boost.ogg', volume: 0.45 },
+        warning: { file: 'assets/audio/sfx/warning.ogg', volume: 0.4 },
+        'boss-phase': { file: 'assets/audio/sfx/boss-phase.ogg', volume: 0.5 },
+        damage: { file: 'assets/audio/sfx/damage.ogg', volume: 0.55 },
+        powerup: { file: 'assets/audio/sfx/powerup.ogg', volume: 0.5 }
     };
 
     // Eight-bar scores: harmony, rhythm and lead phrasing change with the scene.
@@ -163,6 +189,10 @@
         let muted = false;
         let unlocked = false;
         let styleId = resolveStyleId(initialStyle);
+        let samplesEnabled = true;
+        const sampleBuffers = Object.create(null);
+        const sampleState = Object.create(null);
+        Object.keys(SFX_SAMPLES).forEach(key => { sampleState[key] = 'pending'; });
 
         function style() {
             return STYLES[styleId] || STYLES.genesis;
@@ -201,6 +231,7 @@
                 noiseBuffer = createNoiseBuffer(context, 1.0, false);
                 setupEngine(context);
             }
+            ensureSamples();
 
             if (context.state === 'suspended') {
                 context.resume().catch(() => {});
@@ -562,6 +593,74 @@
             });
         }
 
+        function ensureSamples() {
+            const audio = context;
+            if (!audio || typeof fetch !== 'function') return;
+            if (typeof audio.decodeAudioData !== 'function') return;
+            Object.keys(SFX_SAMPLES).forEach(key => {
+                if (sampleState[key] !== 'pending') return;
+                sampleState[key] = 'loading';
+                let request;
+                try {
+                    request = fetch(SFX_SAMPLES[key].file);
+                } catch (err) {
+                    sampleState[key] = 'failed';
+                    return;
+                }
+                try {
+                    request.then(response => {
+                        if (!response || response.ok === false) throw new Error('sample HTTP error: ' + key);
+                        return response.arrayBuffer();
+                    }).then(
+                        data => audio.decodeAudioData(data)
+                    ).then(
+                        buffer => {
+                            if (!buffer) {
+                                sampleState[key] = 'failed';
+                                return;
+                            }
+                            sampleBuffers[key] = buffer;
+                            sampleState[key] = 'ready';
+                        },
+                        () => { sampleState[key] = 'failed'; }
+                    );
+                } catch (err) {
+                    sampleState[key] = 'failed';
+                }
+            });
+        }
+
+        function playSample(key, pan, options) {
+            if (!samplesEnabled || muted) return false;
+            const buffer = sampleBuffers[key];
+            const audio = context;
+            if (!buffer || !audio || !sfxBus) return false;
+            const spec = SFX_SAMPLES[key];
+            if (!spec) return false;
+            const opts = options || {};
+            let rate = opts.rate || 1;
+            if (opts.humanize) rate *= 1 + (Math.random() - 0.5) * 0.08;
+            try {
+                const source = audio.createBufferSource();
+                const gain = audio.createGain();
+                const panner = createPanner(audio);
+                source.buffer = buffer;
+                if (rate !== 1 && source.playbackRate) source.playbackRate.value = rate;
+                gain.gain.value = clamp(
+                    (spec.volume == null ? 0.5 : spec.volume) * (opts.volume == null ? 1 : opts.volume),
+                    0, 1);
+                setPannerValue(panner, resolvePan(pan));
+                source.connect(gain);
+                gain.connect(panner);
+                connectVoice(panner);
+                retireVoice(source, [source, gain, panner], null);
+                source.start();
+                return true;
+            } catch (err) {
+                return false;
+            }
+        }
+
         function playMusicStep(when) {
             const score = SCORES[musicMode];
             const isBoss = score.boss;
@@ -687,6 +786,23 @@
             isMuted: function () {
                 return muted;
             },
+            setSamplesEnabled: function (nextEnabled) {
+                samplesEnabled = Boolean(nextEnabled);
+                if (samplesEnabled && context) ensureSamples();
+                return samplesEnabled;
+            },
+            getSampleState: function () {
+                let ready = 0;
+                let failed = 0;
+                const states = {};
+                Object.keys(SFX_SAMPLES).forEach(key => {
+                    states[key] = sampleState[key];
+                    if (sampleState[key] === 'ready') ready++;
+                    else if (sampleState[key] === 'failed') failed++;
+                });
+                return { enabled: samplesEnabled, ready: ready, failed: failed,
+                    total: Object.keys(SFX_SAMPLES).length, states: states };
+            },
             getStyle: function () {
                 return styleId;
             },
@@ -758,6 +874,7 @@
                 setPannerValue(engine.panner, panFromX(x));
             },
             boostEngage: function (x) {
+                playSample('boost', x);
                 const pan = x;
                 if (styleId === 'arcade') {
                     tone({ frequency: 180, endFrequency: 70, duration: 0.14, type: 'sawtooth', volume: 0.028, filterFreq: 800, pan: pan });
@@ -780,6 +897,7 @@
             shoot: function (level, x) {
                 const pan = x;
                 const punch = level >= 3 ? 1.2 : (level >= 2 ? 1.08 : 1);
+                playSample(level >= 2 ? 'shoot-1' : 'shoot-0', x, { humanize: true });
                 if (styleId === 'arcade') {
                     tone({ frequency: 880, endFrequency: 220, duration: 0.05, type: 'square', volume: 0.055 * punch, pan: pan });
                     tone({ frequency: 440, endFrequency: 160, duration: 0.06, type: 'square', volume: 0.03 * punch, pan: pan });
@@ -825,6 +943,7 @@
                     filterFreq: 2400, endFilter: 1100, pan });
             },
             enemyShoot: function (x) {
+                playSample('enemy-shoot', x, { humanize: true });
                 const pan = x;
                 if (styleId === 'arcade') {
                     tone({ frequency: 320, endFrequency: 140, duration: 0.07, type: 'square', volume: 0.03, pan: pan });
@@ -834,6 +953,7 @@
                 noiseBurst({ duration: 0.045, volume: 0.016, filterFreq: 1700, endFilter: 600, pan: pan });
             },
             missile: function (x) {
+                playSample('missile', x);
                 const pan = x;
                 if (styleId === 'arcade') {
                     tone({ frequency: 160, endFrequency: 60, duration: 0.18, type: 'sawtooth', volume: 0.05, filterFreq: 600, pan: pan });
@@ -848,6 +968,7 @@
                 noiseBurst({ duration: 0.22, volume: 0.065, filterFreq: 700, endFilter: 80, pan: pan });
             },
             spark: function (x) {
+                playSample('spark', x, { humanize: true });
                 const pan = x;
                 if (styleId === 'arcade') {
                     tone({ frequency: 1200, endFrequency: 300, duration: 0.04, type: 'square', volume: 0.028, pan: pan });
@@ -859,6 +980,8 @@
             explosion: function (scale, x) {
                 const s = clamp(scale || 1, 0.7, 1.6);
                 const pan = x;
+                playSample('explosion', x, { humanize: true });
+                if (s > 1.15) playSample('blast', x, { volume: 0.85 });
                 if (styleId === 'arcade') {
                     tone({ frequency: 90 * s, endFrequency: 30, duration: 0.22 * s, type: 'square', volume: 0.08 * s, pan: pan });
                     noiseBurst({ duration: 0.26 * s, volume: 0.12 * s, filterFreq: 1200, endFilter: 70, pan: pan });
@@ -879,6 +1002,7 @@
             powerup: function (x) {
                 const audio = getContext();
                 if (!audio) return;
+                playSample('powerup', x);
                 [659.25, 830.61, 987.77, 1318.51].forEach((frequency, i) => {
                     tone({ frequency, duration: 0.24, type: 'sine', volume: 0.055,
                         pan: x, when: audio.currentTime + i * 0.065 });
@@ -887,6 +1011,7 @@
                 });
             },
             damage: function (x) {
+                playSample('damage', x);
                 const pan = x;
                 if (styleId === 'arcade') {
                     tone({ frequency: 120, endFrequency: 40, duration: 0.22, type: 'sawtooth', volume: 0.07, pan: pan });
@@ -901,11 +1026,13 @@
                 noiseBurst({ duration: 0.28, volume: 0.1, filterFreq: 900, endFilter: 70, pan: pan });
             },
             shieldBreak: function (x) {
+                playSample('shield-break', x);
                 const pan = x;
                 tone({ frequency: 420, endFrequency: 140, duration: 0.16, type: 'triangle', volume: 0.045, filterFreq: 1200, pan: pan });
                 noiseBurst({ duration: 0.14, volume: 0.05, filterFreq: 1400, endFilter: 220, pan: pan });
             },
             bomb: function (x) {
+                playSample('blast', x);
                 const pan = x;
                 fmTone({
                     carrier: 70, endCarrier: 22, modulator: 35,
@@ -918,6 +1045,7 @@
                 const audio = getContext();
                 if (!audio) return;
                 if (muted) return;
+                playSample('warning', 0);
                 if (styleId === 'arcade') {
                     chord([220, 277], 0.16, 0.045, 'square', 0);
                     chord([196, 247], 0.18, 0.05, 'square', 0, audio.currentTime + 0.14);
@@ -927,11 +1055,13 @@
                 tone({ frequency: 138, endFrequency: 116, duration: 0.26, type: 'triangle', volume: 0.055, filterFreq: 480, pan: 0, when: audio.currentTime + 0.18 });
             },
             bossPhase: function (phase, x) {
+                playSample('boss-phase', x);
                 const base = phase >= 3 ? 170 : 210;
                 chord([base, base * 1.25], 0.22, 0.05, styleId === 'arcade' ? 'square' : 'sawtooth', x);
                 noiseBurst({ duration: 0.18, volume: 0.06, filterFreq: 800, endFilter: 90, pan: x });
             },
             laserWarn: function (x) {
+                playSample('laser-warn', x);
                 tone({
                     frequency: styleId === 'arcade' ? 480 : 180,
                     endFrequency: styleId === 'arcade' ? 720 : 240,
@@ -943,6 +1073,7 @@
                 });
             },
             laserFire: function (x) {
+                playSample('laser-fire', x);
                 noiseBurst({ duration: 0.28, volume: 0.1, filterFreq: styleId === 'n64' ? 800 : 2000, endFilter: 160, pan: x });
                 tone({ frequency: 140, endFrequency: 48, duration: 0.28, type: 'sawtooth', volume: 0.06, filterFreq: 800, pan: x });
             },
@@ -997,6 +1128,7 @@
     const api = {
         createSfx: createSfx,
         SCORES: SCORES,
+        SFX_SAMPLES: SFX_SAMPLES,
         STYLE_IDS: STYLE_ORDER.slice(),
         resolveStyleId: resolveStyleId,
         styleLabel: function (id) {

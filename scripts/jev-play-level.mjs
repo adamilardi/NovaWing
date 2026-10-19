@@ -10,12 +10,13 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { launchBrowser } from './rl/chrome.mjs';
-import { AXES, buildJevCombatState, formatActionLabel, jevActionGuidance, jevGoal, shortlistActionKeys } from './jev-combat-state.mjs';
+import { AXES, buildFallbackDecision, buildJevCombatState, formatActionLabel, holdDurationMs, jevActionGuidance, jevGoal, shortlistActionKeys } from './jev-combat-state.mjs';
 import { verifyServedRuntime, settleLevelStart } from './jev-runtime.mjs';
 import { endpointError, jumpControlledSegment, synchronizeControlledLoop } from './rl/controlled-play.mjs';
 import { OBS_VERSION, OBS_SIZE, ACTION_SIZE, OBS_LAYOUT, encodeObservation, toCanonicalAction } from './rl/obs-encode.mjs';
 import { forwardPolicy } from './rl/policy-infer.mjs';
 import { progNorm, stepReward, applyTerminalReward } from './rl/rewards.mjs';
+import { chooseBossGun } from './bot-guns.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DEMO_DIR = path.join(ROOT, 'rl', 'demos');
@@ -66,7 +67,7 @@ function safeError(error) {
 }
 
 async function chooseMove(client, observation, recent) {
-    const durationMs = Math.max(16, Math.floor((observation.phase === 'boss' ? Math.min(HOLD_MS, 160) : HOLD_MS) / 16) * 16);
+    const durationMs = holdDurationMs(observation.phase, HOLD_MS);
     const state = buildJevCombatState(observation.snapshot, durationMs, recent);
     const fullOptions = state.actionOptions;
     const keys = shortlistActionKeys(fullOptions, state.recommendation);
@@ -83,7 +84,7 @@ async function chooseMove(client, observation, recent) {
     // Preserve the exact JSON passed to the SDK, excluding credentials.
     fs.writeFileSync(path.join(OUT, 'request.json'), JSON.stringify(request, null, 2));
     fs.appendFileSync(path.join(OUT, 'observations.jsonl'), JSON.stringify(request) + '\n');
-    const response = await client.systemOne(request, { timeout: 12000, retry: { maxRetries: 1 } });
+    const response = await client.systemOne(request, { timeout: 12000, retry: { maxRetries: 3 } });
     const answer = response.answers.action;
     const selected = fullOptions[answer.choice];
     if (!selected) throw new Error('JEV returned an action outside the supplied options');
@@ -190,6 +191,7 @@ async function main() {
 
     const actions = [];
     const jevErrors = [];
+    const bossGun = {};
     const usage = { input_tokens: 0, output_tokens: 0 };
     let jevDecisions = 0;
     let continuesUsed = 0;
@@ -278,6 +280,21 @@ async function main() {
                 pendingSnap = null;
                 continue;
             }
+            // Boss-gun discipline: the laser cannot damage bosses. Swap to a
+            // real boss gun exactly like a human pressing Q (shared helper).
+            if ((observation.phase === 'boss' || observation.boss) && bossGun[observation.level] === undefined) {
+                const gun = await page.evaluate(() => (
+                    typeof activeWeaponId === 'function' ? activeWeaponId(null) : null
+                )).catch(() => null);
+                const swaps = chooseBossGun({ gun, rank: observation.weapon });
+                bossGun[observation.level] = { entry: gun, swaps };
+                for (let i = 0; i < swaps; i++) {
+                    await page.evaluate(() => (
+                        typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
+                    )).catch(() => false);
+                }
+                if (swaps > 0) console.log(`boss gun: ${gun} -> Qx${swaps} at L${observation.level}`);
+            }
 
             if (RECORD_DEMOS && observation.snapshot && observation.snapshot.ready && observation.snapshot.player) {
                 try {
@@ -305,9 +322,9 @@ async function main() {
                 usage.output_tokens += decision.usage?.output_tokens || 0;
             } catch (error) {
                 const detail = safeError(error);
-                jevErrors.push({ atMs: Date.now() - started, ...detail });
-                console.log('jev error', detail.message);
-                throw new Error('JEV decision failed; stopping the frozen simulation without substituting a local pilot');
+                jevErrors.push({ atMs: Date.now() - started, ...detail, fallback: true });
+                console.log('jev error, falling back to local safest move:', detail.message);
+                decision = buildFallbackDecision(observation.snapshot, observation.pilot?.safest, HOLD_MS);
             }
             await apply(decision.stick, decision.boost);
             const elapsed = await stepGame(decision.durationMs);
@@ -393,6 +410,7 @@ async function main() {
             continuesUsed,
             jevDecisions,
             jevErrors: jevErrors.length,
+            bossGun,
             pageErrors,
             usage,
             wallMs: Date.now() - started,
@@ -457,6 +475,7 @@ async function main() {
             continuesUsed,
             jevDecisions,
             jevErrors: jevErrors.length,
+            bossGun,
             pageErrors: pageErrors.length,
             wallSec: Math.round(report.wallMs / 1000),
             demoFile: demoFile ? path.basename(demoFile) : null,

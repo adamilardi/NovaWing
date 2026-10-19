@@ -1,5 +1,6 @@
 /**
- * Pilot tactics decisions: pickups, drillable blockers, blast discs, homing bubbles.
+ * Pilot tactics decisions: pickups, drillable blockers, blast discs, homing
+ * bubbles, boss-lane pressure.
  *   node --test tests/pilot-tactics.test.mjs
  */
 import { describe, it } from 'node:test';
@@ -76,5 +77,89 @@ describe('pilot tactics', () => {
         const holdScore = flag => Tactics.plan(snap({ enemyBullets: [bullet(flag)] })).options.hold.score;
         assert.equal(holdScore(undefined) - holdScore(true), 60);
         assert.equal(holdScore(false), holdScore(undefined));
+    });
+
+    const bossSnap = over => snap({
+        phase: 'boss',
+        combatOrientation: 'right',
+        boss: { x: 599, y: 423, vx: 0, vy: 0, w: 340, h: 178, phase: 1, health: 216 },
+        combatHazards: {},
+        ...over
+    });
+
+    it('travels to the boss firing lane when nothing threatens', () => {
+        // Hot arena (a distant bullet keeps stickiness high) but no live
+        // threat: the ship must still travel to the firing lane.
+        const s = bossSnap({
+            player: { x: 196, y: 490, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 400, y: 300, vx: 0, vy: 0, w: 20, h: 20 }]
+        });
+        const r = Tactics.plan(s, 160, { x: 0, y: 0 });
+        assert.notEqual(r.recommended, 'hold', 'must not park off-lane');
+        const end = r.options[r.recommended].end;
+        assert.ok(Math.abs(end.y - 423) < Math.abs(490 - 423), 'recommended end approaches the boss lane');
+    });
+
+    it('dodges live missiles instead of camping the boss lane', () => {
+        const s = bossSnap({
+            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 320, y: 423, vx: -500, vy: 0, w: 20, h: 20 }]
+        });
+        const r = Tactics.plan(s);
+        assert.notEqual(r.recommended, 'hold', 'must not sit in the missile path');
+        assert.ok(!r.options[r.recommended].predictedDamage, 'recommended option must be damage-free');
+    });
+
+    it('pre-flees imminent boss volley timers instead of camping the lane', () => {
+        const mk = (volleyAt) => bossSnap({
+            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            combatHazards: { attackTimers: { volleyAt, droneAt: Infinity } }
+        });
+        const near = Tactics.plan(mk(10150));
+        const far = Tactics.plan(mk(20000));
+        assert.ok(near.options.hold.score < far.options.hold.score,
+            'imminent volley timer must discount the in-lane hold');
+    });
+
+    it('fetches distant rank loot while under-ranked', () => {
+        // Rank 1 at a boss is a coin flip (7/13); rank 2+ is perfect
+        // (60/60). Cross the arena for the gun that fixes it.
+        for (const type of ['weapon', 'laser', 'torrent']) {
+            const loot = { x: 500, y: 300, type };
+            const r = Tactics.plan(snap({
+                weaponLevel: 1,
+                player: { x: 100, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+                powerups: [loot]
+            }));
+            assert.deepEqual(r.goal, { x: 500, y: 300 }, `${type} steers the goal at rank 1`);
+            const end = r.options[r.recommended].end;
+            assert.ok(Math.hypot(end.x - loot.x, end.y - loot.y) < 380,
+                `${type}: recommended end must approach the loot`);
+        }
+    });
+
+    it('ignores distant loot once ranked up', () => {
+        const loot = { x: 500, y: 300, type: 'weapon' };
+        const r = Tactics.plan(snap({
+            weaponLevel: 2,
+            player: { x: 100, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            powerups: [loot]
+        }));
+        assert.deepEqual(r.goal, { x: 140, y: 300 }, 'rank 2 keeps the default station');
+    });
+
+    it('loot chase never overrides the damage veto', () => {
+        const mk = (bullets) => snap({
+            weaponLevel: 1,
+            player: { x: 100, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            powerups: [{ x: 500, y: 300, type: 'weapon' }],
+            enemyBullets: bullets
+        });
+        const clear = Tactics.plan(mk([]));
+        const hot = Tactics.plan(mk([{ x: 250, y: 300, vx: -500, vy: 0, w: 20, h: 20 }]));
+        assert.deepEqual(hot.goal, { x: 500, y: 300 }, 'intent still points at the loot');
+        assert.ok(!hot.options[hot.recommended].predictedDamage, 'recommended option must be damage-free');
+        assert.notDeepEqual(hot.options[hot.recommended].end, clear.options[clear.recommended].end,
+            'the threat must alter the flown path');
     });
 });

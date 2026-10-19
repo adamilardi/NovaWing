@@ -179,7 +179,18 @@ function plan(snap, durationMs = 160, preferred = null) {
     const PICKUP_TYPES = new Set(['weapon', 'laser', 'torrent', 'shield', 'repair', 'boost', 'bomb', 'phase']);
     const pickup = (snap.powerups || []).filter(q => PICKUP_TYPES.has(q.type))
         .sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
-    if (!snap.boss && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
+    // Power-up run: rank 1 (single peashooter) wins only coin flips at
+    // high-HP bosses while rank 2+ is perfect, and rank never resets on
+    // death — so while under-ranked, cross the screen for rank loot.
+    // The damage veto below still overrules the pull (penalties dwarf
+    // the 1:1 goal term), so the ship only closes when it is safe.
+    const RANK_LOOT = new Set(['weapon', 'laser', 'torrent']);
+    const rank = Number.isFinite(snap.weaponLevel) ? snap.weaponLevel : 1;
+    const loot = (snap.powerups || []).filter(q => RANK_LOOT.has(q.type))
+        .sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
+    if (!snap.boss && rank < 2 && loot && Math.hypot(loot.x-p.x,loot.y-p.y) < 800) {
+        goalX = loot.x; goalY = loot.y;
+    } else if (!snap.boss && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
         goalX = pickup.x; goalY = pickup.y;
     }
     // Follow an actual open corridor rather than the average of disconnected bands.
@@ -288,6 +299,17 @@ function plan(snap, durationMs = 160, preferred = null) {
             if (s.dt < 400 && Math.hypot(a.end.x - p.x, a.end.y - p.y) < 34) {
                 score -= (400 - Math.max(0, s.dt)) * 1.2;
             }
+        }
+        // Boss-lane pressure: bolts fly straight, so an in-lane ship deals
+        // damage and an off-lane ship deals none. When nothing threatens
+        // this option, prefer holding the boss's firing lane over drifting.
+        // Beats stickiness and calmness; damage terms still dwarf it, so
+        // threatened options keep dodging first.
+        if (snap.phase === 'boss' && snap.boss && !a.predictedDamage && !after.predictedDamage) {
+            const inLane = vertical
+                ? (a.end.y > snap.boss.y && Math.abs(a.end.x - snap.boss.x) < 36)
+                : (a.end.x < snap.boss.x && Math.abs(a.end.y - snap.boss.y) < 36);
+            if (inLane) score += 200;
         }
         // Calmness: small moves beat arena-wide dashes. Damage penalties
         // still override; this only damps the goal pull when nothing forces

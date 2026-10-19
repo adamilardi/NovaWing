@@ -4,11 +4,13 @@
 //   node server.js                        # or point NOVAWING_URL at a live game
 //   npm run screenshots
 //   REVIEW_OUT=/tmp/shots npm run screenshots
+//   LEVELS=12,17 npm run screenshots     # per-level waves + boss captures
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchBrowser } from './rl/chrome.mjs';
+import { buildReviewScenarios, parseLevels } from './review-scenarios.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
@@ -22,11 +24,7 @@ const botEnd = botSrc.indexOf('\nasync function main()', botStart);
 const INSTALL_BOT_SRC = '(() => {\n' + botSrc.slice(botStart, botEnd).replace('export function', 'function') +
     '\nreturn installSimpleBot();\n})()';
 
-const SCENARIOS = [
-    { name: 'l1-waves', params: { level: '1' }, shotsAt: [8000, 20000, 35000] },
-    { name: 'l2-canyon', params: { level: '2' }, shotsAt: [10000, 25000] },
-    { name: 'l1-boss', params: { boss: '1' }, shotsAt: [10000, 22000] },
-];
+const SCENARIOS = buildReviewScenarios({ levels: parseLevels(process.env.LEVELS) });
 
 const browser = await launchBrowser(chromium, process.env.HEADLESS !== '0');
 const errors = [];

@@ -41,7 +41,9 @@ Each axis is 1–5, set by a moment you saw.
 **Difficulty** is the mode that was actually running.
 
 - The player-facing modes are Space Cadet, Hotshot, and Supernova. Read `skills/verify-novawing/features/pause-and-difficulty.md` and `docs/DIFFICULTY_TUNING.md` before you describe what a mode changes. Do not recite a remembered knob table.
-- Ranked continue rules live in `skills/verify-novawing/features/continues.md`. An unlimited-continue playtest URL proves a route exists. It is not a clear.
+- Ranked continue rules live in `skills/verify-novawing/features/continues.md`. An unlimited-continue playtest URL proves a route exists. It is not a clear. Shipped bonus levels always grant unlimited continues in the game code; on them report deaths and `continuesUsed` — a continued clear shows the route, deaths still mark fairness.
+- Enter a judged run without `bot`: Hotshot is `?level=N&timescale=1&playtestContinues=unlimited`, Supernova adds `&diff=hard`. A `bot` URL forces Hotshot, deals 5 lives, skips the opening, and defaults timescale to 8. Bot-flown shots prove a route exists; they never prove a mode.
+- Confirm the mode in-session before scoring: `__novawingDebug.getBotSnapshot()` reports `difficultyMode` and `lives`. A run whose mode you did not confirm scores nothing.
 - A fair death is one you can explain in one sentence on a second look. "I could not see it" and "every square was covered" are unfair, even when a bot lived.
 - The stretch after a death must be survivable in the ship the player actually respawns in.
 - Read the verify-novawing bot contract before you treat a bot run as a human session. A bot can show that a route exists. It does not score feel, readability, or Supernova.
@@ -61,8 +63,12 @@ Score only what you opened.
 1. Read the matching note under `skills/verify-novawing/features/` so the player path is right. A green verify run is proof the build plays. It is not this critique. Run verify-novawing when the user also wants that proof.
 2. Watch the judged section at 1× simulation time (`?timescale=1`). You may skip to reach it. Say that you skipped.
 3. Prefer real keyboard or gamepad input on the mode the user named. When they did not name one, play Hotshot for "how does it feel" and Supernova for a new level's balance. New-level entry rules live in `skills/level-creator/references/novawing.md` under the default balance section. Confirm the running mode in the session before you score it.
-4. Open the frames. `npm run screenshots` needs a server and writes `.bot-runs/review/`. Verify and bot runs save their own shots. The worst combat frame sets the graphics score.
+4. Open the frames. `npm run screenshots` needs a server and writes `.bot-runs/review/`. The default suite covers L1/L2/HUD; for the judged level run `LEVELS=N` (comma-separated for several) so the shots show that level's waves and boss. Verify and bot runs save their own shots. The worst combat frame sets the graphics score.
 5. If you cannot see the canvas, say which axis you could not judge. A session, a timestamp, or a death you did not witness does not go in the report.
+
+## Agent harness
+
+An agent has no hands and no gamepad. Playwright keyboard input is the hands: arrows move, a canvas click (or Space/Enter) Launches past the title, P/Esc pauses, D cycles difficulty from pause. Drive at `?timescale=1`, hold inputs the way a player would, and screenshot every ~10s plus every death and every busiest frame. Pause (P) while deliberating between inputs; the game runs in real time and a 9s continue countdown expires while you read a screenshot. Reading the debug snapshot to observe state is fine; scripting dodges from it inside a judged run makes it a bot run, not a played one. The in-page planner (`NovaWingTactics`) may fly pre-screen passes. Mark every finding played, bot-flown, or shot-only.
 
 Desktop is the cabinet. Also check a phone-width view when the change touches the HUD, touch controls, or the playfield crop.
 

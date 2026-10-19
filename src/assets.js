@@ -474,6 +474,26 @@ const AUDIO_TRACKS = {
     gauntlet: { procedural: 'gauntlet' },
     finalBoss: { procedural: 'finalBoss' }
 };
+// CC0 one-shot SFX (Kenney). Loaded by audio.js via fetch, not the Phaser
+// loader, but still published by the build. Must match SFX_SAMPLES in
+// audio.js; tests/sfx-samples.test.cjs enforces parity.
+const SFX_SAMPLE_FILES = [
+    'assets/audio/sfx/blast.ogg',
+    'assets/audio/sfx/boost.ogg',
+    'assets/audio/sfx/boss-phase.ogg',
+    'assets/audio/sfx/damage.ogg',
+    'assets/audio/sfx/enemy-shoot.ogg',
+    'assets/audio/sfx/explosion.ogg',
+    'assets/audio/sfx/laser-fire.ogg',
+    'assets/audio/sfx/laser-warn.ogg',
+    'assets/audio/sfx/missile.ogg',
+    'assets/audio/sfx/powerup.ogg',
+    'assets/audio/sfx/shield-break.ogg',
+    'assets/audio/sfx/shoot-0.ogg',
+    'assets/audio/sfx/shoot-1.ogg',
+    'assets/audio/sfx/spark.ogg',
+    'assets/audio/sfx/warning.ogg'
+];
 function preload(scene) {
     const loadedImages = new Set();
     Object.values(SPRITES)
@@ -514,7 +534,8 @@ function files() {
         .concat(Object.values(PLAYER_CYCLE_SHEETS))
         .concat(Object.values(ENEMY_CYCLE_SHEETS))
         .filter(asset => asset.path).map(asset => asset.path)
-        .concat(Object.values(AUDIO_TRACKS).flatMap(track => track.urls || [])))];
+        .concat(Object.values(AUDIO_TRACKS).flatMap(track => track.urls || []))
+        .concat(SFX_SAMPLE_FILES))];
 }
 function getPlayerSheetRowCrop(row) {
     return {
@@ -728,6 +749,7 @@ const api = {
     enemyFlightKeys: sheetFrameKeys(ENEMY_CYCLE_SHEETS.enemy, 'enemy-flight'),
     enemy2FlightKeys: sheetFrameKeys(ENEMY_CYCLE_SHEETS.enemy2, 'enemy2-flight'),
     tracks: AUDIO_TRACKS,
+    sfxFiles: SFX_SAMPLE_FILES,
     preload,
     install,
     sprite,

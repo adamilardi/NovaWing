@@ -52,6 +52,29 @@ export function jevGoal(level) {
     return `Clear Level ${level}. You start with 3 lives. Continues are unlimited in this harness, and taking one still counts as losing the life. Auto-fire is held.`;
 }
 
+/** Hold length for one decision: short holds on bosses, frame-quantized. */
+export function holdDurationMs(phase, holdMs = 320) {
+    const base = phase === 'boss' ? Math.min(holdMs, 160) : holdMs;
+    return Math.max(16, Math.floor(base / 16) * 16);
+}
+
+/** Local fallback when the JEV call fails: fly the planner's safest stick
+ * with no boost. Shape matches a model decision so the audit log is uniform.
+ * endpointError then measures drift from the fallback's start point. */
+export function buildFallbackDecision(snapshot, safest, holdMs = 320) {
+    const stick = (typeof safest === 'string' && Object.prototype.hasOwnProperty.call(AXES, safest))
+        ? safest : 'hold';
+    const player = snapshot?.player || {};
+    return {
+        stick, boost: false,
+        durationMs: holdDurationMs(snapshot?.phase, holdMs),
+        end: { x: Number.isFinite(player.x) ? player.x : 400, y: Number.isFinite(player.y) ? player.y : 300 },
+        predictedCollision: false, predictedDamage: false, edgeAtMs: null,
+        source: 'fallback', model: 'local-fallback', confidence: 0,
+        stateTimeMs: snapshot?.time ?? null, hazards: null
+    };
+}
+
 export function jevActionGuidance() {
     return [
         'Take the recommendation, the highest score, unless recent shows a life lost or endpointErrorPx above 12.',

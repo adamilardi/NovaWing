@@ -1,5 +1,7 @@
 .venv/
 .venv-rl/
+.venv-music/
+music/upstream/
 node_modules/
 .wrangler/
 data/

@@ -1436,7 +1436,9 @@ function create() {
                 laserWarn() {},
                 laserFire() {},
                 victory() {},
-                gameOver() {}
+                gameOver() {},
+                setSamplesEnabled() { return false; },
+                getSampleState() { return { enabled: false, ready: 0, failed: 0, total: 0, states: {} }; }
             };
             if (typeof console !== 'undefined') {
                 console.warn('[NovaWing] createSfx missing — audio disabled (load audio.js before game.js)');
@@ -1445,6 +1447,15 @@ function create() {
     }
     if (musicDirector) musicDirector.stop();
     musicDirector = window.NovaWingMusic.create(sfx, this.sound, window.NovaWingAssets.tracks);
+    if (sfx && typeof sfx.setSamplesEnabled === 'function') {
+        try {
+            if (new URLSearchParams(window.location.search || '').get('samples') === '0') {
+                sfx.setSamplesEnabled(false);
+            }
+        } catch (err) {
+            // ignore malformed query strings; samples stay enabled
+        }
+    }
     audioMuted = loadAudioMuted();
     musicDirector.setMuted(audioMuted);
     gamePaused = false;
@@ -2479,6 +2490,13 @@ function resolvePlayerWallCollisions() {
  */
 function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
     if (!ship || !ship.active || !ship.body || !wall || !wall.body) return false;
+    // Spawn grace: a brand-new wall's pooled body still sits at its old
+    // position until preUpdate syncs it. Skip separation and damage alike
+    // on a stale body (L12/L13 lost a life at t=0 to one).
+    if (typeof NovaWingWallSpawn !== 'undefined') {
+        const nowFrame = typeof game !== 'undefined' && game.loop ? game.loop.frame : null;
+        if (!NovaWingWallSpawn.isWallArmed(wall.spawnedFrame, nowFrame)) return false;
+    }
 
     const pb = ship.body;
     const wb = wall.body;
@@ -5329,11 +5347,17 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     if (wall.body) {
         wall.body.setAllowGravity(false);
         wall.body.setImmovable(true);
+        // Sync the pooled body to the spawned sprite now so the first frames
+        // are not tested against a stale position; the inset below still wins.
+        if (wall.body.updateFromGameObject) wall.body.updateFromGameObject();
         // Slight inset so crystal art can overhang without unfair corner snags.
         const insetX = Math.max(2, Math.round(sourceW * 0.06));
         const insetY = Math.max(2, Math.round(sourceH * 0.04));
         wall.body.setSize(sourceW - insetX * 2, sourceH - insetY * 2, true);
     }
+    // Stamp the spawn frame for the collision grace above. Walls spawn
+    // offscreen and scroll in, so two skipped frames cost nothing legit.
+    wall.spawnedFrame = typeof game !== 'undefined' && game.loop ? game.loop.frame : null;
 
     if (options.danger && this && this.tweens) {
         this.tweens.add({

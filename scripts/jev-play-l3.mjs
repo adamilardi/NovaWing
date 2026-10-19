@@ -2,13 +2,16 @@
  * Jev plays NovaWing Level 3 on Hotshot.
  * The API key stays in Node. The page only receives stick and boost.
  */
-import { choice, noul, TypeSafeClient } from '/home/adam/spacechicken/node_modules/@typesafe-ai/sdk/dist/index.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const sdkPath = process.env.JEV_SDK_PATH || fileURLToPath(new URL('../../spacechicken/node_modules/@typesafe-ai/sdk/dist/index.mjs', import.meta.url));
+const { choice, noul, TypeSafeClient } = await import(pathToFileURL(sdkPath).href);
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { launchBrowser } from './rl/chrome.mjs';
 import { bootControlledGame } from './rl/controlled-play.mjs';
 import { isRunWin } from './rl/run-outcome.mjs';
+import { chooseBossGun } from './bot-guns.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 const HOLD_MS = Number(process.env.JEV_HOLD_MS || 140);
@@ -133,6 +136,7 @@ async function main() {
 
     const actions = [];
     const jevErrors = [];
+    const bossGun = {};
     const usage = { input_tokens: 0, output_tokens: 0 };
     let jevDecisions = 0;
     let continuesUsed = 0;
@@ -197,6 +201,21 @@ async function main() {
                 await stepGame(200);
                 continue;
             }
+            // Boss-gun discipline: the laser cannot damage bosses. Swap to a
+            // real boss gun exactly like a human pressing Q (shared helper).
+            if ((observation.phase === 'boss' || observation.snapshot?.boss) && bossGun[3] === undefined) {
+                const gun = await page.evaluate(() => (
+                    typeof activeWeaponId === 'function' ? activeWeaponId(null) : null
+                )).catch(() => null);
+                const swaps = chooseBossGun({ gun, rank: observation.weapon });
+                bossGun[3] = { entry: gun, swaps };
+                for (let i = 0; i < swaps; i++) {
+                    await page.evaluate(() => (
+                        typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
+                    )).catch(() => false);
+                }
+                if (swaps > 0) console.log(`boss gun: ${gun} -> Qx${swaps} at L3`);
+            }
 
             let decision;
             try {
@@ -253,6 +272,7 @@ async function main() {
             continuesUsed,
             jevDecisions,
             jevErrors: jevErrors.length,
+            bossGun,
             pageErrors,
             usage,
             wallMs: Date.now() - started,

@@ -236,11 +236,107 @@ async function ensureRelay() {
 }
 
 /**
- * Linux Chromium's EGL path crashes in WSL's libd3d12core, so headless WebGL
- * falls back to SwiftShader (~180ms/frame). Windows Chrome on this host renders
- * with the Radeon (~16ms/frame). Its DevTools port is loopback-only, which WSL
- * cannot dial, so a small relay on the Windows vNIC forwards it.
- * Set NOVAWING_SWIFTSHADER=1 to keep the Linux browser.
+ * Pick extra child env for a Linux hardware-GL attempt from observed facts.
+ * Pure (facts injected) so the selection matrix is unit-testable.
+ * @returns {Record<string,string>|null} null when no Linux GPU is plausible
+ */
+export function selectLinuxGpuEnv({ dxg = false, dri = false, wsl = false } = {}) {
+    if (!dxg && !dri) return null;
+    // WSL's GPU is paravirtualized D3D12 behind /dev/dxg; Mesa needs the
+    // explicit gallium driver there. Bare metal lets Mesa auto-pick.
+    if (wsl && dxg) return { GALLIUM_DRIVER: 'd3d12' };
+    return {};
+}
+
+function isWSL() {
+    try {
+        return /microsoft|wsl/i.test(fs.readFileSync('/proc/version', 'utf8'));
+    } catch {
+        return false;
+    }
+}
+
+function linuxGpuFacts() {
+    let dxg = false, dri = false;
+    try { dxg = fs.existsSync('/dev/dxg'); } catch { /* no GPU device */ }
+    try {
+        dri = fs.readdirSync('/dev/dri').some((f) => f.startsWith('card') || f.startsWith('render'));
+    } catch {
+        // No /dev/dri (older WSL)
+    }
+    return { dxg, dri, wsl: isWSL() };
+}
+
+function resolveChromePaths() {
+    if (process.env.PLAYWRIGHT_CHROME && fs.existsSync(process.env.PLAYWRIGHT_CHROME)) {
+        return [process.env.PLAYWRIGHT_CHROME];
+    }
+    // One pick per binary class (shell-first vs full-first ordering), so a
+    // software-only shell can fall through to the full build for the GPU try.
+    const paths = [probePlaywrightCache(true), probePlaywrightCache(false)]
+        .filter((p) => p && fs.existsSync(p));
+    return [...new Set(paths)];
+}
+
+async function probeHardwareRenderer(browser) {
+    const context = browser.contexts()[0] || await browser.newContext();
+    const page = await context.newPage();
+    try {
+        return await page.evaluate(() => {
+            const gl = document.createElement('canvas').getContext('webgl');
+            const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+            return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+        });
+    } finally {
+        await page.close().catch(() => {});
+    }
+}
+
+function isSoftwareRenderer(renderer) {
+    return !renderer || /swiftshader|llvmpipe|software|basic render/i.test(renderer);
+}
+
+/**
+ * Linux hardware WebGL: ANGLE over EGL onto Mesa (D3D12 on WSL/NVIDIA,
+ * native DRI on bare metal). Each binary is launched and renderer-probed;
+ * software or crashed attempts close it and move on. The returned browser
+ * stays open for the caller.
+ * @returns {Promise<import('playwright').Browser|null>}
+ */
+async function tryLinuxGPU(chromium, headless, slowMo = 0) {
+    const gpuEnv = selectLinuxGpuEnv(linuxGpuFacts());
+    if (!gpuEnv) return null;
+    for (const exe of resolveChromePaths()) {
+        let browser = null;
+        try {
+            browser = await chromium.launch({ headless, slowMo, executablePath: exe,
+                args: ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist',
+                    '--enable-gpu', '--no-sandbox', '--mute-audio',
+                    '--autoplay-policy=no-user-gesture-required'],
+                ignoreDefaultArgs: ['--disable-gpu'],
+                env: { ...process.env, ...gpuEnv },
+                timeout: 60000 });
+            const renderer = await probeHardwareRenderer(browser);
+            if (!isSoftwareRenderer(renderer)) {
+                console.log(`[browser] Linux GPU: ${renderer} (${path.basename(exe)})`);
+                return browser;
+            }
+            console.log(`[browser] Linux GPU rejected (${path.basename(exe)}): ${renderer || 'no renderer'}`);
+        } catch (error) {
+            console.log(`[browser] Linux GPU failed: ${String((error && error.message) || error).slice(0, 120)}`);
+        }
+        await browser?.close().catch(() => {});
+    }
+    return null;
+}
+
+/**
+ * Headless WebGL, fastest working backend first: Linux GPU (Mesa D3D12 on
+ * WSL/NVIDIA, ~75ms per 320ms game step), then Windows Chrome over the
+ * DevTools relay, then explicit SwiftShader (~700ms/step here, slower
+ * elsewhere). Set NOVAWING_SWIFTSHADER=1 to force software rendering.
+ * Windows Chrome's DevTools port is loopback-only, which WSL cannot dial,
+ * so a small relay on the Windows vNIC forwards it.
  * @returns {Promise<import('playwright').Browser|null>}
  */
 async function tryWindowsChrome(chromium, headless, slowMo = 0) {
@@ -319,30 +415,31 @@ async function tryWindowsChrome(chromium, headless, slowMo = 0) {
  * @param {boolean} headless
  */
 export async function launchBrowser(chromium, headless, { slowMo = 0, recordVideo = false } = {}) {
+    if (process.env.NOVAWING_SWIFTSHADER === '1') {
+        console.warn('[browser] Linux software rendering (NOVAWING_SWIFTSHADER=1)');
+        return chromium.launch({ ...defaultLaunchOptions(headless), slowMo });
+    }
+    const linux = await tryLinuxGPU(chromium, headless, slowMo);
+    if (linux) return linux;
+    // CDP-attached Windows Chrome cannot do Playwright video recording, so
+    // video runs stay on Linux (GPU above, software below) by design.
     if (!recordVideo && windowsChromePath()) {
         const windows = await tryWindowsChrome(chromium, headless, slowMo);
-        if (!windows) {
-            throw new Error('Windows GPU browser failed to start. Set NOVAWING_SWIFTSHADER=1 to explicitly allow slow software rendering.');
-        }
-        try {
-            const page = await windows.contexts()[0].newPage();
-            const renderer = await page.evaluate(() => {
-                const gl = document.createElement('canvas').getContext('webgl');
-                const ext = gl?.getExtension('WEBGL_debug_renderer_info');
-                return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
-            });
-            await page.close();
-            if (!renderer || /swiftshader|llvmpipe|software|basic render/i.test(renderer)) {
-                throw new Error(`Hardware WebGL unavailable: ${renderer || 'no renderer'}`);
+        if (windows) {
+            try {
+                const renderer = await probeHardwareRenderer(windows);
+                if (!isSoftwareRenderer(renderer)) {
+                    console.log(`[browser] Windows GPU: ${renderer}`);
+                    return windows;
+                }
+                console.log(`[browser] Windows GPU rejected: ${renderer || 'no renderer'}`);
+            } catch (error) {
+                console.log(`[browser] Windows GPU probe failed: ${String((error && error.message) || error).slice(0, 120)}`);
             }
-            console.log(`[browser] Windows GPU: ${renderer}`);
-            return windows;
-        } catch (error) {
             await windows.close();
-            throw error;
         }
     }
-    console.warn(`[browser] Linux software rendering${recordVideo ? ' (RECORD_VIDEO=1; use RECORD_VIDEO=0 for the Windows GPU)' : ''}`);
+    console.warn('[browser] Linux software rendering (no hardware WebGL found; expect ~10x slower frames)');
     return chromium.launch({ ...defaultLaunchOptions(headless), slowMo });
 }
 

@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { launchBrowser } from './rl/chrome.mjs';
 import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
+import { chooseBossGun } from './bot-guns.mjs';
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 // LEVEL unset = campaign run: clear every level until campaign victory.
@@ -95,12 +96,13 @@ async function main() {
     if (!await page.evaluate(installSimpleBot)) throw new Error('Failed to install simple bot');
 
     const started = Date.now();
-    let lastLog = 0, continuesUsed = 0, won = false, finalSnap = null, decisions = 0;
+    let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
     let lastErrorLogged = '', stalls = 0, switches = 0;
     let lastProgress = { key: '', t: Date.now() };
     let lastDecisions = 0, lastDecisionsT = Date.now(), lastSwitchT = 0;
     const deathsByCause = {};
+    const bossGun = {};
     try {
         while (Date.now() - started < DURATION_MS) {
             const status = await page.evaluate(() => {
@@ -165,6 +167,7 @@ async function main() {
                 continue;
             }
             if (isRunWin(snap, LEVEL)) {
+                cleared = true;
                 won = isDeathlessWin(snap, LEVEL);
                 await page.waitForTimeout(2000);
                 break;
@@ -178,11 +181,28 @@ async function main() {
             const playing = Boolean(snap && snap.ready && !snap.paused && !snap.levelEnded &&
                 !snap.continuePending && !snap.levelTransitioning && snap.player);
             if (playing) {
+                // Boss-gun discipline: the laser cannot damage bosses, so a
+                // bot that enters the arena with it equipped can never win.
+                // Swap to a real boss gun exactly like a human pressing Q.
+                if ((snap.phase === 'boss' || snap.boss) && bossGun[snap.level] === undefined) {
+                    const gun = await page.evaluate(() => (
+                        typeof activeWeaponId === 'function' ? activeWeaponId(null) : null
+                    )).catch(() => null);
+                    const swaps = chooseBossGun({ gun, rank: snap.weaponLevel });
+                    bossGun[snap.level] = { entry: gun, swaps };
+                    for (let i = 0; i < swaps; i++) {
+                        await page.evaluate(() => (
+                            typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
+                        )).catch(() => false);
+                    }
+                    if (swaps > 0) console.log(`[bot] boss gun: ${gun} -> Qx${swaps} at L${snap.level}`);
+                }
                 // Stall: nothing (score/kills/segment/level/boss HP) moves
                 // for 20s. Boss HP counts: burning the boss down looks like
                 // frozen score. Screenshot it and drop the sticky preferred
                 // stick so the next plan jinks somewhere new.
-                const bossHp = snap.boss && Number.isFinite(snap.boss.hp) ? snap.boss.hp : '-';
+                const bossHp = snap.boss && Number.isFinite(snap.boss.health) ? snap.boss.health
+                    : (snap.boss && Number.isFinite(snap.boss.hp) ? snap.boss.hp : '-');
                 const progressKey = `${snap.level}|${snap.segment}|${snap.score}|${snap.kills}|${bossHp}`;
                 if (progressKey !== lastProgress.key) lastProgress = { key: progressKey, t: now };
                 else if (now - lastProgress.t > 20000) {
@@ -238,9 +258,9 @@ async function main() {
         await browser.close();
     }
     const report = {
-        when: new Date().toISOString(), level: LEVEL, won, continuesUsed,
+        when: new Date().toISOString(), level: LEVEL, won, cleared, continuesUsed,
         decisions, maxLevel, wallMs: Date.now() - started,
-        switches, stalls, deathsByCause,
+        switches, stalls, deathsByCause, bossGun,
         final: finalSnap && {
             level: finalSnap.level, score: finalSnap.score, kills: finalSnap.kills,
             lives: finalSnap.lives, phase: finalSnap.phase, segment: finalSnap.segment,
@@ -248,8 +268,8 @@ async function main() {
         }
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ won, continuesUsed, maxLevel, switches, stalls,
-        deathsByCause, pageErrors: pageErrors.length, final: report.final }));
+    console.log(JSON.stringify({ won, cleared, continuesUsed, maxLevel, switches, stalls,
+        deathsByCause, bossGun, pageErrors: pageErrors.length, final: report.final }));
     if (pageErrors.length) process.exitCode = 1;
     else if (!won) process.exitCode = 2;
 }
