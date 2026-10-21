@@ -85,6 +85,7 @@ Stable handles:
 - Canvas: `#game-container canvas`
 - Debug: `window.__novawingDebug` (`ready`, `getBotSnapshot`, `getPlayerState`, `setBotInput`, `setGamepad`, `togglePause`, `getDifficultyMode`, `setSegment`)
 - Query: `?bot=1` (unranked, extra lives, 8× clock), `?level=1|2|3`, `?diff=easy|normal|hard`, `?timescale=` (bot clock; `TIMESCALE=1` keeps real time)
+- Headless live bots and controlled playtests step fixed 16 ms frames inside the page and skip drawing. Wall-time caps still apply. `FAST_PLAY=0` keeps the animation-frame clock. `HEADLESS=0` and `RECORD_VIDEO=1` keep drawing.
 - Snapshot: `getBotSnapshot().timeScale`, `.time` / `.elapsedMs` follow the playtest clock on bot sessions
 - Chromium: headless unless `HEADLESS=0`. Headed windows steal desktop focus.
 

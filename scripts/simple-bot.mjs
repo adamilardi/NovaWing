@@ -10,15 +10,21 @@
  *   HEADLESS=0 npm run bot:simple
  *
  * Node owns lifecycle only: unstuck nudges on stalls, planner reinstalls
- * when decisions freeze, top-tier gun rotation through quiet moments at
- * max rank, and the run report. It never steers the ship.
+ * when decisions freeze, the boss-gun swap, and the run report. It never
+ * steers the ship. Idle gun cycling is off: it equips the laser, which
+ * cannot damage a boss.
  */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { launchBrowser } from './rl/chrome.mjs';
+import { createRequire } from 'node:module';
+import { launchBrowser, routeVendorPhaser } from './rl/chrome.mjs';
 import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
 import { chooseBossGun } from './bot-guns.mjs';
+import { burstFastPlay, fastPlayEnabled, installFastPlay, paintFastPlayFrame } from './fast-play.mjs';
+
+const require = createRequire(import.meta.url);
+const { getLevelDef } = require('../levels.js');
 
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
 // LEVEL unset = campaign run: clear every level until campaign victory.
@@ -29,8 +35,10 @@ const OUT = process.env.SIMPLE_OUT || (LEVEL === null
 
 /**
  * In-page pilot. Serialized into the browser; no Node closures.
- * Re-plans from the full bot snapshot every 150ms and holds the
- * recommended stick/boost until the next plan.
+ * Re-plans from the full bot snapshot every 160ms of sim time (one
+ * planner horizon) and holds the stick until the next plan. Headless fast
+ * play steps those frames inside the page. The wall interval is only the
+ * 1x clock, where 160ms of sim is 160ms of wall.
  */
 export function installSimpleBot() {
     if (window.__novawingSimpleBotInstalled) return true;
@@ -42,7 +50,13 @@ export function installSimpleBot() {
         try {
             const snap = window.__novawingDebug.getBotSnapshot();
             if (!snap || !snap.ready || snap.paused || snap.levelEnded ||
-                snap.continuePending || snap.levelTransitioning || !snap.player) return;
+                snap.continuePending || snap.levelTransitioning || snap.victoryPending || !snap.player) {
+                if (snap && window.__novawingDebug &&
+                    (snap.levelTransitioning || snap.paused || snap.levelEnded)) {
+                    window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
+                }
+                return;
+            }
             // Stickiness: prefer continuing the current stick to dodge jitter.
             const result = window.NovaWingTactics.plan(snap, 160, window.__novawingSimpleBotPreferred);
             if (!result || result.error) return;
@@ -59,12 +73,15 @@ export function installSimpleBot() {
             window.__novawingSimpleBotError = String((err && err.message) || err);
         }
     };
+    window.__novawingSimpleBotTick = tick;
     window.__novawingSimpleBotStop = () => {
         if (window.__novawingSimpleBotTimer) clearInterval(window.__novawingSimpleBotTimer);
         window.__novawingSimpleBotTimer = null;
         if (window.__novawingDebug) window.__novawingDebug.clearBotInput();
     };
-    window.__novawingSimpleBotTimer = setInterval(tick, 150);
+    // Fast play sleeps the game loop and calls the tick every 160 sim ms.
+    // A wall interval there would replan against a frozen frame.
+    if (!window.__novawingFastPlay) window.__novawingSimpleBotTimer = setInterval(tick, 160);
     window.__novawingSimpleBotInstalled = true;
     return true;
 }
@@ -84,50 +101,81 @@ async function main() {
     url.searchParams.set('bot', String(Date.now()));
     if (LEVEL !== null) url.searchParams.set('level', String(LEVEL));
     url.searchParams.set('playtestContinues', 'unlimited');
-    // The planner predicts in sim ms; hold 1x so its 160ms horizon matches wall time.
+    // Horizon is 160 sim ms. Timescale stays 1 so a fast wall clock cannot
+    // make the next threat arrive inside a plan that never saw it.
     if (!url.searchParams.has('timescale')) url.searchParams.set('timescale', '1');
+    const levelDef = LEVEL != null ? getLevelDef(LEVEL) : null;
+    const gameCapMs = levelDef && Number.isFinite(levelDef.durationMs) ? levelDef.durationMs + 90000 : null;
     console.log(`Simple bot ${LEVEL === null ? 'campaign' : `level ${LEVEL}`}`, url.toString());
+    await routeVendorPhaser(page);
+    page.setDefaultTimeout(90000);
     await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
     await page.waitForFunction(() => window.__novawingDebug?.ready() &&
         typeof window.__novawingDebug.getBotSnapshot === 'function' &&
         window.NovaWingTactics && typeof window.NovaWingTactics.plan === 'function', null, { timeout: 45000 });
     await page.locator('#game-container canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
     await page.evaluate(() => { markSessionLeaderboardIneligible(); });
+    const fast = fastPlayEnabled(process.env.HEADLESS !== '0');
+    if (fast) {
+        await installFastPlay(page, { draw: false });
+        console.log('fast play: drawing off, 16ms steps, plan every 160 sim ms');
+    }
     if (!await page.evaluate(installSimpleBot)) throw new Error('Failed to install simple bot');
 
     const started = Date.now();
     let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
     let lastErrorLogged = '', stalls = 0, switches = 0;
-    let lastProgress = { key: '', t: Date.now() };
-    let lastDecisions = 0, lastDecisionsT = Date.now(), lastSwitchT = 0;
+    let lastProgress = { key: '', t: fast ? 0 : Date.now() };
+    let lastDecisions = 0, lastDecisionsT = Date.now();
     const deathsByCause = {};
     const bossGun = {};
+    const readStatus = () => {
+        const snap = window.__novawingDebug.getBotSnapshot();
+        let near = '';
+        if (snap && snap.player) {
+            const all = [...(snap.enemies || []).map(e => ({ k: 'e:' + (e.type || '?'), x: e.x, y: e.y })),
+                ...(snap.enemyBullets || []).map(b => ({ k: b.isLaser ? 'L' : 'b', x: b.x, y: b.y })),
+                ...(snap.obstacles || []).map(o => ({ k: 'o', x: o.x, y: o.y })),
+                ...(snap.walls || []).map(w => ({ k: 'w', x: w.x, y: w.y }))];
+            near = all.map(t => ({ k: t.k, d: Math.round(Math.hypot(t.x - snap.player.x, t.y - snap.player.y)) }))
+                .sort((a, b) => a.d - b.d).slice(0, 3)
+                .map(t => `${t.k}${t.d}`).join(',');
+        }
+        const goal = window.__novawingSimpleBotGoal;
+        return {
+            snap,
+            near,
+            goal: goal ? `(${Math.round(goal.x)},${Math.round(goal.y)})` : '',
+            pred: window.__novawingSimpleBotPred || '',
+            decisions: window.__novawingSimpleBotDecisions || 0,
+            last: window.__novawingSimpleBotLast || '',
+            error: window.__novawingSimpleBotError
+        };
+    };
     try {
         while (Date.now() - started < DURATION_MS) {
-            const status = await page.evaluate(() => {
-                const snap = window.__novawingDebug.getBotSnapshot();
-                let near = '';
-                if (snap && snap.player) {
-                    const all = [...(snap.enemies || []).map(e => ({ k: 'e:' + (e.type || '?'), x: e.x, y: e.y })),
-                        ...(snap.enemyBullets || []).map(b => ({ k: b.isLaser ? 'L' : 'b', x: b.x, y: b.y })),
-                        ...(snap.obstacles || []).map(o => ({ k: 'o', x: o.x, y: o.y })),
-                        ...(snap.walls || []).map(w => ({ k: 'w', x: w.x, y: w.y }))];
-                    near = all.map(t => ({ k: t.k, d: Math.round(Math.hypot(t.x - snap.player.x, t.y - snap.player.y)) }))
-                        .sort((a, b) => a.d - b.d).slice(0, 3)
-                        .map(t => `${t.k}${t.d}`).join(',');
+            let status;
+            if (fast) {
+                const burst = await burstFastPlay(page, {
+                    maxSteps: 80,
+                    decideEvery: 10,
+                    mode: 'simple',
+                    collect: false
+                });
+                if (burst.error && burst.error !== lastErrorLogged) {
+                    lastErrorLogged = burst.error;
+                    console.error('[bot]', burst.error);
                 }
-                const goal = window.__novawingSimpleBotGoal;
-                return {
-                    snap,
-                    near,
-                    goal: goal ? `(${Math.round(goal.x)},${Math.round(goal.y)})` : '',
-                    pred: window.__novawingSimpleBotPred || '',
-                    decisions: window.__novawingSimpleBotDecisions || 0,
-                    last: window.__novawingSimpleBotLast || '',
-                    error: window.__novawingSimpleBotError
-                };
-            });
+                status = await page.evaluate(readStatus);
+                if (burst.snap) status.snap = burst.snap;
+                if (!burst.steps && !burst.stop) {
+                    console.error('[bot] burst advanced 0 steps');
+                    break;
+                }
+            } else {
+                status = await page.evaluate(readStatus);
+            }
             if (status.error && status.error !== lastErrorLogged) {
                 lastErrorLogged = status.error;
                 console.error('[bot]', status.error);
@@ -169,7 +217,11 @@ async function main() {
             if (isRunWin(snap, LEVEL)) {
                 cleared = true;
                 won = isDeathlessWin(snap, LEVEL);
-                await page.waitForTimeout(2000);
+                if (!fast) await page.waitForTimeout(2000);
+                break;
+            }
+            if (gameCapMs && snap && snap.elapsedMs > gameCapMs) {
+                console.log(`[bot] game clock ${(snap.elapsedMs / 1000).toFixed(1)}s passed cap ${(gameCapMs / 1000).toFixed(1)}s`);
                 break;
             }
             if (await advanceCampaign(page, snap, LEVEL)) {
@@ -204,14 +256,15 @@ async function main() {
                 const bossHp = snap.boss && Number.isFinite(snap.boss.health) ? snap.boss.health
                     : (snap.boss && Number.isFinite(snap.boss.hp) ? snap.boss.hp : '-');
                 const progressKey = `${snap.level}|${snap.segment}|${snap.score}|${snap.kills}|${bossHp}`;
-                if (progressKey !== lastProgress.key) lastProgress = { key: progressKey, t: now };
-                else if (now - lastProgress.t > 20000) {
+                const clock = fast ? (snap.elapsedMs || 0) : now;
+                if (progressKey !== lastProgress.key) lastProgress = { key: progressKey, t: clock };
+                else if (clock - lastProgress.t > 20000) {
                     stalls += 1;
                     console.log(`[bot] STALL #${stalls} at L${snap.level} ${snap.phase} ${snap.segment} ` +
                         `score=${snap.score} kills=${snap.kills}`);
                     await page.screenshot({ path: path.join(OUT, `stall-${stalls}.png`) }).catch(() => {});
                     await page.evaluate(() => { window.__novawingSimpleBotPreferred = null; }).catch(() => {});
-                    lastProgress = { key: progressKey, t: now };
+                    lastProgress = { key: progressKey, t: clock };
                 }
                 // Planner death: decisions freeze while the game runs.
                 if (status.decisions !== lastDecisions) {
@@ -226,20 +279,6 @@ async function main() {
                     await page.evaluate(installSimpleBot).catch(() => {});
                     lastDecisionsT = now;
                 }
-                // Gun rotation: at max rank outside boss fights, cycle the
-                // top-tier set through a quiet moment so runs cover every
-                // gun instead of only the default.
-                if (snap.weaponLevel >= 3 && snap.phase !== 'boss' && !snap.boss &&
-                    now - lastSwitchT > 25000 && (status.pred || '').startsWith('-/')) {
-                    const switched = await page.evaluate(() => (
-                        typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
-                    )).catch(() => false);
-                    if (switched) {
-                        switches += 1;
-                        console.log(`[bot] gun switch #${switches} at L${snap.level} ${snap.segment}`);
-                    }
-                    lastSwitchT = now;
-                }
             }
             if (snap && now - lastLog > 2000) {
                 const boss = snap.boss ? ` boss=(${Math.round(snap.boss.x)},${Math.round(snap.boss.y)}:p${snap.boss.phase},hp${snap.boss.health})` : '';
@@ -250,26 +289,32 @@ async function main() {
                     `decisions=${status.decisions} last=${status.last}`);
                 lastLog = now;
             }
-            await page.waitForTimeout(100);
+            if (!fast) await page.waitForTimeout(100);
         }
     } finally {
         await page.evaluate(() => { window.__novawingSimpleBotStop?.(); }).catch(() => {});
+        if (fast) await paintFastPlayFrame(page).catch(() => {});
         await page.screenshot({ path: path.join(OUT, 'final.png') }).catch(() => {});
         await browser.close();
     }
     const report = {
         when: new Date().toISOString(), level: LEVEL, won, cleared, continuesUsed,
-        decisions, maxLevel, wallMs: Date.now() - started,
-        switches, stalls, deathsByCause, bossGun,
+        decisions, maxLevel, wallMs: Date.now() - started, fastPlay: fast,
+        gameCapMs, switches, stalls, deathsByCause, bossGun, pageErrors,
         final: finalSnap && {
             level: finalSnap.level, score: finalSnap.score, kills: finalSnap.kills,
             lives: finalSnap.lives, phase: finalSnap.phase, segment: finalSnap.segment,
-            elapsedMs: finalSnap.elapsedMs, weaponLevel: finalSnap.weaponLevel
+            elapsedMs: finalSnap.elapsedMs, weaponLevel: finalSnap.weaponLevel,
+            weaponId: finalSnap.weaponId,
+            levelCompleted: Boolean(finalSnap.levelCompleted),
+            awaitingNextLevel: Boolean(finalSnap.awaitingNextLevel),
+            victoryPending: Boolean(finalSnap.victoryPending),
+            levelEnded: Boolean(finalSnap.levelEnded)
         }
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ won, cleared, continuesUsed, maxLevel, switches, stalls,
-        deathsByCause, bossGun, pageErrors: pageErrors.length, final: report.final }));
+        deathsByCause, bossGun, pageErrors, final: report.final }));
     if (pageErrors.length) process.exitCode = 1;
     else if (!won) process.exitCode = 2;
 }

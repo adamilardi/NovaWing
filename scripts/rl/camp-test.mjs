@@ -20,6 +20,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { bootControlledGame, suppressRendering } from './controlled-play.mjs';
 import { launchBrowser, routeVendorPhaser } from './chrome.mjs';
+import { fastPlayEnabled, installFastPlay, stepHeldSim } from '../fast-play.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -64,7 +65,9 @@ async function runTrial(browser, trial) {
     const resp = await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
     if (!resp || !resp.ok()) throw new Error(`Failed to load game: ${resp && resp.status()}`);
     await bootControlledGame(page, LEVEL);
-    if (HEADLESS) await suppressRendering(page);
+    const fast = fastPlayEnabled(HEADLESS);
+    if (fast) await installFastPlay(page, { draw: false });
+    else if (HEADLESS) await suppressRendering(page);
     // Freeze the heuristic pilot; the camper drives via setBotInput instead.
     await page.evaluate(() => {
         cancelAnimationFrame(window.__novawingPilotRaf);
@@ -117,7 +120,7 @@ async function runTrial(browser, trial) {
             }
             if (snap.levelEnded || snap.levelCompleted || snap.victoryPending || snap.level > LEVEL) break;
             await driveCamper(page, anchor);
-            await page.clock.runFor(SAMPLE_MS);
+            await stepHeldSim(page, SAMPLE_MS, fast);
             simulatedMs += SAMPLE_MS;
         }
         final = await readSnap(page);

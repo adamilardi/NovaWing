@@ -40,6 +40,19 @@ function snap(over = {}) {
 }
 
 describe('pilot tactics', () => {
+    it('sprints a safe wave so the level clock advances, and will not eat a shot to do it', () => {
+        const safe = Tactics.plan(snap());
+        assert.equal(safe.input.boost, true, 'an empty wave must boost');
+        assert.equal(safe.options[safe.recommended].predictedDamage, null);
+        const hot = Tactics.plan(snap({
+            enemyBullets: [{ x: 420, y: 300, vx: -280, vy: 0, w: 16, h: 12 }]
+        }));
+        assert.equal(hot.options[hot.recommended].predictedDamage, null,
+            'the sprint must not be the option that collides with the shot');
+        assert.notEqual(hot.recommended, safe.recommended,
+            'the shot must change the chosen stick');
+    });
+
     it('chases every beneficial pickup type, not just weapon/shield/repair', () => {
         for (const type of ['weapon', 'laser', 'torrent', 'shield', 'repair', 'boost', 'bomb', 'phase']) {
             const goal = Tactics.plan(snap({ powerups: [{ x: 260, y: 300, type }] })).goal;

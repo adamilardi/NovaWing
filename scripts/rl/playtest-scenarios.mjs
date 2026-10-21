@@ -17,6 +17,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import { bootControlledGame, jumpControlledSegment, suppressRendering,
     pauseAutomaticPilot, decideControlledAction } from './controlled-play.mjs';
+import { burstFastPlay, fastPlayEnabled, installFastPlay } from '../fast-play.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
@@ -249,10 +250,12 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
 
     await bootControlledGame(page, scenario.level);
     if (scenario.segment) await jumpControlledSegment(page, scenario.segment);
-    if (HEADLESS) await suppressRendering(page);
+    const fast = fastPlayEnabled(HEADLESS);
+    if (!fast && HEADLESS) await suppressRendering(page);
 
     const mode = await installExpert(page, policy);
     await pauseAutomaticPilot(page, mode);
+    if (fast) await installFastPlay(page, { draw: false });
     const started = Date.now();
     const durationMs = Number(process.env.DURATION_MS || scenario.durationMs || 90000);
     if (!Number.isFinite(durationMs) || durationMs < 16) throw new Error('DURATION_MS must be at least 16');
@@ -302,6 +305,54 @@ async function runTrial(browser, scenarioId, scenario, trial, policy) {
                 won = false;
                 outcome = classifyDeath(snap, history);
                 break;
+            }
+            if (fast) {
+                const holdSteps = Math.max(1, Math.round(SAMPLE_MS / 16));
+                const remainingSteps = Math.ceil((durationMs - simulatedMs) / 16);
+                const burst = await burstFastPlay(page, {
+                    maxSteps: Math.max(1, Math.min(remainingSteps, holdSteps * 40)),
+                    decideEvery: holdSteps,
+                    mode: mode === 'policy' ? 'policy' : 'pilot',
+                    collect: true
+                });
+                if (burst.error) throw new Error(burst.error);
+                if (!burst.steps && !burst.stop) throw new Error('Fast play made no progress');
+                simulatedMs += burst.steps * 16;
+                if (burst.snap) {
+                    finalSnap = burst.snap;
+                    if (burst.snap.segment) segmentsSeen.add(burst.snap.segment);
+                    if (burst.snap.phase) phasesSeen.add(burst.snap.phase);
+                }
+                for (const sample of burst.samples || []) {
+                    if (sample.segment) segmentsSeen.add(sample.segment);
+                    if (sample.phase) phasesSeen.add(sample.phase);
+                    history.push(sample);
+                }
+                const clearedNow = burst.outcome === 'win' || (burst.snap && (
+                    burst.snap.levelCompleted || burst.snap.victoryPending ||
+                    burst.snap.awaitingNextLevel || burst.snap.level > scenario.level));
+                const isLose = (burst.outcome === 'lose' || (burst.snap && burst.snap.levelEnded)) &&
+                    !burst.snap?.levelTransitioning;
+                if (burst.stop === 'continue') {
+                    await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
+                    continue;
+                }
+                if (clearedNow && Number(burst.snap.continuesUsed) > 0) {
+                    won = false;
+                    outcome = 'continued_clear';
+                    break;
+                }
+                if (clearedNow) {
+                    won = true;
+                    outcome = 'win';
+                    break;
+                }
+                if (isLose || burst.stop === 'ended') {
+                    won = false;
+                    outcome = classifyDeath(burst.snap, history);
+                    break;
+                }
+                continue;
             }
             const advanceMs = Math.min(SAMPLE_MS, durationMs - simulatedMs);
             await decideControlledAction(page, mode);

@@ -9,6 +9,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import { bootControlledGame, jumpControlledSegment, suppressRendering,
     pauseAutomaticPilot, decideControlledAction } from './controlled-play.mjs';
+import { burstFastPlay, fastPlayEnabled, installFastPlay } from '../fast-play.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { OBS_SIZE, encodeObservation } from './obs-encode.mjs';
@@ -140,10 +141,12 @@ async function main() {
             }
         }
         if (process.env.SEGMENT && !BOSS_SKIP) await jumpControlledSegment(page, process.env.SEGMENT);
-        if (HEADLESS) await suppressRendering(page);
+        const fast = fastPlayEnabled(HEADLESS);
+        if (!fast && HEADLESS) await suppressRendering(page);
 
         await page.evaluate(installPolicyPilot, policy);
         await pauseAutomaticPilot(page, 'policy');
+        if (fast) await installFastPlay(page, { draw: false });
         console.log('policy pilot installed');
 
         const started = Date.now();
@@ -194,6 +197,23 @@ async function main() {
                     `ax=${(a.x || 0).toFixed(2)} ay=${(a.y || 0).toFixed(2)} boost=${a.boost ? 1 : 0}`
                 );
                 lastLog = now;
+            }
+            if (fast) {
+                const remainingSteps = Math.ceil((DURATION_MS - simulatedMs) / 16);
+                const burst = await burstFastPlay(page, {
+                    maxSteps: Math.max(1, Math.min(remainingSteps, 120)),
+                    decideEvery: 4,
+                    mode: 'policy',
+                    collect: false
+                });
+                if (burst.error) throw new Error(burst.error);
+                if (!burst.steps && !burst.stop) throw new Error('Fast play made no progress');
+                simulatedMs += (burst.steps || 0) * 16;
+                if (burst.snap) finalSnap = burst.snap;
+                if (burst.stop === 'continue') {
+                    await page.evaluate(() => acceptArcadeContinue(getActiveScene()));
+                }
+                continue;
             }
             await decideControlledAction(page, 'policy');
             const advanceMs = Math.min(64, DURATION_MS - simulatedMs);

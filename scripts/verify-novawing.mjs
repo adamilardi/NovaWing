@@ -21,6 +21,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 import { defaultHeadless, launchBrowser, appendPlaytestTimeScale } from './rl/chrome.mjs';
 import { installInPagePilot } from './play-bot.mjs';
+import { burstFastPlay, fastPlayEnabled, installFastPlay, paintFastPlayFrame } from './fast-play.mjs';
 import { caseContent, casePerformance } from './verify-content-cases.mjs';
 import { casePolish, caseCampaignRanking } from './verify-polish.mjs';
 import { caseCombatPolish } from './verify-combat-polish.mjs';
@@ -854,7 +855,26 @@ function pilotActed(t0, snap) {
     return false;
 }
 
+function mergeSeen(seen, extra) {
+    if (!extra) return;
+    for (const segment of extra.segments || []) seen.segments.add(segment);
+    for (const phase of extra.phases || []) seen.phases.add(phase);
+    for (const type of extra.enemyTypes || []) seen.enemyTypes.add(type);
+    for (const type of extra.armedTypes || []) seen.armedTypes.add(type);
+    for (const type of extra.firedTypes || []) seen.firedTypes.add(type);
+    for (const behavior of extra.bossBehaviors || []) seen.bossBehaviors.add(behavior);
+    seen.maxWalls = Math.max(seen.maxWalls, extra.maxWalls || 0);
+    seen.maxEnemies = Math.max(seen.maxEnemies, extra.maxEnemies || 0);
+    seen.maxEnemyBullets = Math.max(seen.maxEnemyBullets, extra.maxEnemyBullets || 0);
+    seen.maxPowerups = Math.max(seen.maxPowerups, extra.maxPowerups || 0);
+    if (extra.sawTelegraphs) seen.sawTelegraphs = true;
+    if (extra.sawBoss) seen.sawBoss = true;
+    if (extra.bossFired) seen.bossFired = true;
+}
+
 async function drivePilotUntil(page, durationMs, startLevel) {
+    const fast = fastPlayEnabled(HEADLESS);
+    if (fast) await installFastPlay(page, { draw: false });
     const t0 = await page.evaluate(() => window.__novawingDebug.getBotSnapshot());
     const started = Date.now();
     const seen = {
@@ -874,9 +894,24 @@ async function drivePilotUntil(page, durationMs, startLevel) {
     };
     let last = { snap: t0, outcome: null, err: null };
     while (Date.now() - started < durationMs) {
-        last = await readPilot(page);
+        if (fast) {
+            const burst = await burstFastPlay(page, {
+                maxSteps: Number(process.env.FAST_STEPS || 240),
+                decideEvery: 1,
+                mode: 'pilot',
+                collect: true
+            });
+            last = {
+                snap: burst.snap,
+                outcome: burst.outcome,
+                err: burst.error
+            };
+            mergeSeen(seen, burst.seen);
+        } else {
+            last = await readPilot(page);
+        }
         const snap = last.snap;
-        if (snap) {
+        if (snap && !fast) {
             if (snap.segment) seen.segments.add(snap.segment);
             if (snap.phase) seen.phases.add(snap.phase);
             seen.maxWalls = Math.max(seen.maxWalls, (snap.walls && snap.walls.length) || 0);
@@ -905,8 +940,9 @@ async function drivePilotUntil(page, durationMs, startLevel) {
         if (last.err) break;
         const outcome = classifyPilotOutcome(last, false, startLevel);
         if (outcome === 'win' || outcome === 'lose' || outcome === 'clear') break;
-        await page.waitForTimeout(250);
+        if (!fast) await page.waitForTimeout(250);
     }
+    if (fast) await paintFastPlayFrame(page).catch(() => {});
     const elapsedMs = Date.now() - started;
     const outcome = last.err ? 'error' : classifyPilotOutcome(last, elapsedMs >= durationMs, startLevel);
     return { t0, last, seen, outcome, elapsedMs };
@@ -1337,9 +1373,36 @@ async function caseRlPolicy(browser, base, evidenceDir) {
         await waitForGame(page);
         try {
             await page.evaluate(installPolicyPilot, { ...policy, explore: false });
+            const fast = fastPlayEnabled(HEADLESS);
+            if (fast) await installFastPlay(page, { draw: false });
             const t0 = await page.evaluate(() => window.__novawingDebug.getBotSnapshot());
-            await page.waitForTimeout(durationMs);
-            const status = await page.evaluate(() => ({
+            const started = Date.now();
+            let status = null;
+            while (Date.now() - started < durationMs) {
+                if (fast) {
+                    const burst = await burstFastPlay(page, {
+                        maxSteps: 90,
+                        decideEvery: 1,
+                        mode: 'policy',
+                        collect: false
+                    });
+                    status = {
+                        snap: burst.snap,
+                        error: burst.error,
+                        action: await page.evaluate(() => window.__novawingPolicyLastAction || null)
+                    };
+                } else {
+                    await page.waitForTimeout(250);
+                    status = await page.evaluate(() => ({
+                        snap: window.__novawingDebug.getBotSnapshot(),
+                        error: window.__novawingPolicyError || null,
+                        action: window.__novawingPolicyLastAction || null
+                    }));
+                }
+                if (status.error || pilotActed(t0, status.snap)) break;
+            }
+            if (fast) await paintFastPlayFrame(page).catch(() => {});
+            if (!status) status = await page.evaluate(() => ({
                 snap: window.__novawingDebug.getBotSnapshot(),
                 error: window.__novawingPolicyError || null,
                 action: window.__novawingPolicyLastAction || null

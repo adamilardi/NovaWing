@@ -21,6 +21,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import { createHash } from 'node:crypto';
 import { bootControlledGame, jumpControlledSegment, suppressRendering } from './controlled-play.mjs';
+import { fastPlayEnabled, installFastPlay, stepHeldSim } from '../fast-play.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
@@ -202,7 +203,9 @@ async function recordEpisode(browser, episodeIndex, policy) {
         const installed = await page.evaluate(installTacticsPilot);
         if (!installed) throw new Error('Failed to install tactics pilot');
     }
-    if (HEADLESS) await suppressRendering(page);
+    const fast = fastPlayEnabled(HEADLESS);
+    if (fast) await installFastPlay(page, { draw: false });
+    else if (HEADLESS) await suppressRendering(page);
 
     const steps = [];
     const started = Date.now();
@@ -242,8 +245,8 @@ async function recordEpisode(browser, episodeIndex, policy) {
             }
             if (before.levelEnded && !before.levelTransitioning) { terminal = true; break; }
             if (!before.ready || !before.player || before.levelTransitioning) {
-                await page.clock.runFor(16);
-                simulatedMs += 16;
+                const stepped = await stepHeldSim(page, 16, fast);
+                simulatedMs += (stepped && stepped.steps ? stepped.steps : 1) * 16;
                 pendingObs = null;
                 continue;
             }
@@ -275,9 +278,9 @@ async function recordEpisode(browser, episodeIndex, policy) {
             holdMs -= holdMs % 16;
             if (holdMs < 16) break;
             t0 = PROFILE_STEPS ? performance.now() : 0;
-            await page.clock.runFor(holdMs);
+            const stepped = await stepHeldSim(page, holdMs, fast);
             mark('clock', t0);
-            simulatedMs += holdMs;
+            simulatedMs += (stepped && stepped.steps ? stepped.steps : Math.round(holdMs / 16)) * 16;
             t0 = PROFILE_STEPS ? performance.now() : 0;
             const after = await page.evaluate(() => __novawingDebug.getBotSnapshot());
             mark('snap', t0);

@@ -16,6 +16,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { appendPlaytestTimeScale, launchBrowser, routeVendorPhaser } from './rl/chrome.mjs';
 import { isRunWin, isDeathlessWin, advanceCampaign } from './rl/run-outcome.mjs';
+import { burstFastPlay, fastPlayEnabled, installFastPlay, paintFastPlayFrame } from './fast-play.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.NOVAWING_URL || 'http://127.0.0.1:4000/';
@@ -1865,7 +1866,7 @@ export function installInPagePilot() {
                 ' seg=' + (snap.segment || '-') +
                 ' e=' + energy.toFixed(0) +
                 ' p=' + prog +
-                ' w' + snap.weaponLevel
+                ' w' + snap.weaponLevel + (snap.weaponId ? ':' + snap.weaponId : '')
         };
     }
 
@@ -1879,6 +1880,15 @@ export function installInPagePilot() {
                 window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
                 window.__novawingPilotOutcome = (snap.victoryPending || snap.levelCompleted) ? 'win' : 'lose';
                 return;
+            }
+            // Laser melts adds and launches no bullets, so a boss fought on it
+            // stays at full HP (Prism Caster). Two Q presses match
+            // chooseBossGun({ gun: 'laser', rank: 3 }): laser -> torrent -> spread.
+            if (snap.phase === 'boss' && snap.weaponId === 'laser' && (snap.weaponLevel || 0) >= 3 &&
+                typeof cycleTopTierWeapon === 'function') {
+                cycleTopTierWeapon(null);
+                cycleTopTierWeapon(null);
+                if (typeof activeWeaponId === 'function') snap.weaponId = activeWeaponId(null);
             }
             const decision = decide(snap);
             window.__novawingPilotLastNote = decision.note;
@@ -1989,6 +1999,11 @@ async function runOnce(browser, trialIndex) {
         await page.waitForTimeout(200);
     }
     console.log(`[trial ${trialIndex}] in-page pilot installed`);
+    const fast = fastPlayEnabled(HEADLESS);
+    if (fast) {
+        await installFastPlay(page, { draw: false });
+        console.log(`[trial ${trialIndex}] fast play: drawing off, 16ms steps`);
+    }
 
     const started = Date.now();
     let lastLog = 0;
@@ -2007,18 +2022,25 @@ async function runOnce(browser, trialIndex) {
 
     try {
         while (Date.now() - started < DURATION_MS) {
-            const status = await page.evaluate(() => {
-                const snap = (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
-                        ? window.__novawingDebug.getBotSnapshot()
-                        : null);
-                return {
-                    snap,
-                    note: window.__novawingPilotLastNote || '',
-                    outcome: window.__novawingPilotOutcome,
-                    error: window.__novawingPilotError
-                };
-            });
-            ticks += 1;
+            const status = fast
+                ? await burstFastPlay(page, {
+                    maxSteps: Number(process.env.FAST_STEPS || 240),
+                    decideEvery: 1,
+                    mode: 'pilot',
+                    collect: false
+                })
+                : await page.evaluate(() => {
+                    const snap = (window.__novawingDebug && window.__novawingDebug.getBotSnapshot
+                            ? window.__novawingDebug.getBotSnapshot()
+                            : null);
+                    return {
+                        snap,
+                        note: window.__novawingPilotLastNote || '',
+                        outcome: window.__novawingPilotOutcome,
+                        error: window.__novawingPilotError
+                    };
+                });
+            ticks += fast ? (status.steps || 1) : 1;
             if (status.error) console.error('[pilot]', status.error);
             const snap = status.snap;
             finalSnap = snap;
@@ -2073,12 +2095,13 @@ async function runOnce(browser, trialIndex) {
                 lastLog = now;
             }
 
-            await page.waitForTimeout(100);
+            if (!fast) await page.waitForTimeout(100);
         }
     } finally {
         await page.evaluate(() => {
             if (window.__novawingPilotStop) window.__novawingPilotStop();
         }).catch(() => {});
+        if (fast) await paintFastPlayFrame(page).catch(() => {});
         if (TRIALS === 1 || won) {
             await page.screenshot({
                 path: path.join(SCREENSHOT_DIR, won ? 'win-final.png' : 'final.png'),
@@ -2131,6 +2154,8 @@ async function runOnce(browser, trialIndex) {
         maxProgress: Math.round(maxProgress),
         durationSec: Number(((Date.now() - started) / 1000).toFixed(1)),
         ticks,
+        fastPlay: fast,
+        wallMs: Date.now() - started,
         video: videoPath
     };
 }
@@ -2138,7 +2163,7 @@ async function runOnce(browser, trialIndex) {
 async function main() {
     console.log('NovaWing play-test bot (in-page pilot)');
     console.log(`URL: ${BASE}`);
-    console.log(`headless=${HEADLESS} trials=${TRIALS} duration=${DURATION_MS}ms video=${RECORD_VIDEO}`);
+    console.log(`headless=${HEADLESS} trials=${TRIALS} duration=${DURATION_MS}ms video=${RECORD_VIDEO} fastPlay=${fastPlayEnabled(HEADLESS)}`);
     if (process.env.LEVEL) console.log(`start level=${process.env.LEVEL}`);
 
     const browser = await launchBrowser(chromium, HEADLESS, { slowMo: SLOW_MO, recordVideo: RECORD_VIDEO });

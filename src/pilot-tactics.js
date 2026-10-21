@@ -329,6 +329,12 @@ function plan(snap, durationMs = 160, preferred = null) {
         }
         if (target && (vertical ? a.end.y < target.y+target.h/2+p.h : a.end.x > target.x-target.w/2-p.w)) score -= 900;
         if (boost) score -= 18;
+        // Wave progress advances with boost intensity. A safe sprint finishes
+        // the authored clock sooner and leaves the cap for the boss. Damage
+        // penalties are thousands of points, so a threat still vetoes it.
+        if (boost && snap.phase !== 'boss' && !snap.boss && !a.predictedDamage && !after.predictedDamage) {
+            score += 80;
+        }
         if (stick === 'hold') score += 10;
         if (preferred) {
             const [x,y] = AXES[stick];
