@@ -78,6 +78,14 @@
  *   bossTempoScale        >1 = slower volleys/drones/lasers (easier)
  *                         Put this on the *level* bag or the *boss* segment.
  *                         A waves-segment overlay is ignored during the fight.
+ *   playerSpeedScale      1 = authored ship speed (cruise and boost)
+ *   playerShotSpeedScale  1 = authored player bullet speed
+ *   playerFireDelayScale  >1 = slower player shots and laser recharge
+ *   scrollSpeedScale      1 = authored world scroll
+ *   bossMoveScale         1 = authored boss approach speed (not shots or weave)
+ *   waveOverlapChance     chance a random-wave mode spawns a second pattern
+ *   waveClumpMinScale / waveClumpMaxScale
+ *                         Supernova clump bounds, as fractions of the wave interval
  *
  * Examples:
  *   Meaner L4:           { enemyHealthScale: 1.15, waveIntervalMinMs: 1400 }
@@ -138,7 +146,19 @@
         blackHolePreviewAtMs: 0,
         // Supernova sets these. Other modes keep a scripted catalog and a permanent gun.
         randomWaves: false,
-        weaponPowerMs: 0
+        weaponPowerMs: 0,
+        // Identity defaults. Overlay any of these later without editing combat code.
+        // Non-positive scales are ignored so a typo cannot reverse or freeze motion.
+        playerSpeedScale: 1,
+        playerShotSpeedScale: 1,
+        playerFireDelayScale: 1,
+        scrollSpeedScale: 1,
+        bossMoveScale: 1,
+        // Second pattern on a random-wave spawn. Ignored unless randomWaves is on.
+        waveOverlapChance: 0.28,
+        // Clump, then a gap. Fractions of the resolved wave interval.
+        waveClumpMinScale: 0.55,
+        waveClumpMaxScale: 1.35
     };
 
     const TIER_DIFFICULTY = {
@@ -487,6 +507,49 @@
             entries[key] = value;
         });
         return Object.assign({}, getDifficultyPreset(presetName), copyDifficultyPartial(entries));
+    }
+
+    /**
+     * Multiply a shipped speed or velocity by a tuning scale.
+     * Scale 1, missing, or non-positive returns base unchanged.
+     */
+    function scaleUnit(base, scale) {
+        const b = Number(base);
+        const s = Number(scale);
+        if (!Number.isFinite(b)) return base;
+        if (!Number.isFinite(s) || s === 1 || s <= 0) return b;
+        return b * s;
+    }
+
+    /** Player shot lock or laser recharge. Scale 1 keeps the authored milliseconds. */
+    function playerFireDelayMs(baseMs, scale) {
+        const b = Number(baseMs);
+        const s = Number(scale);
+        if (!Number.isFinite(b)) return baseMs;
+        if (!Number.isFinite(s) || s === 1 || s <= 0) return b;
+        return Math.max(40, Math.round(b * s));
+    }
+
+    /**
+     * Inclusive bounds for a clumped wave delay. Defaults match the
+     * Supernova clump that used to be written inline (0.55 / 1.35).
+     */
+    function clumpedWaveBounds(minMs, maxMs, minScale, maxScale) {
+        const min = Number(minMs);
+        const max = Number(maxMs);
+        const loScale = Number.isFinite(Number(minScale)) && Number(minScale) > 0 ? Number(minScale) : 0.55;
+        const hiScale = Number.isFinite(Number(maxScale)) && Number(maxScale) > 0 ? Number(maxScale) : 1.35;
+        const lo = Math.max(480, Math.round((Number.isFinite(min) ? min : 0) * loScale));
+        const hi = Math.max(lo + 200, Math.round((Number.isFinite(max) ? max : lo) * hiScale));
+        return { min: lo, max: hi };
+    }
+
+    /** True when this random-wave roll should spawn a second pattern. */
+    function rollsWaveOverlap(randomValue, chance) {
+        const roll = Number(randomValue);
+        const c = Number(chance);
+        if (!Number.isFinite(roll) || !Number.isFinite(c)) return false;
+        return roll < c;
     }
 
     /**
@@ -955,8 +1018,11 @@
     // Expansion: each environment has its own teach / pressure / recovery arc.
     // Existing enemy implementations and boss profiles remain shared.
     const EXPANSION_MODES = {
-        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
-            typedFireChance: 0.35, bossTempoScale: 1.5, bossHealthScale: 0.72 },
+        // Off the scorer's calm floor (cadence 1.65 / boss tempo 1.5) so a
+        // Cadet meets armed formations after the opener. Still slower, thinner,
+        // and lower-HP than Hotshot.
+        easy: { enemyCadenceScale: 1.42, enemyShotSpeedScale: 0.76,
+            typedFireChance: 0.46, bossTempoScale: 1.32, bossHealthScale: 0.72 },
         normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
             typedFireChance: 0.6, bossTempoScale: 1.25 },
         hard: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.05,
@@ -1054,7 +1120,17 @@
         music: { waves: 'canyon', boss: 'finalBoss' },
         durationMs: 82000, bossScore: 3800, bossHealth: 360,
         difficultyModes: {
-            easy: EXPANSION_MODES.easy,
+            // Cadet dodge exam: a standard-band peak, still a different job
+            // from Hotshot (0.9 cadence, 0.75 typed fire, full enemy HP).
+            easy: Object.assign({}, EXPANSION_MODES.easy, {
+                enemyCadenceScale: 1.18,
+                enemyShotSpeedScale: 0.84,
+                typedFireChance: 0.55,
+                enemyFireChance: 0.30,
+                interceptorChance: 0.18,
+                bossTempoScale: 1.08,
+                bossShotSpeedScale: 0.9
+            }),
             // Hardest expansion level: keeps its pressure identity (cadence
             // and boss tempo slightly hot) but every axis was cranked at once
             // (0.8 fire, 0.72 cadence, 1.15 shots) and that wall is gone.
@@ -1069,8 +1145,15 @@
         bossEncounters: { final: { behavior: 'graveyardLeviathan', health: 300, maxPhase: 3, entry: 'horizontal',
             arena: 'flat', label: 'WARNING: GRAVEYARD LEVIATHAN' } },
         segments: [
-            expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation', 'skyDive', 'floorRise'], 'hullField', false,
-                { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
+            Object.assign(
+                expansionWaves('surfaceApproach', 22000, ['diagonal', 'vFormation', 'skyDive', 'floorRise'], 'hullField', false,
+                    { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
+                // Teach before the exam. Segment modes resolve last, so this
+                // puts back the campaign-Cadet bag over L7's hotter level bag.
+                { difficultyModes: { easy: {
+                    enemyCadenceScale: 1.42, enemyShotSpeedScale: 0.76, typedFireChance: 0.46,
+                    enemyFireChance: 0.22, interceptorChance: 0.10
+                } } }),
             expansionWaves('hullField', 26000, ['splitterPair', 'pincer', 'chaser', 'skyDive', 'floorRise'], 'ashShelter', false,
                 { waveIntervalMinMs: 2700, waveIntervalMaxMs: 3300 }),
             Object.assign(
@@ -1079,8 +1162,11 @@
                 // Even the pressure level exhales. Relief lives in segment
                 // modes because L7's level modes overwrite plain segment
                 // difficulty (modes resolve last).
-                { difficultyModes: { normal: { typedFireChance: 0.4,
-                    enemyFireChance: 0.35, enemyCadenceScale: 1.2 } } }),
+                { difficultyModes: {
+                    easy: { enemyCadenceScale: 1.55, enemyShotSpeedScale: 0.72,
+                        typedFireChance: 0.32, enemyFireChance: 0.20, interceptorChance: 0.08 },
+                    normal: { typedFireChance: 0.4,
+                        enemyFireChance: 0.35, enemyCadenceScale: 1.2 } } }),
             expansionWaves('reactorTrench', 23000, ['sandwich', 'splitterAmbush', 'vFormation', 'skyDive', 'floorRise'], 'finalBoss', false,
                 { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200 }),
             { id: 'finalBoss', kind: 'boss', bossEncounter: 'final', scrollMode: 'horizontal',
@@ -1292,16 +1378,16 @@
         });
     });
     const PROMOTED_MODES = {
-        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
-            typedFireChance: 0.35, bossTempoScale: 1.5, bossHealthScale: 0.72 },
+        easy: { enemyCadenceScale: 1.42, enemyShotSpeedScale: 0.76,
+            typedFireChance: 0.46, bossTempoScale: 1.32, bossHealthScale: 0.72 },
         normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
             typedFireChance: 0.6, bossTempoScale: 1.25 },
         hard: { enemyCadenceScale: 0.9, enemyShotSpeedScale: 1.05,
             bossTempoScale: 0.98 }
     };
     const OBSIDIAN_MODES = {
-        easy: { enemyCadenceScale: 1.65, enemyShotSpeedScale: 0.7,
-            typedFireChance: 0.35, bossTempoScale: 1.15, bossHealthScale: 0.72,
+        easy: { enemyCadenceScale: 1.42, enemyShotSpeedScale: 0.76,
+            typedFireChance: 0.46, bossTempoScale: 1.15, bossHealthScale: 0.72,
             playerIFramesMs: 1600 },
         normal: { enemyCadenceScale: 1.3, enemyShotSpeedScale: 0.9,
             typedFireChance: 0.6, bossTempoScale: 1.25, playerIFramesMs: 1300 },
@@ -1943,6 +2029,10 @@
         normalizeDifficultyMode: normalizeDifficultyMode,
         getDifficultyContinues: getDifficultyContinues,
         scaleCountedStat: scaleCountedStat,
+        scaleUnit: scaleUnit,
+        playerFireDelayMs: playerFireDelayMs,
+        clumpedWaveBounds: clumpedWaveBounds,
+        rollsWaveOverlap: rollsWaveOverlap,
         DIFFICULTY_DEFAULTS: DIFFICULTY_DEFAULTS,
         TIER_DIFFICULTY: TIER_DIFFICULTY,
         DIFFICULTY_PRESETS: DIFFICULTY_PRESETS,
@@ -1991,6 +2081,10 @@
     root.normalizeDifficultyMode = normalizeDifficultyMode;
     root.getDifficultyContinues = getDifficultyContinues;
     root.scaleCountedStat = scaleCountedStat;
+    root.scaleUnit = scaleUnit;
+    root.playerFireDelayMs = playerFireDelayMs;
+    root.clumpedWaveBounds = clumpedWaveBounds;
+    root.rollsWaveOverlap = rollsWaveOverlap;
     root.DIFFICULTY_MODE_METADATA = DIFFICULTY_MODE_METADATA;
     root.getLevelBossScore = getLevelBossScore;
     root.getCampaignBossScore = getCampaignBossScore;

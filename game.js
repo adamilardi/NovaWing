@@ -1964,9 +1964,10 @@ function update(time, delta) {
     boostIntensity = approachValue(boostIntensity, boostTarget, boostRate * (frameDelta / 1000));
     updatePlayerAnimation(this, simTime);
 
+    const move = playerMoveSpeed(boostIntensity);
     if (player && player.active && axes.y < 0 &&
-        player.y + axes.y * BOOST_PLAYER_SPEED * (frameDelta / 1000) <= shipHudMinY(player, this.cameras.main.scrollY)) axes.y = 0;
-    const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, boostIntensity);
+        player.y + axes.y * move.boost * (frameDelta / 1000) <= shipHudMinY(player, this.cameras.main.scrollY)) axes.y = 0;
+    const speed = move.speed;
     player.setVelocity(axes.x * speed, axes.y * speed);
     clampShipBelowHud(player, this.cameras.main.scrollY);
     // P2 uses arrow keys, Enter to fire and right Shift to boost. Their boost,
@@ -3122,6 +3123,29 @@ function getCoopMovementAxes() {
     );
 }
 
+function playerMoveSpeed(intensity) {
+    const scale = difficultyNumber('playerSpeedScale', 1);
+    const cruise = scaleUnit(BASE_PLAYER_SPEED, scale);
+    const boost = scaleUnit(BOOST_PLAYER_SPEED, scale);
+    return {
+        cruise: cruise,
+        boost: boost,
+        speed: Phaser.Math.Linear(cruise, boost, intensity)
+    };
+}
+
+function worldScrollSpeed() {
+    return scaleUnit(WALL_SCROLL_SPEED, difficultyNumber('scrollSpeedScale', 1));
+}
+
+function bossMoveSpeed(base) {
+    return scaleUnit(base, difficultyNumber('bossMoveScale', 1));
+}
+
+function playerShotLockMs(baseMs) {
+    return playerFireDelayMs(baseMs, difficultyNumber('playerFireDelayScale', 1));
+}
+
 function isCoopFireHeld() {
     const scene = getActiveScene();
     const enterHeld = Boolean(scene && scene.input.keyboard && scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER).isDown);
@@ -3139,11 +3163,12 @@ function updateCoopPilot(ship, state, time, frameDelta) {
     if (boosting) state.boostEnergy = Math.max(0, state.boostEnergy - difficultyNumber('boostDrainPerSecond', BOOST_DRAIN_PER_SECOND) * frameDelta / 1000);
     state.boostIntensity = approachValue(state.boostIntensity, boosting ? 1 : 0,
         (boosting ? BOOST_RAMP_UP_PER_SECOND : BOOST_FADE_OUT_PER_SECOND) * frameDelta / 1000);
-    const speed = Phaser.Math.Linear(BASE_PLAYER_SPEED, BOOST_PLAYER_SPEED, state.boostIntensity);
+    const move = playerMoveSpeed(state.boostIntensity);
+    const speed = move.speed;
     // Predicted gate: stop before crossing the HUD strip, never a frame past.
     const p2Scene = getActiveScene();
     const p2ScrollY = p2Scene && p2Scene.cameras ? p2Scene.cameras.main.scrollY : 0;
-    if (axes.y < 0 && ship.y + axes.y * speed * (frameDelta / 1000) <= shipHudMinY(ship, p2ScrollY)) axes.y = 0;
+    if (axes.y < 0 && ship.y + axes.y * move.boost * (frameDelta / 1000) <= shipHudMinY(ship, p2ScrollY)) axes.y = 0;
     ship.setVelocity(axes.x * speed, axes.y * speed);
     updateCoopPilotAnimation(ship, state);
 }
@@ -3218,7 +3243,7 @@ function startLaserBurst(time, shooter, pilotState) {
     const slot = laserSlot(pilotState);
     if (time < slot.activeUntil || time < slot.readyAt) return;
     slot.activeUntil = time + LASER_MELT_MS;
-    slot.readyAt = slot.activeUntil + LASER_RECHARGE_MS;
+    slot.readyAt = slot.activeUntil + playerShotLockMs(LASER_RECHARGE_MS);
     if (sfx && sfx.bomb) sfx.bomb(shooter.x);
     updateWeaponText();
     if (coopEnabled) updateCoopText();
@@ -3313,8 +3338,9 @@ function fireBullet(time, shooter = player, pilotState = null) {
         sfx.shoot(currentWeapon, muzzle.x);
         const flash = getPlayerNoseFlashAnchor(muzzle);
         createMuzzleFlash(this, flash.x, flash.y, currentWeapon);
-        if (pilotState) pilotState.lastFired = time + (currentWeapon >= 3 ? 150 : 125);
-        else lastFired = time + (currentWeapon >= 3 ? 150 : 125);
+        const lockMs = playerShotLockMs(currentWeapon >= 3 ? 150 : 125);
+        if (pilotState) pilotState.lastFired = time + lockMs;
+        else lastFired = time + lockMs;
     }
 }
 
@@ -3342,8 +3368,9 @@ function fireTorrentLances(time, shooter, pilotState = null) {
         sfx.shoot(MAX_WEAPON_LEVEL, muzzle.x);
         const flash = getPlayerNoseFlashAnchor(muzzle);
         createMuzzleFlash(this, flash.x, flash.y, MAX_WEAPON_LEVEL);
-        if (pilotState) pilotState.lastFired = time + TORRENT_COOLDOWN_MS;
-        else lastFired = time + TORRENT_COOLDOWN_MS;
+        const lockMs = playerShotLockMs(TORRENT_COOLDOWN_MS);
+        if (pilotState) pilotState.lastFired = time + lockMs;
+        else lastFired = time + lockMs;
     }
 }
 
@@ -3353,7 +3380,8 @@ function launchBullet(x, y, velocityX, velocityY, textureKey, owner = player) {
 
     bullet.setTexture(textureKey);
     activateSprite(bullet, x, y);
-    bullet.setVelocity(velocityX, velocityY);
+    const shotScale = difficultyNumber('playerShotSpeedScale', 1);
+    bullet.setVelocity(scaleUnit(velocityX, shotScale), scaleUnit(velocityY, shotScale));
     bullet.setDepth(2);
     bullet.setRotation(Math.atan2(velocityY, velocityX));
     // Slightly smaller than the glow so hits line up with the bright core.
@@ -3393,9 +3421,10 @@ function nextWaveDelayMs() {
         delay = Phaser.Math.Between(min, max);
     } else {
         // Clump, then a gap, so Supernova waves do not arrive on a metronome.
-        const lo = Math.max(480, Math.round(min * 0.55));
-        const hi = Math.max(lo + 200, Math.round(max * 1.35));
-        delay = Phaser.Math.Between(lo, hi);
+        const bounds = clumpedWaveBounds(min, max,
+            difficultyNumber('waveClumpMinScale', 0.55),
+            difficultyNumber('waveClumpMaxScale', 1.35));
+        delay = Phaser.Math.Between(bounds.min, bounds.max);
     }
     // Hot runs pack waves tighter; cold runs breathe. Bounded ±15%.
     return Math.max(240, Math.round(delay / heatIntensity()));
@@ -3413,7 +3442,8 @@ function spawnEnemyWave() {
     lastWavePatternKey = pattern.key;
     pattern.spawn(this);
     maybeSpawnRearHunter(this);
-    if (!randomWaves || levelPatterns.length < 2 || gameplayRandom() >= 0.28) return;
+    if (!randomWaves || levelPatterns.length < 2
+        || !rollsWaveOverlap(gameplayRandom(), difficultyNumber('waveOverlapChance', 0.28))) return;
     const extras = levelPatterns.filter(candidate => candidate.key !== pattern.key);
     const extra = Phaser.Utils.Array.GetRandom(extras);
     if (extra && typeof extra.spawn === 'function') extra.spawn(this);
@@ -5089,7 +5119,7 @@ function spawnPathDeadEndWarning(region, escapeDir) {
 
     pathWarningMarkers.push({
         parts: pulseTargets,
-        baseVelocityX: WALL_SCROLL_SPEED,
+        baseVelocityX: worldScrollSpeed(),
         createdAt: playtestNow(scene)
     });
 }
@@ -5103,7 +5133,7 @@ function scrollPathWarningMarkers(frameDelta) {
         difficultyNumber('boostProgressMultiplier', BOOST_LEVEL_PROGRESS_MULTIPLIER),
         boostIntensity
     );
-    const dx = WALL_SCROLL_SPEED * multiplier * ((frameDelta || 16.67) / 1000);
+    const dx = worldScrollSpeed() * multiplier * ((frameDelta || 16.67) / 1000);
 
     pathWarningMarkers = pathWarningMarkers.filter(marker => {
         let anyAlive = false;
@@ -5356,8 +5386,9 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     }
     wall.isWall = true;
     wall.isDangerWall = Boolean(options.danger);
-    wall.baseVelocityX = options.vertical ? 0 : WALL_SCROLL_SPEED;
-    wall.baseVelocityY = options.vertical ? -WALL_SCROLL_SPEED : 0;
+    const scroll = worldScrollSpeed();
+    wall.baseVelocityX = options.vertical ? 0 : scroll;
+    wall.baseVelocityY = options.vertical ? -scroll : 0;
     updateScrollVelocity(wall);
     wall.setAngularVelocity(0);
     if (wall.body) {
@@ -5547,7 +5578,7 @@ function spawnPowerup(plan = {}) {
     else if (powerup.clearTint) powerup.clearTint();
     activateSprite(powerup, x, y);
     // Slightly slower than enemies so pickups stay readable.
-    applyApproachSpeed(powerup, plan.terrainSpeed ? WALL_SCROLL_SPEED : (vertical ? -70 : -95));
+    applyApproachSpeed(powerup, plan.terrainSpeed ? worldScrollSpeed() : (vertical ? -70 : -95));
     updateScrollVelocity(powerup);
     powerup.setAngularVelocity(80);
     powerup.setDepth(5);
@@ -5726,7 +5757,7 @@ function startBossFight(encounterKey) {
         boss.verticalMode = true;
         boss.entry = profile.entry || 'warpCenter';
         boss.setDepth(3);
-        boss.setVelocity(0, 90);
+        boss.setVelocity(0, bossMoveSpeed(90));
         boss.setAngle(hasBossVertical ? 0 : 90);
         if (!customBossSpec) {
             boss.setAlpha(0.2);
@@ -5740,7 +5771,7 @@ function startBossFight(encounterKey) {
         boss.verticalMode = false;
         boss.entry = profile.entry || 'horizontal';
         boss.setDepth(3);
-        boss.setVelocityX(-80);
+        boss.setVelocityX(bossMoveSpeed(-80));
         boss.setAngle(0);
     }
     if (customBossSpec) {
@@ -5812,7 +5843,7 @@ function updateBossFight(time, frameDelta) {
 
     if (boss.verticalMode) {
         if (boss.y < (boss.arenaY || 130) - 4) {
-            boss.setVelocity(0, 110);
+            boss.setVelocity(0, bossMoveSpeed(110));
         } else if (blackHoleActive && blackHoleConfig) {
             // PR6: orbit the singularity.
             if (!Number.isFinite(boss.orbitAngle)) boss.orbitAngle = -Math.PI / 2;
@@ -5844,7 +5875,7 @@ function updateBossFight(time, frameDelta) {
     }
 
     if (boss.x > 655) {
-        boss.setVelocityX(-80);
+        boss.setVelocityX(bossMoveSpeed(-80));
     } else {
         boss.setVelocityX(0);
         boss.y = boss.arenaY + Math.sin(time * 0.0018) * 125;
@@ -14076,6 +14107,21 @@ window.__novawingDebug = {
             vx: player.body ? player.body.velocity.x : 0,
             vy: player.body ? player.body.velocity.y : 0,
             levelEnded,
+            continuePending: Boolean(continuePending)
+        };
+    },
+    // Cheap stop signal for in-page fast play. Full snapshots stay on getBotSnapshot.
+    getFastProbe() {
+        return {
+            ready: Boolean(player && player.active),
+            level: currentLevel,
+            phase: gamePhase,
+            segment: levelSegment,
+            levelEnded: Boolean(levelEnded),
+            levelCompleted: Boolean(levelCompleted),
+            levelTransitioning: Boolean(levelTransitioning),
+            victoryPending: Boolean(victoryPending),
+            awaitingNextLevel: Boolean(awaitingNextLevel),
             continuePending: Boolean(continuePending)
         };
     },

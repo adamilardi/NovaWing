@@ -28,7 +28,12 @@ level's catalog can show up immediately, and about one wave in three brings
 a second pattern with it. Weapon ranks expire after 14 seconds. Fresh weapon
 pods keep spawning during waves, including the boss approach, so a faded gun
 can be replaced. The timer pauses during a boss fight. Space Cadet also slows enemy and boss projectiles and spaces
-attacks out. Tracking and boost drain are gentler. Hotshot’s level-two
+attacks out. Tracking and boost drain are gentler. After the opener,
+Cadet levels arm more of each formation (cadence 1.42, shot speed 0.76,
+about 46% of typed foes) so the route is practiced, not empty. Ashen
+Graveyard is the Cadet dodge exam: cadence 1.18 and shot speed 0.84 on
+the hull, trench, and leviathan, with the salvage shelter kept quiet
+between them. Enemy health stays at 70%. Hotshot’s level-two
 interceptor aim bridges the opener and the finale.
 
 Boss speed applies to both velocity components, so trajectories stay
@@ -50,6 +55,23 @@ apply and unrank. Bot sessions keep their query-preset behavior.
 
 How to overlay knobs on a level or segment: see the tuning block at the top
 of `levels.js` and [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md).
+
+These knobs exist for later tweaks. Every mode currently leaves them at the
+shipped feel, so setting nothing changes nothing. A non-positive scale is
+ignored. Overlay them the same way as the table above: a mode preset, a
+level or segment `difficultyModes` entry, or a playtest URL such as
+`?playerSpeedScale=0.9&waveOverlapChance=0.4` (a numeric URL unranks the run).
+
+| Knob | Default | What a future tweak changes |
+| --- | --- | --- |
+| playerSpeedScale | 1 | Cruise and boost ship speed |
+| playerShotSpeedScale | 1 | Player bullet speed |
+| playerFireDelayScale | 1 | Time between player shots, and laser recharge. Above 1 is slower |
+| scrollSpeedScale | 1 | World scroll shared by walls, gates, and terrain-speed pickups |
+| bossMoveScale | 1 | How fast the boss enters. Shots, weave, and orbit stay on their own knobs |
+| waveOverlapChance | 0.28 | Chance a random-wave spawn adds a second pattern. Scripted modes ignore it |
+| waveClumpMinScale | 0.55 | Short end of a Supernova wave gap, as a fraction of the wave interval |
+| waveClumpMaxScale | 1.35 | Long end of that gap |
 
 Human play feedback still judges overall feel. Regression checks do not
 establish campaign completion rates. Release playtest expectations:

@@ -172,6 +172,67 @@ test('ashen graveyard hotshot sits above siblings without doubling every axis', 
     }
 });
 
+test('future tuning knobs default to the shipped feel and ignore a bad scale', () => {
+    const bag = Levels.resolveDifficulty(null, 3);
+    assert.equal(bag.playerSpeedScale, 1);
+    assert.equal(bag.playerShotSpeedScale, 1);
+    assert.equal(bag.playerFireDelayScale, 1);
+    assert.equal(bag.scrollSpeedScale, 1);
+    assert.equal(bag.bossMoveScale, 1);
+    assert.equal(bag.waveOverlapChance, 0.28);
+    assert.equal(bag.waveClumpMinScale, 0.55);
+    assert.equal(bag.waveClumpMaxScale, 1.35);
+
+    assert.equal(Levels.scaleUnit(280, bag.playerSpeedScale), 280);
+    assert.equal(Levels.scaleUnit(470, 1), 470);
+    assert.equal(Levels.scaleUnit(-128, bag.scrollSpeedScale), -128);
+    assert.equal(Levels.scaleUnit(-80, bag.bossMoveScale), -80);
+    assert.equal(Levels.scaleUnit(690, 1), 690);
+    assert.equal(Levels.scaleUnit(280, 0), 280);
+    assert.equal(Levels.scaleUnit(280, -1), 280);
+    assert.equal(Levels.scaleUnit(280, 1.1), 308);
+    assert.equal(Levels.playerFireDelayMs(125, 1), 125);
+    assert.equal(Levels.playerFireDelayMs(150, 1), 150);
+    assert.equal(Levels.playerFireDelayMs(185, 1), 185);
+    assert.equal(Levels.playerFireDelayMs(3000, 1), 3000);
+    assert.equal(Levels.playerFireDelayMs(125, 1.2), 150);
+    assert.equal(Levels.playerFireDelayMs(125, 0), 125);
+
+    const bounds = Levels.clumpedWaveBounds(1650, 2300, 0.55, 1.35);
+    assert.equal(bounds.min, Math.max(480, Math.round(1650 * 0.55)));
+    assert.equal(bounds.max, Math.max(bounds.min + 200, Math.round(2300 * 1.35)));
+    assert.equal(Levels.rollsWaveOverlap(0.279, 0.28), true);
+    assert.equal(Levels.rollsWaveOverlap(0.28, 0.28), false);
+    assert.equal(Levels.rollsWaveOverlap(0.5, 0), false);
+
+    const overlay = Levels.readDifficultyQueryOverlay(
+        '?playerSpeedScale=1.1&waveOverlapChance=0.1&playerFireDelayScale=0&notAKnob=4'
+    );
+    assert.equal(overlay.playerSpeedScale, 1.1);
+    assert.equal(overlay.waveOverlapChance, 0.1);
+    assert.equal(overlay.playerFireDelayScale, 0);
+    assert.equal(overlay.notAKnob, undefined);
+    assert.equal(Levels.scaleUnit(280, overlay.playerSpeedScale), 308);
+    assert.equal(Levels.playerFireDelayMs(125, overlay.playerFireDelayScale), 125);
+});
+
+test('game applies the future knobs through the shipped helpers', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
+    for (const key of [
+        'playerSpeedScale', 'playerShotSpeedScale', 'playerFireDelayScale',
+        'scrollSpeedScale', 'bossMoveScale', 'waveOverlapChance',
+        'waveClumpMinScale', 'waveClumpMaxScale'
+    ]) {
+        assert.ok(src.includes("'" + key + "'"), key + ' is read from the difficulty bag');
+    }
+    assert.ok(src.includes('clumpedWaveBounds('));
+    assert.ok(src.includes('rollsWaveOverlap('));
+    assert.ok(src.includes('playerFireDelayMs('));
+    assert.ok(src.includes('scaleUnit('));
+});
+
 test('scripted canShoot:true thins through typedFireChance instead of bypassing it', () => {
     const fs = require('node:fs');
     const path = require('node:path');

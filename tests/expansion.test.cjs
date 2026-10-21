@@ -128,8 +128,11 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
             nextTerrainEventIndex: 0, levelProgressMs: 0, WALL_SCROLL_SPEED: -128, WALL_TEXTURE_FALLBACK_SIZE: 40,
             currentLevelArt: level.art, getLevelSegmentDef: () => segment, isVerticalScroll: () => vertical,
             activateSprite() {}, updateScrollVelocity(w) { w.vx = w.baseVelocityX; w.vy = w.baseVelocityY; },
-            showFloatingText() {}, spawnEnemy() {}, Math, Number });
-        vm.runInContext(functionSource('spawnWallBlock') + '\n' + functionSource('spawnScheduledTerrain'), context);
+            showFloatingText() {}, spawnEnemy() {}, Math, Number,
+            // Same identity path the game uses when no scroll overlay is set.
+            scaleUnit: Levels.scaleUnit,
+            difficultyNumber(key, fallback) { return fallback; } });
+        vm.runInContext(functionSource('worldScrollSpeed') + '\n' + functionSource('spawnWallBlock') + '\n' + functionSource('spawnScheduledTerrain'), context);
         context.scene = { textures: { exists: () => false } };
         vm.runInContext('spawnScheduledTerrain.call(scene)', context);
         assert.equal(spawned.length, segment.terrainEvents[0].blocks.length);
