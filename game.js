@@ -4995,6 +4995,10 @@ function getEscapeDirection(closingBand, safeBands) {
     return window.NovaWingCorridor.getEscapeDirection(closingBand, safeBands);
 }
 
+function getVanishingRegions(fromBands, toBands) {
+    return window.NovaWingCorridor.getVanishingRegions(fromBands, toBands, PATH_WARNING_MIN_CLOSE_HEIGHT);
+}
+
 function findNextBandLayoutChange(pathEvents, fromIndex, referenceBands) {
     return window.NovaWingCorridor.findNextBandLayoutChange(pathEvents, fromIndex, referenceBands);
 }
@@ -5005,8 +5009,10 @@ function getPathWarningState() {
     // until the switch. Same lead time the HUD warning uses
     // (PATH_WARNING_LEAD_MS). Ungated on ship position — unlike the HUD
     // text — so bots can pre-position with the lead a human gets from
-    // the visibly converging corridor. L2 pathEvents only; null when
-    // nothing is closing.
+    // the visibly converging corridor. Uses vanishing regions (set
+    // difference), not whole-band closing: a wide corridor splitting in
+    // two closes no whole band, yet the ship's part still vanishes.
+    // L2 pathEvents only; null when nothing is closing.
     if (typeof currentOpenBands === 'undefined' || !currentOpenBands) return null;
     const lvl = typeof currentLevel === 'number' ? currentLevel : 1;
     const levelDef = typeof getLevelDef === 'function' ? getLevelDef(lvl) : null;
@@ -5016,7 +5022,7 @@ function getPathWarningState() {
     if (!nextChange || !nextChange.event) return null;
     const switchInMs = nextChange.event.progressMs - levelProgressMs;
     if (!Number.isFinite(switchInMs) || switchInMs > PATH_WARNING_LEAD_MS || switchInMs < -120) return null;
-    const closing = getClosingRegions(currentOpenBands, nextChange.event.openBands);
+    const closing = getVanishingRegions(currentOpenBands, nextChange.event.openBands);
     if (!closing.length) return null;
     return {
         closing: closing.map(band => [band[0], band[1]]),

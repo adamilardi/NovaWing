@@ -35,15 +35,17 @@ const OUT = process.env.SIMPLE_OUT || (LEVEL === null
 
 /**
  * In-page pilot. Serialized into the browser; no Node closures.
- * Re-plans from the full bot snapshot every 160ms of sim time (one
- * planner horizon) and holds the stick until the next plan. Headless fast
- * play steps those frames inside the page. The wall interval is only the
- * 1x clock, where 160ms of sim is 160ms of wall.
+ * Re-plans from the full bot snapshot every 80ms of sim time (half the
+ * 160ms planner horizon, so commitments overlap and fresher info always
+ * wins) and holds the stick until the next plan. Headless fast play steps
+ * those frames inside the page. The wall interval is only the 1x clock,
+ * where 80ms of sim is 80ms of wall.
  */
 export function installSimpleBot() {
     if (window.__novawingSimpleBotInstalled) return true;
     window.__novawingSimpleBotDecisions = 0;
     window.__novawingSimpleBotBoostDecisions = 0;
+    window.__novawingSimpleBotBoostStats = { ticks: 0, noBoostOptions: 0, allDirty: 0, holdDirty: 0, tiltLost: 0, boostWon: 0, boostSwitches: 0, lastBoost: false };
     window.__novawingSimpleBotError = null;
     window.__novawingSimpleBotLast = '';
     window.__novawingSimpleBotPreferred = null;
@@ -65,6 +67,29 @@ export function installSimpleBot() {
             window.__novawingSimpleBotPreferred = { x: result.input.x, y: result.input.y };
             window.__novawingSimpleBotDecisions += 1;
             if (result.input.boost) window.__novawingSimpleBotBoostDecisions += 1;
+            // Boost-binder telemetry (waves only): why isn't the ship
+            // boosting? Buckets: energy-starved (no boost options),
+            // action-dirty (no clean boost option), hold-dirty (clean
+            // but bonus withheld), tilt-lost (bonus granted, non-boost
+            // still won), boost-won. Read-only stats, zero behavior effect.
+            const st = window.__novawingSimpleBotBoostStats;
+            const boosting = !!result.input.boost;
+            const switched = boosting !== st.lastBoost;
+            st.lastBoost = boosting;
+            if (snap.phase !== 'boss' && !snap.boss) {
+                if (switched) st.boostSwitches += 1;
+                const opts = Object.values(result.options || {});
+                const boosted = opts.filter(o => o.boost);
+                st.ticks += 1;
+                if (!boosted.length) st.noBoostOptions += 1;
+                else {
+                    const clean = boosted.filter(o => !o.predictedDamage);
+                    if (!clean.length) st.allDirty += 1;
+                    else if (!clean.some(o => !o.postActionDamage)) st.holdDirty += 1;
+                    else if ((result.options[result.recommended] || {}).boost) st.boostWon += 1;
+                    else st.tiltLost += 1;
+                }
+            }
             window.__novawingSimpleBotLast = result.recommended;
             window.__novawingSimpleBotGoal = result.goal;
             const chosen = result.options[result.recommended] || {};
@@ -81,9 +106,9 @@ export function installSimpleBot() {
         window.__novawingSimpleBotTimer = null;
         if (window.__novawingDebug) window.__novawingDebug.clearBotInput();
     };
-    // Fast play sleeps the game loop and calls the tick every 160 sim ms.
+    // Fast play sleeps the game loop and calls the tick every 80 sim ms.
     // A wall interval there would replan against a frozen frame.
-    if (!window.__novawingFastPlay) window.__novawingSimpleBotTimer = setInterval(tick, 160);
+    if (!window.__novawingFastPlay) window.__novawingSimpleBotTimer = setInterval(tick, 80);
     window.__novawingSimpleBotInstalled = true;
     return true;
 }
@@ -120,13 +145,13 @@ async function main() {
     const fast = fastPlayEnabled(process.env.HEADLESS !== '0');
     if (fast) {
         await installFastPlay(page, { draw: false });
-        console.log('fast play: drawing off, 16ms steps, plan every 160 sim ms');
+        console.log('fast play: drawing off, 16ms steps, plan every 80 sim ms');
     }
     if (!await page.evaluate(installSimpleBot)) throw new Error('Failed to install simple bot');
 
     const started = Date.now();
     let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0, lastSeg = null, lastRank = null, lastLootKey = '';
-    let boostDecisions = 0, bossEntryMs = null;
+    let boostDecisions = 0, bossEntryMs = null, boostStats = null;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
     let lastErrorLogged = '', stalls = 0, switches = 0;
     let lastProgress = { key: '', t: fast ? 0 : Date.now() };
@@ -189,6 +214,7 @@ async function main() {
             pred: window.__novawingSimpleBotPred || '',
             decisions: window.__novawingSimpleBotDecisions || 0,
             boostDecisions: window.__novawingSimpleBotBoostDecisions || 0,
+            boostStats: window.__novawingSimpleBotBoostStats || null,
             last: window.__novawingSimpleBotLast || '',
             error: window.__novawingSimpleBotError
         };
@@ -199,7 +225,7 @@ async function main() {
             if (fast) {
                 const burst = await burstFastPlay(page, {
                     maxSteps: 80,
-                    decideEvery: 10,
+                    decideEvery: 5,
                     mode: 'simple',
                     collect: false
                 });
@@ -224,6 +250,7 @@ async function main() {
             finalSnap = snap;
             decisions = status.decisions;
             boostDecisions = status.boostDecisions || 0;
+            if (status.boostStats) boostStats = status.boostStats;
             if (bossEntryMs === null && snap && (snap.phase === 'boss' || snap.boss) &&
                 Number.isFinite(snap.elapsedMs)) bossEntryMs = snap.elapsedMs;
             if (snap && Number.isFinite(snap.level)) {
@@ -356,7 +383,7 @@ async function main() {
     }
     const report = {
         when: new Date().toISOString(), level: LEVEL, won, cleared, continuesUsed,
-        decisions, boostDecisions,
+        decisions, boostDecisions, boostStats,
         boostFraction: decisions > 0 ? Math.round(boostDecisions / decisions * 1000) / 1000 : 0,
         bossEntryMs: bossEntryMs === null ? null : Math.round(bossEntryMs),
         deaths,
@@ -375,7 +402,7 @@ async function main() {
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ won, cleared, continuesUsed, maxLevel, switches, stalls,
-        boostFraction: report.boostFraction, bossEntryMs: report.bossEntryMs,
+        boostFraction: report.boostFraction, bossEntryMs: report.bossEntryMs, boostStats,
         deathsByCause, bossGun, pageErrors, final: report.final }));
     if (pageErrors.length) process.exitCode = 1;
     else if (!won) process.exitCode = 2;
