@@ -4999,6 +4999,32 @@ function findNextBandLayoutChange(pathEvents, fromIndex, referenceBands) {
     return window.NovaWingCorridor.findNextBandLayoutChange(pathEvents, fromIndex, referenceBands);
 }
 
+function getPathWarningState() {
+    // Machine-readable DEAD END preview for playbots: the bands closing
+    // at the next layout change, the bands replacing them, and the ms
+    // until the switch. Same lead time the HUD warning uses
+    // (PATH_WARNING_LEAD_MS). Ungated on ship position — unlike the HUD
+    // text — so bots can pre-position with the lead a human gets from
+    // the visibly converging corridor. L2 pathEvents only; null when
+    // nothing is closing.
+    if (typeof currentOpenBands === 'undefined' || !currentOpenBands) return null;
+    const lvl = typeof currentLevel === 'number' ? currentLevel : 1;
+    const levelDef = typeof getLevelDef === 'function' ? getLevelDef(lvl) : null;
+    if (!levelDef || !levelDef.hasPathWalls || !levelDef.pathEvents) return null;
+    const nextChange = findNextBandLayoutChange(
+        levelDef.pathEvents, nextPathEventIndex, currentOpenBands);
+    if (!nextChange || !nextChange.event) return null;
+    const switchInMs = nextChange.event.progressMs - levelProgressMs;
+    if (!Number.isFinite(switchInMs) || switchInMs > PATH_WARNING_LEAD_MS || switchInMs < -120) return null;
+    const closing = getClosingRegions(currentOpenBands, nextChange.event.openBands);
+    if (!closing.length) return null;
+    return {
+        closing: closing.map(band => [band[0], band[1]]),
+        nextBands: (nextChange.event.openBands || []).map(band => [band[0], band[1]]),
+        switchInMs: Math.round(switchInMs)
+    };
+}
+
 function updatePathDeadEndWarnings(frameDelta) {
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') {
         clearPathDeadEndWarnings(this);
@@ -5860,6 +5886,9 @@ function updateBossFight(time, frameDelta) {
             boss.setVelocity(0, 0);
             boss.y = boss.arenaY || 130;
             boss.x = 400 + Math.sin(time * 0.0016) * 160;
+            // Same readout fix as the horizontal weave below: report the
+            // ±160px sway velocity instead of 0 (positions untouched).
+            boss.setVelocityX(Math.cos(time * 0.0016) * 256);
         }
         const inPosition = boss.y >= (boss.arenaY || 130) - 8 || blackHoleActive;
         if (time >= bossNextVolleyAt && inPosition) {
@@ -5879,6 +5908,10 @@ function updateBossFight(time, frameDelta) {
     } else {
         boss.setVelocityX(0);
         boss.y = boss.arenaY + Math.sin(time * 0.0018) * 125;
+        // Report the weave velocity truthfully: playbots extrapolate from
+        // body velocity, and a 0 here reads as a parked boss while it
+        // sweeps ±125px. Positions are untouched; only the readout changes.
+        boss.setVelocityY(Math.cos(time * 0.0018) * 225);
     }
 
     if (time >= bossNextVolleyAt && boss.x <= 700) {
@@ -5940,11 +5973,21 @@ function updateExpansionBoss(time, frameDelta) {
             target.setVelocity(0, 0);
             target.y = target.arenaY + Math.sin(time * 0.002) * 5;
             target.x = 400 + Math.sin(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) * 110;
+            // Readout fix (same as the classic settled weaves): report the
+            // sweep velocity instead of 0. Positions untouched.
+            target.setVelocityX(Math.cos(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) *
+                (state.id === 'voidCantor' ? 88 : 143));
+            target.setVelocityY(Math.cos(time * 0.002) * 10);
         }
     } else {
         ready = target.x <= 655;
         target.setVelocity(ready ? 0 : -100, 0);
-        if (ready) target.y = target.arenaY + Math.sin(time * 0.0015) * (state.id === 'foundryWarden' ? 55 : 105);
+        if (ready) {
+            target.y = target.arenaY + Math.sin(time * 0.0015) * (state.id === 'foundryWarden' ? 55 : 105);
+            // Readout fix (same as the classic settled weaves): report the
+            // sweep velocity instead of 0. Positions untouched.
+            target.setVelocityY(Math.cos(time * 0.0015) * (state.id === 'foundryWarden' ? 82.5 : 157.5));
+        }
     }
     if (state.mode !== 'recovery' && target.attackAnchor) {
         target.setPosition(target.attackAnchor.x, target.attackAnchor.y);
@@ -6462,7 +6505,7 @@ function updateBossPhase() {
         ? 'PHASE ' + bossPhase + ': ' + NovaWingBosses.catalog[boss.encounterState.id].phases[bossPhase - 1]
         : (bossPhase === 2 ? 'PHASE 2: DRONES DEPLOYED' : 'PHASE 3: LASER LANES');
     const color = bossPhase === 2 ? '#ffcc55' : '#ff6677';
-    showFloatingText(this, 400, 110, message, color, { screenSpace: true });
+    showFloatingText(this, 400, 134, message, color, { screenSpace: true, risePx: 0 });
     sfx.bossPhase(bossPhase, boss ? boss.x : 650);
     flashVignette(this, bossPhase === 2 ? 0xffcc55 : 0xff6677, 0.35);
 
@@ -9397,7 +9440,7 @@ function restoreArcadeContinue(scene) {
     updateBoostUi();
     updatePauseHud();
     // Mid-screen: top-center is owned by the boss bar (102), phase banner
-    // (110), and weapon hint (150) — a CONTINUE flash there overprints them.
+    // (134), and weapon hint (150) — a CONTINUE flash there overprints them.
     showFloatingText(scene, 400, 300, 'CONTINUE', '#ffe66d', { screenSpace: true });
     flashVignette(scene, 0xffe66d, 0.32);
 }
@@ -12716,9 +12759,10 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
         text.setScrollFactor(0);
     }
 
+    const risePx = Number.isFinite(options.risePx) ? options.risePx : 40;
     scene.tweens.add({
         targets: text,
-        y: y - 40,
+        y: y - risePx,
         alpha: 0,
         scale: 1.12,
         duration: 900,
@@ -13918,6 +13962,7 @@ function getBotSnapshot() {
         openBands: (typeof currentOpenBands !== 'undefined' && currentOpenBands)
             ? currentOpenBands.map(band => [band[0], band[1]])
             : null,
+        pathWarning: getPathWarningState(),
         player: player && player.active ? (() => {
             const b = bodyCenter(player);
             return { x: b.x, y: b.y, vx: b.vx, vy: b.vy, w: b.w, h: b.h,

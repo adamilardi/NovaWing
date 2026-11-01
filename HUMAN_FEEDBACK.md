@@ -56,6 +56,13 @@ experience, not an assist. Live-verified (0.4 → 0.41 on kills/calm →
    with sibling-band intervals (kept <1 cadence/tempo per the standing
    "sustained pressure" test). L1 census after: 0.56 armed (N=75).
    182/182 tests. Awaiting human feel-check on L1/L2/L7.
+   Agent feel-check 2026-11-01 (bot-flown + shot-only, NOT a human clear):
+   skilled simple-bot clears L1 (1 death), L2 (1 continue), L3 (2 deaths)
+   on current code; curves L1 48 / L2 57 / L3 45 Hotshot with L7 65 still
+   the hottest peak; historic 10-trial beat rates L1 9/10 deathless, L2
+   6/10, L3 8/10 deathless. Recovery verified in code (weapon rank kept
+   through death, 0.9/1.4/0.7s i-frames, continues clear bullets + grant
+   2.5s i-frames). No tuning change made. Human campaign gate stays open.
 
 ## validation/obsidian-gate-r2 — 2026-10-08 (new)
 

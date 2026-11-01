@@ -43,6 +43,7 @@ const OUT = process.env.SIMPLE_OUT || (LEVEL === null
 export function installSimpleBot() {
     if (window.__novawingSimpleBotInstalled) return true;
     window.__novawingSimpleBotDecisions = 0;
+    window.__novawingSimpleBotBoostDecisions = 0;
     window.__novawingSimpleBotError = null;
     window.__novawingSimpleBotLast = '';
     window.__novawingSimpleBotPreferred = null;
@@ -63,6 +64,7 @@ export function installSimpleBot() {
             window.__novawingDebug.setBotInput(result.input);
             window.__novawingSimpleBotPreferred = { x: result.input.x, y: result.input.y };
             window.__novawingSimpleBotDecisions += 1;
+            if (result.input.boost) window.__novawingSimpleBotBoostDecisions += 1;
             window.__novawingSimpleBotLast = result.recommended;
             window.__novawingSimpleBotGoal = result.goal;
             const chosen = result.options[result.recommended] || {};
@@ -123,12 +125,49 @@ async function main() {
     if (!await page.evaluate(installSimpleBot)) throw new Error('Failed to install simple bot');
 
     const started = Date.now();
-    let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0;
+    let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0, lastSeg = null, lastRank = null, lastLootKey = '';
+    let boostDecisions = 0, bossEntryMs = null;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
     let lastErrorLogged = '', stalls = 0, switches = 0;
     let lastProgress = { key: '', t: fast ? 0 : Date.now() };
     let lastDecisions = 0, lastDecisionsT = Date.now();
     const deathsByCause = {};
+    const deaths = [];
+    let prevLives = null;
+    // Attribute every lost life, not just wipes: single deaths used to be
+    // invisible (lives 5->4 never touched deathsByCause), which hid the
+    // real killers on wipe-prone levels. Context is post-poll, so the
+    // cause is the nearest live threat, not a proven killer.
+    const attributeDeaths = async (snap, lost) => {
+        const causes = await page.evaluate((at) => {
+            const s = window.__novawingDebug.getBotSnapshot();
+            const px = s.player ? s.player.x : at.x, py = s.player ? s.player.y : at.y;
+            const all = [...(s.enemies || []).map(e => ({ kind: 'enemy:' + (e.type || '?'), x: e.x, y: e.y })),
+                ...(s.enemyBullets || []).map(b => ({ kind: b.isLaser ? 'laser' : 'bullet', x: b.x, y: b.y })),
+                ...(s.obstacles || []).map(o => ({ kind: 'obstacle', x: o.x, y: o.y })),
+                ...(s.walls || []).map(w => ({ kind: 'wall', x: w.x, y: w.y }))];
+            if (s.boss) all.push({ kind: 'boss', x: s.boss.x, y: s.boss.y });
+            return { at: { x: Math.round(px), y: Math.round(py) },
+                near: all.map(t => ({ kind: t.kind, d: Math.round(Math.hypot(t.x - px, t.y - py)) }))
+                    .sort((a, b) => a.d - b.d).slice(0, 4),
+                walls: (s.walls || []).map(w => ({ x: Math.round(w.x), y: Math.round(w.y),
+                    w: Math.round(w.w || 0), h: Math.round(w.h || 0),
+                    d: Math.round(Math.hypot(w.x - px, w.y - py)) }))
+                    .sort((a, b) => a.d - b.d).slice(0, 4),
+                bands: s.openBands || null,
+                reloc: s.pathWarning && s.pathWarning.nextBands ? s.pathWarning.nextBands : null };
+        }, lastPlayer).catch(() => null);
+        const topCause = causes && causes.near && causes.near[0] ? causes.near[0].kind : 'unknown';
+        deathsByCause[topCause] = (deathsByCause[topCause] || 0) + lost;
+        for (let i = 0; i < lost; i++) deaths.push({ n: deaths.length + 1,
+            level: snap.level, segment: snap.segment, phase: snap.phase,
+            elapsedMs: Math.round(snap.elapsedMs || 0), lives: snap.lives,
+            pos: { x: Math.round(lastPlayer.x), y: Math.round(lastPlayer.y) },
+            cause: topCause, near: causes ? causes.near : null,
+            at: causes ? causes.at : null, walls: causes ? causes.walls : null,
+            bands: causes ? causes.bands : null, reloc: causes ? causes.reloc : null });
+        return causes;
+    };
     const bossGun = {};
     const readStatus = () => {
         const snap = window.__novawingDebug.getBotSnapshot();
@@ -149,6 +188,7 @@ async function main() {
             goal: goal ? `(${Math.round(goal.x)},${Math.round(goal.y)})` : '',
             pred: window.__novawingSimpleBotPred || '',
             decisions: window.__novawingSimpleBotDecisions || 0,
+            boostDecisions: window.__novawingSimpleBotBoostDecisions || 0,
             last: window.__novawingSimpleBotLast || '',
             error: window.__novawingSimpleBotError
         };
@@ -183,6 +223,9 @@ async function main() {
             const snap = status.snap;
             finalSnap = snap;
             decisions = status.decisions;
+            boostDecisions = status.boostDecisions || 0;
+            if (bossEntryMs === null && snap && (snap.phase === 'boss' || snap.boss) &&
+                Number.isFinite(snap.elapsedMs)) bossEntryMs = snap.elapsedMs;
             if (snap && Number.isFinite(snap.level)) {
                 if (snap.level > maxLevel) maxLevel = snap.level;
                 if (snap.level !== lastLevel) {
@@ -191,25 +234,23 @@ async function main() {
                 }
             }
             if (snap?.player) lastPlayer = { x: snap.player.x, y: snap.player.y };
+            if (snap && Number.isFinite(snap.lives)) {
+                if (prevLives !== null && snap.lives < prevLives) {
+                    const lost = prevLives - snap.lives;
+                    const causes = await attributeDeaths(snap, lost);
+                    console.log(`[bot] DEATHS -${lost} at L${snap.level} ${snap.phase} ` +
+                        `${snap.segment} t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s ` +
+                        `lives=${snap.lives} score=${snap.score} kills=${snap.kills} ` +
+                        (causes ? `at=(${causes.at.x},${causes.at.y}) near=${JSON.stringify(causes.near)}` : ''));
+                }
+                prevLives = snap.lives;
+            }
             if (snap?.continuePending) {
                 continuesUsed += 1;
-                const causes = await page.evaluate((at) => {
-                    const s = window.__novawingDebug.getBotSnapshot();
-                    const px = s.player ? s.player.x : at.x, py = s.player ? s.player.y : at.y;
-                    const all = [...(s.enemies || []).map(e => ({ kind: 'enemy:' + (e.type || '?'), x: e.x, y: e.y })),
-                        ...(s.enemyBullets || []).map(b => ({ kind: b.isLaser ? 'laser' : 'bullet', x: b.x, y: b.y })),
-                        ...(s.obstacles || []).map(o => ({ kind: 'obstacle', x: o.x, y: o.y })),
-                        ...(s.walls || []).map(w => ({ kind: 'wall', x: w.x, y: w.y }))];
-                    if (s.boss) all.push({ kind: 'boss', x: s.boss.x, y: s.boss.y });
-                    return { at: { x: Math.round(px), y: Math.round(py) },
-                        near: all.map(t => ({ kind: t.kind, d: Math.round(Math.hypot(t.x - px, t.y - py)) }))
-                            .sort((a, b) => a.d - b.d).slice(0, 4) };
-                }, lastPlayer).catch(() => null);
-                const topCause = causes && causes.near && causes.near[0] ? causes.near[0].kind : 'unknown';
-                deathsByCause[topCause] = (deathsByCause[topCause] || 0) + 1;
+                const last = deaths.length ? deaths[deaths.length - 1] : null;
                 console.log(`[bot] CONTINUE #${continuesUsed} at L${snap.level} ${snap.phase} ` +
                     `${snap.segment} score=${snap.score} kills=${snap.kills} ` +
-                    (causes ? `at=(${causes.at.x},${causes.at.y}) near=${JSON.stringify(causes.near)}` : ''));
+                    (last ? `cause=${last.cause} near=${JSON.stringify(last.near)}` : ''));
                 await page.screenshot({ path: path.join(OUT, `death-${continuesUsed}.png`) }).catch(() => {});
                 await page.evaluate(() => __novawingDebug.acceptContinue());
                 continue;
@@ -280,6 +321,22 @@ async function main() {
                     lastDecisionsT = now;
                 }
             }
+            if (snap && snap.segment !== lastSeg) {
+                console.log(`[seg] t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s L${snap.level} ${lastSeg || '(none)'} -> ${snap.segment} lives=${snap.lives} kills=${snap.kills}`);
+                lastSeg = snap.segment;
+            }
+            if (snap && Number.isFinite(snap.weaponLevel) && snap.weaponLevel !== lastRank) {
+                console.log(`[rank] t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s L${snap.level} rank ${lastRank ?? '?'} -> ${snap.weaponLevel} (${snap.weaponId || '?'})`);
+                lastRank = snap.weaponLevel;
+            }
+            if (snap && !snap.boss && Array.isArray(snap.powerups)) {
+                const loot = snap.powerups.filter(q => q.type === 'weapon' || q.type === 'laser' || q.type === 'torrent');
+                const key = loot.map(q => `${q.type}@${Math.round(q.x)},${Math.round(q.y)}`).sort().join('|');
+                if (key !== lastLootKey) {
+                    if (loot.length) console.log(`[loot] t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s L${snap.level} rank=${snap.weaponLevel} ship=(${Math.round(snap.player?.x ?? -1)},${Math.round(snap.player?.y ?? -1)}) goal=${status.goal} bounds=${JSON.stringify(snap.world && snap.world.bounds)} bands=${JSON.stringify(snap.openBands || null)} reloc=${snap.pathWarning && snap.pathWarning.nextBands ? JSON.stringify(snap.pathWarning.nextBands) : 'none'} loot=${key}`);
+                    lastLootKey = key;
+                }
+            }
             if (snap && now - lastLog > 2000) {
                 const boss = snap.boss ? ` boss=(${Math.round(snap.boss.x)},${Math.round(snap.boss.y)}:p${snap.boss.phase},hp${snap.boss.health})` : '';
                 console.log(`[bot] t=${((snap.elapsedMs || 0) / 1000).toFixed(1)}s L${snap.level} ` +
@@ -299,7 +356,11 @@ async function main() {
     }
     const report = {
         when: new Date().toISOString(), level: LEVEL, won, cleared, continuesUsed,
-        decisions, maxLevel, wallMs: Date.now() - started, fastPlay: fast,
+        decisions, boostDecisions,
+        boostFraction: decisions > 0 ? Math.round(boostDecisions / decisions * 1000) / 1000 : 0,
+        bossEntryMs: bossEntryMs === null ? null : Math.round(bossEntryMs),
+        deaths,
+        maxLevel, wallMs: Date.now() - started, fastPlay: fast,
         gameCapMs, switches, stalls, deathsByCause, bossGun, pageErrors,
         final: finalSnap && {
             level: finalSnap.level, score: finalSnap.score, kills: finalSnap.kills,
@@ -314,6 +375,7 @@ async function main() {
     };
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ won, cleared, continuesUsed, maxLevel, switches, stalls,
+        boostFraction: report.boostFraction, bossEntryMs: report.bossEntryMs,
         deathsByCause, bossGun, pageErrors, final: report.final }));
     if (pageErrors.length) process.exitCode = 1;
     else if (!won) process.exitCode = 2;

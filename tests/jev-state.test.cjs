@@ -144,9 +144,17 @@ test('planner damps big moves during boss fights', async () => {
         cycle: null, nextAt: null, windupUntil: null, activeUntil: null, plan: null, vulnerable: true};
     const waves = plan({...s, phase: 'waves'}, 160, null);
     const boss = plan({...s, phase: 'boss'}, 160, null);
-    const delta = waves.options.right.score - boss.options.right.score;
-    assert.ok(delta > 10 && delta < 22);
-    assert.equal(waves.options.hold.score, boss.options.hold.score);
+    // Same scene, same goal: boss stance differs by calmness (0.6 vs 0.25
+    // per px moved) and the clean-lane sprint (goal x3 on damage-free
+    // options). Subtract the sprint term to pin the calmness term exactly.
+    assert.deepEqual(boss.goal, waves.goal);
+    const g = waves.goal;
+    const goalDist = (o) => Math.hypot(o.end.x - g.x, o.end.y - g.y);
+    const move = Math.hypot(waves.options.right.end.x - s.player.x, waves.options.right.end.y - s.player.y);
+    const sprintDelta = (goalDist(waves.options.right) - goalDist(waves.options.hold)) * -2;
+    const gapDelta = (boss.options.right.score - boss.options.hold.score) -
+        (waves.options.right.score - waves.options.hold.score);
+    assert.ok(Math.abs((gapDelta - sprintDelta) - (-0.35 * move)) < 0.5);
 });
 test('planner keeps a space bubble around tracking enemies', async () => {
     const { plan } = await api, s = fixture();

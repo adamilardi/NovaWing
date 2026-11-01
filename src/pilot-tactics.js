@@ -34,6 +34,15 @@ function evaluateAction(snap, stick, boost, durationMs) {
     const p = { ...snap.player };
     const ox = (p.spriteX ?? p.x) - p.x, oy = (p.spriteY ?? p.y) - p.y;
     let intensity = rules.boostIntensity, energy = snap.boostEnergy;
+    // Walls scroll at the live boost multiplier (game.js
+    // updateScrollVelocity), so a boost option must predict them faster
+    // than the snapshot velocity — and a release slower. Snapshot vx is
+    // already scaled to the current intensity; re-scale by the ratio of
+    // the simulated multiplier to the current one. Exact for walls
+    // (pure scroll, no self-motion); other bodies keep snapshot velocity.
+    const WALL_WARP_CAP = 1.55; // mirrors BOOST_LEVEL_PROGRESS_MULTIPLIER
+    const baseIntensity = Number.isFinite(rules.boostIntensity) ? rules.boostIntensity : 0;
+    const baseWallMult = 1 + (WALL_WARP_CAP - 1) * baseIntensity;
     let locked = snap.boostLocked, wasBoosting = snap.isBoosting;
     const physics = snap.world.physics;
     let remainder = physics?.remainderMs || 0, physicsMs = 0;
@@ -80,6 +89,7 @@ function evaluateAction(snap, stick, boost, durationMs) {
         const target = boosting ? 1 : 0;
         const rate = boosting ? rules.boostRampPerSecond : rules.boostFadePerSecond;
         intensity += Math.sign(target - intensity) * Math.min(Math.abs(target - intensity), rate * dt);
+        const wallRatio = (1 + (WALL_WARP_CAP - 1) * intensity) / baseWallMult;
         const speed = rules.baseSpeed + (rules.boostSpeed - rules.baseSpeed) * intensity;
         let vx = ax / norm * speed, vy = ay / norm * speed;
         if ((hole?.active || hole?.preview) && hole.config) {
@@ -104,7 +114,9 @@ function evaluateAction(snap, stick, boost, durationMs) {
         p.y = Math.max(bounds.y + p.h / 2, Math.min(bounds.y + bounds.height - p.h / 2, p.y));
         for (const body of threats) {
             if (body.expiresAt && snap.time + elapsed > body.expiresAt) continue;
-            if (sweptOverlap(previous, p, body, physicsBefore, physicsMs)) record(body.kind, elapsed, body);
+            const wallsWarped = body.kind === 'wall' && wallRatio !== 1 ? { ...body,
+                vx: (body.vx || 0) * wallRatio, vy: (body.vy || 0) * wallRatio } : body;
+            if (sweptOverlap(previous, p, wallsWarped, physicsBefore, physicsMs)) record(body.kind, elapsed, body);
         }
         for (const lane of telegraphs) {
             if (snap.time + elapsed < lane.activatesAt || snap.time + elapsed > lane.endsAt) continue;
@@ -163,10 +175,18 @@ function plan(snap, durationMs = 160, preferred = null) {
     let goalX = vertical ? (target?.x ?? bounds.x + bounds.width / 2) : bounds.x + Math.min(140, bounds.width * .22);
     let goalY = vertical ? bounds.y + Math.min(510, bounds.height * .85) : (target?.y ?? bounds.y + bounds.height / 2);
     // Intercept moving targets where our next shots will meet them.
+    // Bosses are exempt: linear lead overshoots a sinusoidal weave by
+    // ~114px AND swings the goal ±170px every replan, which defeats the
+    // tracking deadband (L1 boss 19.4s with lead vs 16.8-18.1s locked).
+    // Aim tracks boss position; the fan and the deadband do the rest.
+    // (An earlier no-lead trial measured nothing because boss vy read 0
+    // back then; the readout fix made the comparison real.)
     if (target) {
-        const flight = Math.max(0, vertical ? p.y-target.y : target.x-p.x) / 700;
-        if (vertical) goalX += (target.vx || 0) * flight;
-        else goalY += (target.vy || 0) * flight;
+        if (target !== snap.boss) {
+            const flight = Math.max(0, vertical ? p.y-target.y : target.x-p.x) / 700;
+            if (vertical) goalX += (target.vx || 0) * flight;
+            else goalY += (target.vy || 0) * flight;
+        }
         // Local pursuit: chase only what is nearly in-lane and let the
         // scroll bring the rest. Chasing far targets yanks the ship
         // across the arena every time the target changes.
@@ -180,22 +200,52 @@ function plan(snap, durationMs = 160, preferred = null) {
     const pickup = (snap.powerups || []).filter(q => PICKUP_TYPES.has(q.type))
         .sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
     // Power-up run: rank 1 (single peashooter) wins only coin flips at
-    // high-HP bosses while rank 2+ is perfect, and rank never resets on
-    // death — so while under-ranked, cross the screen for rank loot.
+    // high-HP bosses, and rank 3 nearly doubles rank 2 boss DPS (40 vs
+    // 24; L16 entered twin@2 and never saw a third pod). Rank never
+    // resets on death and waves are clock-bound, so while under max
+    // rank, cross the screen for rank loot: the detour is free.
     // The damage veto below still overrules the pull (penalties dwarf
-    // the 1:1 goal term), so the ship only closes when it is safe.
+    // the goal term), so the ship only closes when it is safe.
+    // MAX_RANK mirrors game.js MAX_WEAPON_LEVEL.
+    const MAX_RANK = 3;
     const RANK_LOOT = new Set(['weapon', 'laser', 'torrent']);
     const rank = Number.isFinite(snap.weaponLevel) ? snap.weaponLevel : 1;
     const loot = (snap.powerups || []).filter(q => RANK_LOOT.has(q.type))
         .sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
-    if (!snap.boss && rank < 2 && loot && Math.hypot(loot.x-p.x,loot.y-p.y) < 800) {
+    // Corridor relocation: when the next band switch strands the ship's
+    // band (L2 sat 340px out-of-band for 2s and died to the arriving
+    // wall), the snapshot's DEAD END preview steers before the pocket
+    // closes. Relocating skips loot detours, guides into the NEXT bands
+    // instead of the closing ones, and pulls with urgency. Vetoes rule.
+    const warning = snap.pathWarning;
+    const nextBands = warning && Array.isArray(warning.nextBands) ? warning.nextBands : null;
+    const relocating = !vertical && !snap.boss && nextBands && nextBands.length > 0 &&
+        !nextBands.some(b => p.y >= b[0] && p.y <= b[1]);
+    if (!snap.boss && !relocating && rank < MAX_RANK && loot && Math.hypot(loot.x-p.x,loot.y-p.y) < 800) {
         goalX = loot.x; goalY = loot.y;
-    } else if (!snap.boss && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
+    } else if (!snap.boss && !relocating && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
         goalX = pickup.x; goalY = pickup.y;
     }
+    // Fanless station: rank 1 (single peashooter, no fan) at a boss
+    // suffers full flight-lag weave-miss (L3 intro: 47 damage in 27s).
+    // Station just outside the standoff floor instead of the far 140px
+    // habit: shorter flight, tighter aim. Fanned ranks keep distance
+    // (fan covers the weave; range buys reaction — proven by revert).
+    if (snap.boss && rank < 2) {
+        if (vertical) {
+            const close = snap.boss.y + 280, hi = bounds.y + bounds.height - 80;
+            if (hi >= snap.boss.y + 280) goalY = Math.min(hi, close);
+            goalY = Math.max(p.y - 140, Math.min(p.y + 140, goalY));
+        } else {
+            const close = snap.boss.x - 320, lo = bounds.x + 80;
+            if (close >= lo) goalX = close;
+            goalX = Math.max(p.x - 140, Math.min(p.x + 140, goalX));
+        }
+    }
     // Follow an actual open corridor rather than the average of disconnected bands.
-    if (!vertical && snap.openBands?.length) {
-        const band = snap.openBands.slice().sort((a,b) =>
+    const guideBands = relocating ? nextBands : snap.openBands;
+    if (!vertical && guideBands?.length) {
+        const band = guideBands.slice().sort((a,b) =>
             Math.abs((a[0]+a[1])/2-p.y)-Math.abs((b[0]+b[1])/2-p.y))[0];
         goalY = Math.max(band[0]+p.h/2+16, Math.min(band[1]-p.h/2-16, goalY));
     }
@@ -245,9 +295,12 @@ function plan(snap, durationMs = 160, preferred = null) {
         // 690px/s stream, 125ms interval, +200ms margin). In saturation prefer
         // drilling it over eating real damage. Action-window contact is never
         // discounted: the moving stream can't be trusted, so don't ram.
+        // Cap is 3, not 2: Hotshot scales 2HP chaff to 3 (ceil), and the
+        // TTK check above is parametric in health, so full-HP chaff melts
+        // on the same worst-case math. Trackers stay out (curved arrival).
         const drillable = (hit) => {
             const d = hit && hit.detail;
-            if (!d || hit.kind !== 'enemy' || d.health == null || d.health > 2) return false;
+            if (!d || hit.kind !== 'enemy' || d.health == null || d.health > 3) return false;
             if (d.type !== 'regular' && d.type !== 'riser' && d.type !== 'splitterDrone' && d.type !== 'reefSkimmer') return false;
             const axial = vertical ? a.end.y - d.y : d.x - a.end.x;
             const lateral = vertical ? Math.abs(d.x - a.end.x) : Math.abs(d.y - a.end.y);
@@ -256,7 +309,19 @@ function plan(snap, durationMs = 160, preferred = null) {
             if (closing <= 0) return true;
             return axial / Math.max(60, closing) > axial / 690 + d.health * 0.125 + 0.2;
         };
-        let score = -Math.hypot(a.end.x-goalX,a.end.y-goalY);
+        // Boss-stance goal pull: the firing lane is DPS, and 1:1 goal weight
+        // loses to hot stickiness (48) plus calmness, so the ship parks
+        // off-lane for seconds (L1 sampler: lane p50=80, 9 dps of 40).
+        // Triple the pull only for options with no predicted damage in
+        // either window: the ship sprints back through safe space, but a
+        // threatened option keeps the old weight and dodges win first.
+        const laneSprint = snap.phase === 'boss' && snap.boss &&
+            !a.predictedDamage && !after.predictedDamage;
+        // Relocation urgency shares the sprint weight: a stranded ship
+        // must cross hundreds of px before the pocket closes, and the
+        // vetoes below still overrule the pull when a move is lethal.
+        const sprint = laneSprint || relocating;
+        let score = -Math.hypot(a.end.x-goalX,a.end.y-goalY) * (sprint ? 3 : 1);
         if (a.predictedDamage) score -= 10000 + (durationMs-a.predictedDamage.atMs)*5;
         if (a.predictedCollision?.kind === 'event-horizon') score -= 100000;
         if (after.predictedDamage) {
@@ -275,6 +340,9 @@ function plan(snap, durationMs = 160, preferred = null) {
         if (margin < 64) score -= (64 - margin) * 6;
         // Trackers curve toward the ship, so linear prediction under-reads
         // them: keep a space bubble around interceptor-kind enemies.
+        // Radius stays 150: 180 was tried and reverted (tracker contacts
+        // 2.7/run vs 2.2, times slower — wider berths cost time without
+        // preventing the converges that actually kill).
         for (const e of (snap.enemies || [])) {
             if (e.type !== 'interceptor' && e.type !== 'dart') continue;
             const d = Math.hypot(a.end.x - e.x, a.end.y - e.y);
@@ -287,6 +355,16 @@ function plan(snap, durationMs = 160, preferred = null) {
             if (!b.homing) continue;
             const d = Math.hypot(a.end.x - b.x, a.end.y - b.y);
             if (d < 110) score -= (110 - d) * 2;
+        }
+        // Corridor centering: walls are wide and scrolling, and L2 waves
+        // deaths are wall-dominated, so keep a soft bubble off wall edges
+        // (edge distance, since walls are big). The ship centers in
+        // corridors instead of shaving columns; contact vetoes still rule.
+        for (const wl of (snap.walls || [])) {
+            const dx = Math.max(0, Math.abs(a.end.x - wl.x) - ((wl.w || 0) + p.w) / 2);
+            const dy = Math.max(0, Math.abs(a.end.y - wl.y) - ((wl.h || 0) + p.h) / 2);
+            const d = Math.hypot(dx, dy);
+            if (d < 60) score -= (60 - d) * 4;
         }
         // Phase-3 volleys fan out of extra launchers; the muzzle corridor
         // widens so the ship clears the whole spread, not just its center.
@@ -310,6 +388,14 @@ function plan(snap, durationMs = 160, preferred = null) {
                 ? (a.end.y > snap.boss.y && Math.abs(a.end.x - snap.boss.x) < 36)
                 : (a.end.x < snap.boss.x && Math.abs(a.end.y - snap.boss.y) < 36);
             if (inLane) score += 200;
+            // Tracking deadband: a chasing ship lags a weaving boss by
+            // the ~0.75s shot flight and sweeps the stream across empty
+            // phases. Holding the lane axis still groups shots so the
+            // weave crosses them instead. Drift along the firing axis
+            // stays free for station-keeping; dodges still override.
+            const laneNow = vertical ? Math.abs(p.x - snap.boss.x) : Math.abs(p.y - snap.boss.y);
+            const stillAxis = vertical ? AXES[stick][0] === 0 : AXES[stick][1] === 0;
+            if (laneNow < 50 && stillAxis) score += 150;
         }
         // Calmness: small moves beat arena-wide dashes. Damage penalties
         // still override; this only damps the goal pull when nothing forces
@@ -332,6 +418,8 @@ function plan(snap, durationMs = 160, preferred = null) {
         // Wave progress advances with boost intensity. A safe sprint finishes
         // the authored clock sooner and leaves the cap for the boss. Damage
         // penalties are thousands of points, so a threat still vetoes it.
+        // (Fire 15 relaxed this to the action window only: boost fraction
+        // did not move on L14/L16, so the hold-after was never the binder.)
         if (boost && snap.phase !== 'boss' && !snap.boss && !a.predictedDamage && !after.predictedDamage) {
             score += 80;
         }

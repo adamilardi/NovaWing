@@ -73,6 +73,44 @@ test('each expansion level binds its own production boss and behavior', () => {
     assert.throws(() => Flow.validate(Levels.getEffectiveLevelDefs(), { bosses: new Set() }), /unknown key/);
 });
 
+test('settled boss weaves report velocity, not zero', () => {
+    // Classic and expansion settled weaves set position directly; the
+    // body velocity left behind must match the sine derivative, or
+    // playbot snapshots read a parked boss sweeping ±160px. Each
+    // readout must also stand: no zeroing call may follow it within
+    // the settled branch (the attack-anchor pin zeroes only a
+    // statically pinned boss, outside these branches).
+    const text = fs.readFileSync('game.js', 'utf8');
+    const fnBody = name => {
+        const start = text.indexOf('function ' + name + '(');
+        return text.slice(start, text.indexOf('\nfunction ', start + 1));
+    };
+    // [function, position line, readout fragment, branch-close marker]
+    const sites = [
+        ['updateBossFight', 'boss.y = boss.arenaY + Math.sin(time * 0.0018) * 125;',
+            'boss.setVelocityY(Math.cos(time * 0.0018) * 225);', '\n    }\n'],
+        ['updateBossFight', 'boss.x = 400 + Math.sin(time * 0.0016) * 160;',
+            'boss.setVelocityX(Math.cos(time * 0.0016) * 256);', '\n        }\n'],
+        ['updateExpansionBoss', "target.x = 400 + Math.sin(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) * 110;",
+            "target.setVelocityX(Math.cos(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) *", '\n        }\n'],
+        ['updateExpansionBoss', "target.arenaY + Math.sin(time * 0.0015) * (state.id === 'foundryWarden' ? 55 : 105);",
+            "target.setVelocityY(Math.cos(time * 0.0015) * (state.id === 'foundryWarden' ? 82.5 : 157.5));", '\n        }\n']
+    ];
+    for (const [fn, pos, readout, close] of sites) {
+        const body = fnBody(fn);
+        const p = body.indexOf(pos);
+        assert.ok(p > 0, fn + ': position missing: ' + pos);
+        const r = body.indexOf(readout, p);
+        assert.ok(r > p, fn + ': readout missing after: ' + pos);
+        const e = body.indexOf(close, r);
+        assert.ok(e > r, fn + ': branch close missing after readout');
+        assert.ok(!/setVelocity[XY]?\(0(?![\d.])/.test(body.slice(r + readout.length, e)),
+            fn + ': readout re-zeroed within the settled branch');
+    }
+    assert.ok(fnBody('updateExpansionBoss').includes("(state.id === 'voidCantor' ? 88 : 143));"),
+        'sway vx amplitude must be 88/143 px/s');
+});
+
 test('attacks retain their telegraphed geometry across phase and focus changes', () => {
     for (const id of Object.keys(Bosses.catalog)) {
         const state = Bosses.create(id, 0);
