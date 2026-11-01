@@ -35,6 +35,23 @@ test('both ships are clamped below the HUD strip every frame', () => {
         'P2 upward input must be gated at the strip');
 });
 
+// The boss phase banner must never overprint the boss HP bar: it spawns
+// below the bar and holds still (risePx 0) instead of floating up through it.
+function bossBarBottom() {
+    const match = source.match(/bossHealthBar = this\.add\.rectangle\(400, (\d+), 330, (\d+),/);
+    assert.ok(match, 'boss bar geometry missing');
+    return Number(match[1]) + Number(match[2]);
+}
+
+test('phase banner clears the boss bar and holds still', () => {
+    const call = source.match(/showFloatingText\(this, 400, (\d+), message, color, \{([^}]*)\}\);/);
+    assert.ok(call, 'phase banner call site missing');
+    assert.ok(Number(call[1]) > bossBarBottom(),
+        `banner y=${call[1]} must clear the bar bottom ${bossBarBottom()}`);
+    assert.ok(/risePx:\s*0/.test(call[2]), 'banner must not rise through the bar');
+    assert.ok(source.includes('options.risePx'), 'showFloatingText must honor risePx');
+});
+
 // Hostile rounds must read instantly against mines (red/white starbursts),
 // boss lasers (red beams) and friendly cyan lances: hot magenta diamonds in
 // the original 22x12 frame so collision (70% of frame) is untouched.

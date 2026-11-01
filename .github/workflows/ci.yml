@@ -16,9 +16,13 @@ jobs:
         with:
           node-version: '20'
 
-      # No npm install required: check is pure `node --check` on first-party JS.
+      # No npm install required: check is pure `node --check` on first-party JS,
+      # and the unit suite uses only node builtins plus first-party files.
       - name: npm run check
         run: npm run check
+
+      - name: npm test
+        run: npm test
 
   rl-python:
     name: RL Python tests

@@ -53,6 +53,21 @@ describe('pilot tactics', () => {
             'the shot must change the chosen stick');
     });
 
+    it('withholds the wave sprint when the hold-after is dirty', () => {
+        // Fire 15 relaxed the sprint gate to the action window only and
+        // measured no boost-fraction lift on L14/L16: the hold-after was
+        // never the binder, so the conservative gate stands. Clamped
+        // twins share end, goal, penalty and margin, so their score
+        // difference is exactly the withheld tilt (0 - 18).
+        const s = snap({
+            player: { x: 46, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 480, y: 300, vx: -500, vy: 0, w: 20, h: 200 }]
+        });
+        const r = Tactics.plan(s);
+        assert.ok(r.options.left_boost.postActionDamage, 'twins must share a dirty hold-after');
+        assert.equal(r.options.left_boost.score - r.options.left.score, -18);
+    });
+
     it('chases every beneficial pickup type, not just weapon/shield/repair', () => {
         for (const type of ['weapon', 'laser', 'torrent', 'shield', 'repair', 'boost', 'bomb', 'phase']) {
             const goal = Tactics.plan(snap({ powerups: [{ x: 260, y: 300, type }] })).goal;
@@ -67,6 +82,77 @@ describe('pilot tactics', () => {
         const holdScore = type => Tactics.plan(snap({ enemies: [foe(type)] })).options.hold.score;
         assert.equal(holdScore('reefSkimmer'), holdScore('riser'));
         assert.ok(holdScore('reefSkimmer') - holdScore('interceptor') > 500);
+    });
+
+    it('drills full-HP Hotshot chaff (3 HP), not 3-HP interceptors', () => {
+        const foe = (type, health) => ({ x: 380, y: 300, vx: -150, vy: 0, w: 60, h: 30, type, health, canShoot: false });
+        const holdScore = (type, health) => Tactics.plan(snap({ enemies: [foe(type, health)] })).options.hold.score;
+        assert.ok(holdScore('regular', 3) - holdScore('interceptor', 3) > 500);
+    });
+
+    it('warps wall approach with simulated boost intensity', () => {
+        // Walls scroll at the live boost multiplier: from a mid-boost
+        // snapshot, holding boost must predict a faster wall than
+        // releasing it. A 150px-clearance wall arrives inside 1s at
+        // 1.55x warp but not after the release fade.
+        const s = snap({
+            // Mid-boost wall: snapshot velocity already carries the live
+            // 1.55x warp, exactly as game.js reports it at intensity 1.
+            walls: [{ x: 404, y: 300, vx: -128 * 1.55, vy: 0, w: 40, h: 60 }],
+            isBoosting: true,
+            movementRules: {
+                baseSpeed: 280, boostSpeed: 470,
+                boostRampPerSecond: 3, boostFadePerSecond: 4,
+                boostDrainPerSecond: 34, boostReengageThreshold: 30,
+                boostIntensity: 1, damageCooldownMs: 900
+            }
+        });
+        const sprint = Tactics.evaluateAction(s, 'hold', true, 1000);
+        const release = Tactics.evaluateAction(s, 'hold', false, 1000);
+        assert.equal(sprint.predictedCollision && sprint.predictedCollision.kind, 'wall');
+        assert.equal(release.predictedCollision, null);
+    });
+
+    it('centers off wall edges instead of shaving them', () => {
+        // Sitting 25px off a scrolling wall edge must lose to moving
+        // away: L2 waves deaths are wall-dominated.
+        const s = snap({
+            player: { x: 140, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            walls: [{ x: 140, y: 360, vx: -128, vy: 0, w: 300, h: 40 }]
+        });
+        const r = Tactics.plan(s);
+        assert.ok(r.options[r.recommended].end.y < 300, 'must move away from the wall edge');
+    });
+
+    it('relocates into next bands on a corridor warning, skipping loot', () => {
+        // Stranded 340px below the next bands with rank loot sitting in
+        // the closing band: the goal must be the next bands, not the
+        // loot, and the ship must move up instead of holding.
+        const s = snap({
+            weaponLevel: 2,
+            player: { x: 140, y: 738, vx: 0, vy: 0, w: 60, h: 30 },
+            powerups: [{ x: 500, y: 900, type: 'weapon' }],
+            openBands: [[500, 980]],
+            pathWarning: { closing: [[500, 980]], nextBands: [[70, 400]], switchInMs: 2000 }
+        });
+        const r = Tactics.plan(s);
+        assert.deepEqual(r.goal, { x: 140, y: 300 });
+        assert.ok(r.options[r.recommended].end.y < 738, 'must move up toward the next bands');
+    });
+
+    it('leaves rank-loot fetches to the threat vetoes (fetch ram reverted)', () => {
+        // Fire 14 tried zeroing threat terms to ram L2 pods: 0/6 pod2
+        // fetches (the pod lane sits outside the ship bounds / behind
+        // wall columns), so the ram was reverted. Pin the veto: a
+        // threatened fetch must refuse.
+        const s = snap({
+            weaponLevel: 2,
+            player: { x: 200, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            powerups: [{ x: 200, y: 480, type: 'weapon' }],
+            enemyBullets: [{ x: 200, y: 390, vx: 0, vy: -260, w: 20, h: 20 }],
+            openBands: [[0, 600]]
+        });
+        assert.notEqual(Tactics.plan(s).input.y, 1, 'must not dive through the bullet for the pod');
     });
 
     it('reads bloom/mote discs as blasts and lanes as lasers', () => {
@@ -113,6 +199,70 @@ describe('pilot tactics', () => {
         assert.ok(Math.abs(end.y - 423) < Math.abs(490 - 423), 'recommended end approaches the boss lane');
     });
 
+    it('returns to the boss lane even against a sticky dodge heading', () => {
+        // Below the lane with the stick held down (a finished dodge): the
+        // lane pull must beat hot stickiness, or the ship parks off-lane
+        // and boss DPS collapses (L1 sampler showed p50 lane error 80px).
+        const s = bossSnap({
+            player: { x: 196, y: 520, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 400, y: 300, vx: 0, vy: 0, w: 20, h: 20 }]
+        });
+        const r = Tactics.plan(s, 160, { x: 0, y: 1 });
+        const end = r.options[r.recommended].end;
+        assert.ok(end.y < 520, 'must move back toward the lane, not hold the dodge');
+    });
+
+    it('holds the lane axis still when already in-lane on a boss', () => {
+        // 30px off a weaving boss with a clean arena: chasing the weave
+        // lags by the shot flight, so lock the lane axis and let the
+        // stream group. Drift along the firing axis stays free.
+        const s = bossSnap({
+            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            boss: { x: 599, y: 453, vx: 0, vy: 0, w: 340, h: 178, phase: 1, health: 216 }
+        });
+        const r = Tactics.plan(s);
+        assert.equal(r.options[r.recommended].end.y, 423);
+    });
+
+    it('stations rank-1 ships close to bosses, fanned ships far', () => {
+        // A fanless peashooter suffers full flight-lag weave-miss, so it
+        // stations just outside standoff; fanned ranks keep the far
+        // station (fan covers the weave, range buys reaction).
+        const near = Tactics.plan(bossSnap({
+            weaponLevel: 1,
+            boss: { x: 599, y: 423, vx: 0, vy: 0, w: 340, h: 178, phase: 1, health: 216 }
+        }));
+        assert.equal(near.goal.x, 279);
+        const far = Tactics.plan(bossSnap({
+            weaponLevel: 3,
+            boss: { x: 599, y: 423, vx: 0, vy: 0, w: 340, h: 178, phase: 1, health: 216 }
+        }));
+        assert.equal(far.goal.x, 140);
+        const vnear = Tactics.plan(bossSnap({
+            combatOrientation: 'up',
+            weaponLevel: 1,
+            player: { x: 300, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            boss: { x: 400, y: 100, vx: 0, vy: 0, w: 178, h: 340, phase: 1, health: 216 }
+        }));
+        assert.equal(vnear.goal.y, 380);
+    });
+
+    it('aims at boss position without intercept lead', () => {
+        // Linear lead overshoots a sinusoidal weave and swings the goal
+        // every replan, defeating the tracking deadband. Boss velocity
+        // still feeds body prediction; it just must not steer aim.
+        const h = Tactics.plan(bossSnap({
+            boss: { x: 599, y: 423, vx: 0, vy: 200, w: 340, h: 178, phase: 1, health: 216 }
+        }));
+        assert.equal(h.goal.y, 423);
+        const v = Tactics.plan(bossSnap({
+            combatOrientation: 'up',
+            player: { x: 300, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            boss: { x: 400, y: 100, vx: 200, vy: 0, w: 178, h: 340, phase: 1, health: 216 }
+        }));
+        assert.equal(v.goal.x, 400);
+    });
+
     it('dodges live missiles instead of camping the boss lane', () => {
         const s = bossSnap({
             player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
@@ -135,30 +285,30 @@ describe('pilot tactics', () => {
     });
 
     it('fetches distant rank loot while under-ranked', () => {
-        // Rank 1 at a boss is a coin flip (7/13); rank 2+ is perfect
-        // (60/60). Cross the arena for the gun that fixes it.
-        for (const type of ['weapon', 'laser', 'torrent']) {
+        // Rank 1 at a boss is a coin flip (7/13); rank 3 nearly doubles
+        // rank 2 boss DPS (40 vs 24). Cross the arena for the gun.
+        for (const rank of [1, 2]) for (const type of ['weapon', 'laser', 'torrent']) {
             const loot = { x: 500, y: 300, type };
             const r = Tactics.plan(snap({
-                weaponLevel: 1,
+                weaponLevel: rank,
                 player: { x: 100, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
                 powerups: [loot]
             }));
-            assert.deepEqual(r.goal, { x: 500, y: 300 }, `${type} steers the goal at rank 1`);
+            assert.deepEqual(r.goal, { x: 500, y: 300 }, `${type} steers the goal at rank ${rank}`);
             const end = r.options[r.recommended].end;
             assert.ok(Math.hypot(end.x - loot.x, end.y - loot.y) < 380,
                 `${type}: recommended end must approach the loot`);
         }
     });
 
-    it('ignores distant loot once ranked up', () => {
+    it('ignores distant loot once at max rank', () => {
         const loot = { x: 500, y: 300, type: 'weapon' };
         const r = Tactics.plan(snap({
-            weaponLevel: 2,
+            weaponLevel: 3,
             player: { x: 100, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
             powerups: [loot]
         }));
-        assert.deepEqual(r.goal, { x: 140, y: 300 }, 'rank 2 keeps the default station');
+        assert.deepEqual(r.goal, { x: 140, y: 300 }, 'rank 3 keeps the default station');
     });
 
     it('loot chase never overrides the damage veto', () => {

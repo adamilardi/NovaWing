@@ -73,6 +73,23 @@ test('each expansion level binds its own production boss and behavior', () => {
     assert.throws(() => Flow.validate(Levels.getEffectiveLevelDefs(), { bosses: new Set() }), /unknown key/);
 });
 
+test('settled boss weaves report velocity, not zero', () => {
+    // Both weave loops set position directly; the body velocity they
+    // leave behind must match the sine derivative, or playbot
+    // snapshots read a parked boss sweeping ±125px (L5 contacts).
+    const source = fs.readFileSync('game.js', 'utf8');
+    const start = source.indexOf('function updateBossFight(');
+    const body = source.slice(start, source.indexOf('\nfunction ', start + 1));
+    const h = body.indexOf('boss.y = boss.arenaY + Math.sin(time * 0.0018) * 125;');
+    assert.ok(h > 0, 'horizontal weave position missing');
+    assert.ok(body.indexOf('boss.setVelocityY(Math.cos(time * 0.0018) * 225);', h) > h,
+        'horizontal weave must report vy=225cos');
+    const v = body.indexOf('boss.x = 400 + Math.sin(time * 0.0016) * 160;');
+    assert.ok(v > 0, 'vertical sway position missing');
+    assert.ok(body.indexOf('boss.setVelocityX(Math.cos(time * 0.0016) * 256);', v) > v,
+        'vertical sway must report vx=256cos');
+});
+
 test('attacks retain their telegraphed geometry across phase and focus changes', () => {
     for (const id of Object.keys(Bosses.catalog)) {
         const state = Bosses.create(id, 0);
