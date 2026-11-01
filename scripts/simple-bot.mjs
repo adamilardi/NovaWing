@@ -72,10 +72,12 @@ export function installSimpleBot() {
             // action-dirty (no clean boost option), hold-dirty (clean
             // but bonus withheld), tilt-lost (bonus granted, non-boost
             // still won), boost-won. Read-only stats, zero behavior effect.
+            const st = window.__novawingSimpleBotBoostStats;
+            const boosting = !!result.input.boost;
+            const switched = boosting !== st.lastBoost;
+            st.lastBoost = boosting;
             if (snap.phase !== 'boss' && !snap.boss) {
-                const st = window.__novawingSimpleBotBoostStats;
-                if (!!result.input.boost !== st.lastBoost) st.boostSwitches += 1;
-                st.lastBoost = !!result.input.boost;
+                if (switched) st.boostSwitches += 1;
                 const opts = Object.values(result.options || {});
                 const boosted = opts.filter(o => o.boost);
                 st.ticks += 1;
