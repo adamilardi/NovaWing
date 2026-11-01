@@ -52,6 +52,35 @@
             .filter(band => band[1] - band[0] >= minCloseHeight);
     }
 
+    function subtractBand(fromBand, toBands) {
+        let open = [[fromBand[0], fromBand[1]]];
+        for (const toBand of (toBands || [])) {
+            const kept = [];
+            for (const [lo, hi] of open) {
+                if (toBand[1] <= lo || toBand[0] >= hi) { kept.push([lo, hi]); continue; }
+                if (toBand[0] > lo) kept.push([lo, toBand[0]]);
+                if (toBand[1] < hi) kept.push([toBand[1], hi]);
+            }
+            open = kept;
+            if (!open.length) break;
+        }
+        return open;
+    }
+
+    function getVanishingRegions(fromBands, toBands, minHeight = DEFAULT_MIN_CLOSE_HEIGHT) {
+        if (!fromBands || !fromBands.length) return [];
+        if (!toBands || !toBands.length) {
+            return fromBands.map(band => [band[0], band[1]]);
+        }
+        const out = [];
+        for (const band of fromBands) {
+            for (const piece of subtractBand(band, toBands)) {
+                if (piece[1] - piece[0] >= minHeight) out.push(piece);
+            }
+        }
+        return out;
+    }
+
     function getEscapeDirection(closingBand, safeBands) {
         if (!safeBands || !safeBands.length) return null;
         const closeMid = (closingBand[0] + closingBand[1]) * 0.5;
@@ -109,6 +138,7 @@
         yInOpenBands,
         bandHasSignificantOverlap,
         getClosingRegions,
+        getVanishingRegions,
         getEscapeDirection,
         findNextBandLayoutChange,
         blockedRangesFromOpenBands

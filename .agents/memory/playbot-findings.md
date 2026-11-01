@@ -206,3 +206,83 @@ Also fixed in same session: stale `page.route('**/phaser.min.js')` missing `?v=`
 - Testcraft lessons: (1) outcome pins in flee-geometries are vacuous — outrunning (later arrival, smaller time-decayed penalty) beats non-boost with or without bonus; verified 21/21 passing pre-fix. (2) A wall-exclusion for the bonus is outcome-irrelevant (wall veto -2500 dwarfs +80 tilt in every geometry; arena-bounded goals can't bridge it) — dropped. (3) Score-diff of clamped twins (identical end/goal/penalty/margin) is the honest pin: exactly +62 fixed / -18 reverted.
 - L11 flag (unresolved, possibly noise): 4-5 deaths (walls/risers) in 2 relaxed-gate runs vs 0 in the single baseline. Revert self-heals if real.
 - Next: boost-binder triage needs per-tick gate telemetry (which condition denies: action-dirty vs energy vs tilt-loses) — instrument planner stats, don't guess. L2 pod3 pre-positioning and warning-gap still queued. Loop is at diminishing returns: all levels clear, bosses ~9-19s, remaining fat is clock-bound waves + L2 twin luck.
+
+
+## Fire 16 (Nov 1): expansion readout neutral; boost-binder = energy (hard ceiling); fetch urgency lands
+- Expansion readout (PR review fix) field-neutral: L5 82.0/0c (n=4) vs 75.6/0.3c, L16 106.9/1.0c (n=3) vs 104.1/0.3c — all within noise, contacts persist ~0.5/run. Linear extrapolation of sine weaves errs ≤20px (vs 100px static before) — below veto/bubble thresholds either way. Truthful data kept for future planners. No regression, no gain.
+- Boost-binder telemetry (harness-only, zero effect): L14/L16 waves 69-77% of ticks energy-starved (no boost options), action-dirty 0-1 ticks, hold-dirty ~1%. Fire-15's hold-after theory dead; bot already maximizes boost-seconds (supply-bound, zero waste). Flicker check: 6.4-tick bursts (supply-cycled, unavoidable) — hysteresis EV ~-0.8s, rejected unbuilt. Boost lever CLOSED bot-side (drain/regen are difficulty — off limits).
+- L16 twin alive (t2: no rank-3, 118s): pod3 (@t51-59, y~310) missed when ship oscillates in x (obstacle slalom) with y frozen 50px off 8s — hot x-stickiness freezing the correction (fire-14's ghost, but NO wall front here: ship arrived at 62.8, 4s late).
+- FIX LANDED: fetch urgency — sprint weight (x3) on rank chases, vetoes INTACT (unlike the reverted ram). Pinned by score-diff (diagonal beats x-only cruise iff loot steers; hold-pair was vacuous — hold pays headwind stickiness too). L16: 3/3 spread, rank-3 at 55.1/57.6/51.2-instant (vs 1 twin/4 before), times 103.2/100.2/100.5, cont 2/0/0 with t5's 8 deaths spread across the run (none in fetch window — variance, cf. pre-urgency 9-death run). L2 harm-watch: spread, 0 cont, pod2 still (correctly) missed. KEEP.
+- Gates: 307/307, check clean, verify 9/9. Uncommitted: pilot-tactics.js (urgency), pilot-tactics.test.mjs (pin), simple-bot.mjs (boost-stats + flicker telemetry).
+- Next: L2 pod3 pre-positioning (only remaining twin tax, ~+4s EV, needs schedule knowledge); warning-gap (rare); loop nearly exhausted — remaining fat is clock-bound waves + energy ceiling.
+
+
+## Fire 17 (Nov 1): L2 twin TAX DEAD — 5/5 spread post-urgency, mean 99.0
+- L2 x4 post-urgency: ALL spread (pod3 at 60.2/64.0/62.8/61.4), totals 96.9/104.9/93.7/97.6, cont 1/0/0/1. Post-urgency twin rate 0/5 (was 5/14=36%). Pod3-fetch urgency generalizes L2+L16 (8/8 pod3 fetches combined). Pre-positioning MOOT — no schedule hack needed.
+- Remaining L2 spread (11s) is BOSS-side: splits 15.6-24.3s (waves tight 76.8-80.7), bullet deaths in final 3s (exposure, not cause), DPS efficiency ~25% at spread@3. Open: deadband-stillness vs AIMED p3 volleys (L1 loved stillness; L2 untested) — A/B needs planner-neuter + lane telemetry, ~5 calls for +/-2s EV. ARMED, not fired: loop [SECURITY_DATA] per-call EV below threshold.
+- Loop status: HONESTLY EXHAUSTED. Landed: 13 planner/game speed iters + urgency + 2 reverts with pins. Closed: boost (energy ceiling), pod2 (wall front), L6 (2-ply), orbit/deadband (weak signal, game-side), L3 gauntlet (clock-bound). Queued-forever: warning-gap (rare), L2-boss A/B (weak EV). All levels clear; all twins dead; bosses 9-24s.
+- Gates: 307/307, check clean (verify skipped — tree identical to fire-16's 9/9 except memory prose). Uncommitted: urgency + pin + boost/flicker telemetry + memory.
+
+
+## Fire 18 (Nov 1): chain-death fix LANDED (transient-only grace masking)
+- Mechanism: deaths don't teleport; planner masked ALL damage during i-frames (1.2s bot grace), so a ship inside a wall/obstacle/converged tracker sat still till expiry and re-died. Proven chains pre-fix: L2 t11 same-poll double, t15 wall double (3.8s/8px) + interceptor double (2.5s/14px), t18 wall double (2.5s/26px), L16t3 obstacle double (2.5s/32px).
+- Fix (planner record()): during grace, mask ONLY bullets/lasers (transient — clear within the window, tanking preserved for fetches); predict everything else (walls, obstacles, enemies, boss, telegraphs, ring, hole) so the ship flees. Pinned by 3 score asserts (wall/enemy flip, bullet preserved); 4HP-foe geometry dodges the drill discount that ate the first draft.
+- Field (n=5): ZERO same-spot chains (vs ~20% of pre-fix runs chaining). Twins 0/5 (pod-camp intact — no fetch harm). L2 101.2/97.5/96.8 (cont 2/0/1), L16 100.4/99.9 (0/0 cont). t21's 2 wipes forensically cleared: pod2-camp cluster (pre-existing pattern) + boss p3 hose, no chains. Underpowered alone (p=0.33) but mechanism+pin+direction+no-harm → KEEP.
+- Gates: 308/308, check clean, verify 9/9. Uncommitted: grace fix + pin (+ urgency + telemetry + memory from fire-16).
+- Next: L2-boss A/B still armed (t21's 4-deaths-in-5s p3 hose feeds it); warning-gap; loop otherwise exhausted.
+
+
+## Fire 19 (Nov 1): L2-boss deadband A/B — inconclusive, item CLOSED per stop rule
+- Design: ON (t17-20, deadband live) vs OFF x4 (neutered +150, rebuilt, served-macro verified, restored after). Pre-committed stop rule: act only on >=5s TTK diff (2-sigma at SD 3.7, n=4+4).
+- Boss TTK: ON 17.5/24.3/15.6/20.8 (19.55) vs OFF 28.4/22.3/21.0/19.9 (22.9). Diff -3.35s (ON faster), SE 2.6, p~0.24. BELOW rule -> NO ACTION. Stillness stands universal (L1 pure win; L2 directionally faster).
+- Post-hoc (NOT acted on): OFF had fewer deaths (2.5/run, 0 wipes, one deathless) vs ON (5.5/run, 2 wipes), p~0.08 uncorrected over 3 metrics = expected noise. Net totals still favor ON (-2.7s). Phase-gating (deadband p1/p2, free p3) stays an unbuilt hypothesis — would need phase-at-death logging + powered re-test.
+- Loop status: LAST ARMED ITEM CLOSED. Everything is now landed, reverted-with-pin, or closed-with-data. Further "improve" fires should either (a) accept validation-only (re-sweeps), (b) name a NEW direction (human-feel work, new levels, RL policy), or (c) stop the cron.
+- Gates: 308/308, check clean (verify skipped — planner restored byte-identical to fire-18's 9/9; ablation never committed). Uncommitted: urgency + grace + pins + telemetry + memory (2 fires).
+
+
+## Fire 20 (Nov 1): replan 160->80ms KEPT on mechanism + direction (weak significance, honestly noted)
+- Fresh lever (untouched in 19 fires): planner costs 2.2ms (dense scene) — 80ms budget is 36x headroom. Harness-only: decideEvery 10->5 + setInterval 160->80; planner window stays 160 (commitments overlap, fresher info wins; one variable). No unit pin (harness timing convention unpinned; field-measured).
+- 80ms arm: L2 96.2/95.9/98.2 (mean 96.8, deaths 5/6/2, 0 wipes) vs 160ms 98.8/6.0/0.5 (n=8); L16 96.7/101.8 (mean 99.25, deaths 7/4, cont 1/0) vs 103.1/4.9/0.625 (n=8). Both faster (-2.0/-3.9, ~0.8sigma each), fewer wipes (1/5 vs ~0.55/run). No chains at 80ms (grace fix holds).
+- L16 t10's 6 obstacles: spread across run (6.5-57.2s, scattered positions) = hot field/variance, NOT chains; no mechanism links 80ms ticks to obstacle clips (vetoes identical, info strictly fresher; stickiness suppresses dither equally). Twins 5/5 spread (urgency intact).
+- Keep rationale (differs from ram/sprint-gate reverts): those nulls REFUTED their mechanisms; here the mechanism (fresher reactions) is intact, direction good x2 levels, cost/risk nil. Honest caveat: effect ~2-3% is below affordable resolution — kept as a sound micro-gain, not a proven win.
+- Gates: 308/308, check clean, verify 9/9. Uncommitted: 80ms tick (+ urgency + grace + pins + telemetry + memory, 3 fires).
+
+
+## Fire 21 (Nov 1): CAMPAIGN CLEARS 254s — full coverage proven, no new lever
+- Campaign = L1-L3 only (L4+ are standalone bonus levels). Economy (bot): lives top-up to 4 between stages, weapon rank CARRIES (no reset in startLevel), unlimited continues. So campaign is easier than singles: rank 3 from L1's pods covers everything, zero fetching/twins after.
+- Probe (LEVEL unset, 420s cap, exited 0 at 254s sim): L1->L2->L3 transitions clean, 0 continues, 6 cheap deaths (dart+5 bullets), ends L3-finalBoss victoryPending, lives 3, spread@3. No rank logs after L1 t=16.7 (carry confirmed). Splits ~ singles-minus-twins. No transition bugs, no state leaks over 4+ min.
+- No new lever: campaign fat = the same closed items (L2-boss variance, L3 final). Pod urgency/fetch work applies to L1 + standalone bonus levels only. HUMAN_FEEDBACK appended with the bot-campaign note (human gate stays open).
+- Coverage statement: bot beats the 3-stage campaign (254s, 0 wipes) AND all 14 standalone bonus levels individually. Every known route is landed/closed/pinned.
+- Gates: 308/308, check clean. No code changed (measurement + 4-line doc note).
+
+
+## Fire 22 (Nov 1): warning-gap FIXED (vanishing regions) — t8 class closed by mechanism
+- Root cause (t8: stranded 340px out-of-band, reloc=none, 13 deaths): getClosingRegions drops a band with ANY 90px overlap, so wide->split switches warn NOTHING (wide band overlaps the split!) even though the ship's part vanishes. Fix: getVanishingRegions (set difference, 70px sliver floor) used ONLY by getPathWarningState (HUD helper untouched — no visible game change).
+- Pinned: 8 corridor-math cases (t8 geometry [[70,1430]]->[[530,930],[1060,1430]] = [[70,530],[930,1060]], whole-band preserved, covered-empty, sliver filter, empties) + wrapper delegation. Lab probe: t8 snapshot (ship 297) -> down_boost toward next bands, arrival well inside the 1.6s lead. No planner change (relocating+guide+sprint already handle it).
+- Field L2x4: warnings fire 2-4x/run on real partial closures (pod2/pod3 windows); ships were in-next every time so relocation never engaged (fetch continued correctly — warnings informational). 4/4 spread (pod3 60-61.5s, twins dead), mean 97.55, cont 0.25, NO chains (t31's 8 deaths all spread). Disaster-save unproven in field (1/15 event; lottery rejected) but mechanism+pin+probe+no-harm -> KEEP.
+- Gates: 309/309, check clean, verify 9/9. Uncommitted: vanishing fix + pin (+ urgency + grace + 80ms + telemetry + memory, 4 fires).
+- Loop: warning-gap was the LAST mechanism-backed item. Remaining: L3 orbit (weak, game-side API), L6 2-ply (no). Nothing armed.
+
+
+## Fire 23 (Nov 1): joint sweep clean + boss-tanking refinement (-8.6s L5 boss)
+- Joint interaction sweep (urgency+grace+80ms+vanishing together): L1 58.6/64.6 deathless (NEW BEST 58.6), L2 99.1/115.7-twin, L3 96.9/93.0 (NEW FLOOR 93.0), L5 87.2/87.4, L16 97.9/102.4. No interaction regressions; L1/L3 bests improved.
+- t36 twin (1/20 post-urgency, 5% vs 36% before): ship started 650px from pod3 lane (top), urgency dove into the wall field, vetoes slowed it correctly, missed by ~280px. Residual twins need pre-positioning (0.6s EV) — CONFIRMED SKIP.
+- Grace-fix side effect found by the sweep: L5 boss 23.1/23.4 vs 16.0/17.4 pre-grace (+6s, waves identical 64.0s — clean isolation). Mechanism: fleeing-during-grace loses DPS station vs tanking through it; bosses self-clear (weave away) so tanking rarely chains, unlike terrain. Refinement: mask boss contacts during grace too (transient = bullet/laser/boss). Pinned (boss assert fails pre, passes post).
+- Refinement validation L5x3: boss 15.2/12.6/15.9 (mean 14.6, NON-OVERLAPPING with 23.1/23.4), totals 78.0/75.3/81.2, contacts 1/1/0 with zero slowdown (12.6s WITH a contact — tanking works, no boss chains). L2 sanity 95.7/0c spread. Principle: boss fights are DPS-gated (tank), waves clock-gated (flee). KEEP.
+- Curiosity (no action): t37 wall-double 3.9s/8px apart post-grace — camp-in-wide-wall or bullet misattribution; 2 cheap deaths in a 95.7s run. Unresolved, cheap.
+- Gates: 309/309, check clean, verify 9/9. Uncommitted: +boss-tanking (5 fires).
+
+
+## Fire 24 (Nov 1): stale-level re-sweep — 11/11 hold, ZERO regressions
+- Re-swept levels measured on old trees (fires 1-11) against current code (urgency+grace+80ms+vanishing+tanking): L4 78.2 (77.6), L6 83.0 (85.9, no corner wipe), L7 85.9 deathless (87.2), L8 84.9 deathless (85.3, laser+2 swaps), L9 96.8 (101.9), L10 73.1 (77.2, wallx4 transit clips at y=566 lane, NO chains), L12 65.6 deathless (66), L13 98.6 (97), L17 72.5 deathless (73.5, torrent), anchors L2 97.6/0c 1-death (99.0), L16 103.6/1c (101). All within noise or better; twins 0; wipes in-family (L16 1).
+- The 5-fire uncommitted pile holds together — no interaction breakage anywhere. Fresh tree numbers: L1 59-65, L2 ~98, L3 93-97, L4 78, L5 ~78, L6 83, L7 86, L8 85, L9 97, L10 73, L11 ~75, L12 66, L13 99, L14 ~72, L15 63, L16 ~100, L17 73. Campaign 254s.
+- Considered + rejected: chase-abandon state machine for pod2-camps (needs planner state + loot ids + timers; ~1.5s EV on complexity risk); 80/80 matched window (unclear direction); all prior closes stand.
+- Gates: 309/309, check clean. No code changed.
+
+
+## Fire 25 (Nov 1): segment-gate recon PROVES the loop exhausted (all-timer/all-HP)
+- Recon (read-only, bounded): waves segments advance ONLY on levelProgressMs >= durationMs (boost-warped timer, game.js:2036-43); bosses ONLY on HP (bossDefeated); transitions on completion. No kill-gates, no position-gates, no skips possible by construction. Speedrun tech cannot exist here.
+- Final optimality accounting: waves time = authored duration / boost-supply (energy ceiling proven, bot at it); boss time = HP / (DPS x lane-uptime) (geometric fan-vs-sweep ceiling + structural aimed-fire dodging); entries/transitions fixed. Every term is at a proven ceiling or a closed item. The bot's times (campaign 254s, all levels 59-107s) are within noise of the achievable.
+- Also re-rejected: sine-phase stationing (needs game-side amplitude + fragile fits, weak ratio), lives-adaptive risk (math says YOLO always under bot economy), 80/80 (unclear direction).
+- LOOP STATUS: CONVERGED WITH PROOF. Recommend stopping the cron or redirecting (commit pile, human playtesting, new content). Further "improve" fires will churn.
+- Gates: 309/309, check clean. No code changed.

@@ -37,6 +37,22 @@ test('closing regions keep only bands losing significant overlap', () => {
     assert.deepEqual(Corridor.getClosingRegions([], [[0, 300]]), []);
 });
 
+test('vanishing regions catch partial closures the band filter misses', () => {
+    // getClosingRegions drops a band with ANY 90px overlap, so a wide
+    // corridor splitting in two warns nothing — yet the ship's part of
+    // the wide band still vanishes (L2 stranded 340px out-of-band with
+    // reloc=none and died 13 times). Set difference, sliver-filtered.
+    const V = Corridor.getVanishingRegions;
+    assert.deepEqual(V([[70, 1430]], [[530, 930], [1060, 1430]]), [[70, 530], [930, 1060]]);
+    assert.deepEqual(V([[500, 980]], [[70, 400]]), [[500, 980]]);
+    assert.deepEqual(V([[0, 300]], [[0, 400]]), []);
+    assert.deepEqual(V([[0, 200], [300, 500]], [[100, 400]]), [[0, 100], [400, 500]]);
+    assert.deepEqual(V([[0, 100]], [[10, 100]]), [], 'slivers stay silent');
+    assert.deepEqual(V([[0, 100]], [[10, 100]], 5), [[0, 10]]);
+    assert.deepEqual(V([[0, 300]], []), [[0, 300]]);
+    assert.deepEqual(V([], [[0, 300]]), []);
+});
+
 test('escape hints point at the nearest surviving opening', () => {
     assert.equal(Corridor.getEscapeDirection([400, 500], [[0, 100]]), 'up');
     assert.equal(Corridor.getEscapeDirection([0, 100], [[400, 500]]), 'down');
@@ -65,10 +81,12 @@ test('game.js keeps delegating wrappers with the original corridor names', () =>
     const source = fs.readFileSync('game.js', 'utf8');
     for (const name of ['openBandsSignature', 'openBandsRoughlyEqual', 'yOverlapsBand',
         'yInOpenBands', 'bandHasSignificantOverlap', 'getClosingRegions',
-        'getEscapeDirection', 'findNextBandLayoutChange', 'blockedRangesFromOpenBands']) {
+        'getVanishingRegions', 'getEscapeDirection', 'findNextBandLayoutChange',
+        'blockedRangesFromOpenBands']) {
         assert.ok(source.includes(`function ${name}(`), `game.js must keep ${name}`);
     }
     assert.ok(source.includes('NovaWingCorridor.getClosingRegions'));
+    assert.ok(source.includes('NovaWingCorridor.getVanishingRegions'));
     assert.ok(source.includes('NovaWingCorridor.blockedRangesFromOpenBands'));
     assert.ok(source.includes('PATH_WARNING_MIN_CLOSE_HEIGHT'),
         'game tuning constant must still feed the corridor module');

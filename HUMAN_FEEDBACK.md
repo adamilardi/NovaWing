@@ -63,6 +63,10 @@ experience, not an assist. Live-verified (0.4 → 0.41 on kills/calm →
    6/10, L3 8/10 deathless. Recovery verified in code (weapon rank kept
    through death, 0.9/1.4/0.7s i-frames, continues clear bullets + grant
    2.5s i-frames). No tuning change made. Human campaign gate stays open.
+   Campaign probe 2026-11-01 (bot-flown, NOT human): full L1-L3 campaign
+   clears in 254s sim with 0 continues (6 cheap deaths); weapon rank
+   carries across stages (spread@3 from L1's pods, no fetching after),
+   lives top up to 4 between stages. L4+ are standalone bonus levels.
 
 ## validation/obsidian-gate-r2 — 2026-10-08 (new)
 

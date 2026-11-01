@@ -157,6 +157,52 @@ describe('pilot tactics', () => {
         assert.notEqual(Tactics.plan(s).input.y, 1, 'must not dive through the bullet for the pod');
     });
 
+    it('pulls rank chases through hot heading memory, quietly otherwise', () => {
+        // L16 pod3 sat 50px off for 8s while hot x-stickiness froze the
+        // y-correction (twin entry, +12s). Sprint weight on the rank
+        // chase beats the heading memory; vetoes still rule (unlike the
+        // reverted fire-14 ram, nothing is zeroed). Pinned by score:
+        // the diagonal must beat x-only cruise iff loot steers the goal.
+        const base = {
+            weaponLevel: 2,
+            player: { x: 200, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 400, y: 300, vx: 0, vy: 0, w: 16, h: 20 }]
+        };
+        const chase = Tactics.plan(snap({ ...base,
+            powerups: [{ x: 320, y: 480, type: 'weapon' }] }), 160, { x: 1, y: 0 });
+        assert.ok(chase.options.down_right.score - chase.options.right.score > 0,
+            'urgency must flip the diagonal over x-only cruise');
+        const quiet = Tactics.plan(snap(base), 160, { x: 1, y: 0 });
+        assert.ok(quiet.options.down_right.score - quiet.options.right.score < 0,
+            'no urgency without loot on the goal');
+    });
+
+    it('masks only transient threats during i-frames, never terrain', () => {
+        // Deaths don't teleport the ship, so a grace period spent inside
+        // a wall, obstacle, or converged tracker re-kills on expiry
+        // (L2 same-spot wall/interceptor doubles; L16 obstacle x4).
+        // During grace, keep dodging everything except bullets, lasers
+        // (transient — clear within the window) and bosses (DPS-gated —
+        // fleeing station cost L5's boss ~6s).
+        const grace = body => snap({
+            playerInvulnerableUntil: 20000,
+            enemies: body.kind === 'enemy' ? [body] : [],
+            enemyBullets: body.kind === 'bullet' ? [body] : [],
+            walls: body.kind === 'wall' ? [body] : []
+        });
+        const incoming = { x: 350, y: 300, vx: -150, vy: 0, w: 60, h: 60 };
+        const rock = Tactics.plan(grace({ ...incoming, kind: 'wall' }));
+        assert.ok(rock.options.hold.score < -2000, 'must flee walls through grace');
+        const foe = Tactics.plan(grace({ ...incoming, kind: 'enemy', type: 'regular', health: 4, canShoot: false }));
+        assert.ok(foe.options.hold.score < -1000, 'must flee bodies through grace');
+        const shot = Tactics.plan(grace({ ...incoming, kind: 'bullet', w: 16, h: 12 }));
+        assert.ok(shot.options.hold.score > -500, 'may still tank bullets through grace');
+        const chief = Tactics.plan(snap({ playerInvulnerableUntil: 20000,
+            boss: { x: 350, y: 300, vx: -150, vy: 0, w: 100, h: 100, phase: 1, health: 200 } }));
+        assert.ok(chief.options.hold.score > -500,
+            'may still tank bosses through grace (boss fights are DPS-gated)');
+    });
+
     it('reads bloom/mote discs as blasts and lanes as lasers', () => {
         const disc = Tactics.evaluateAction(snap({
             combatHazards: { telegraphs: [{ kind: 'mote', x: 200, y: 300, r: 42, activatesAt: 10000, endsAt: 11000 }] }

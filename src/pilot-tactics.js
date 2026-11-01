@@ -64,7 +64,15 @@ function evaluateAction(snap, stick, boost, durationMs) {
                 x: round(body.x), y: round(body.y), vx: body.vx || 0, vy: body.vy || 0 }
             : null;
         if (!collision) collision = { kind, atMs: round(ms), detail };
-        if (!damage && snap.time + ms >= snap.playerInvulnerableUntil) damage = { kind, atMs: round(ms), detail };
+        // Grace masking is transient-only, plus bosses: bullets and lasers
+        // clear within the window, so the ship may tank them (fetch through
+        // fire), and boss fights are DPS-gated, so the ship holds station
+        // and keeps firing through grace instead of fleeing (fleeing cost
+        // L5's boss ~6s). Every other hazard persists at its position —
+        // masking it parks the ship inside walls, obstacles and converged
+        // trackers until the grace expires, then re-kills (chain deaths).
+        const transient = kind === 'bullet' || kind === 'laser' || kind === 'boss';
+        if (!damage && (snap.time + ms >= snap.playerInvulnerableUntil || !transient)) damage = { kind, atMs: round(ms), detail };
     };
     for (let elapsed = 0; elapsed < durationMs;) {
         const previous = { ...p };
@@ -221,7 +229,9 @@ function plan(snap, durationMs = 160, preferred = null) {
     const nextBands = warning && Array.isArray(warning.nextBands) ? warning.nextBands : null;
     const relocating = !vertical && !snap.boss && nextBands && nextBands.length > 0 &&
         !nextBands.some(b => p.y >= b[0] && p.y <= b[1]);
-    if (!snap.boss && !relocating && rank < MAX_RANK && loot && Math.hypot(loot.x-p.x,loot.y-p.y) < 800) {
+    const chasingRank = !snap.boss && !relocating && rank < MAX_RANK && loot &&
+        Math.hypot(loot.x - p.x, loot.y - p.y) < 800;
+    if (chasingRank) {
         goalX = loot.x; goalY = loot.y;
     } else if (!snap.boss && !relocating && pickup && Math.hypot(pickup.x-p.x,pickup.y-p.y) < 180) {
         goalX = pickup.x; goalY = pickup.y;
@@ -320,7 +330,10 @@ function plan(snap, durationMs = 160, preferred = null) {
         // Relocation urgency shares the sprint weight: a stranded ship
         // must cross hundreds of px before the pocket closes, and the
         // vetoes below still overrule the pull when a move is lethal.
-        const sprint = laneSprint || relocating;
+        // Rank-fetch urgency shares it too: the pod scrolls away, and
+        // hot heading memory otherwise freezes the correction axis
+        // (L16 pod3 sat 50px off for 8s). Vetoes still rule.
+        const sprint = laneSprint || relocating || chasingRank;
         let score = -Math.hypot(a.end.x-goalX,a.end.y-goalY) * (sprint ? 3 : 1);
         if (a.predictedDamage) score -= 10000 + (durationMs-a.predictedDamage.atMs)*5;
         if (a.predictedCollision?.kind === 'event-horizon') score -= 100000;
