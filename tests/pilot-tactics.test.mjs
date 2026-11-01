@@ -131,12 +131,14 @@ describe('pilot tactics', () => {
         const s = snap({
             weaponLevel: 2,
             player: { x: 140, y: 738, vx: 0, vy: 0, w: 60, h: 30 },
+            world: { bounds: { x: 0, y: 0, width: 800, height: 1500 } },
             powerups: [{ x: 500, y: 900, type: 'weapon' }],
             openBands: [[500, 980]],
             pathWarning: { closing: [[500, 980]], nextBands: [[70, 400]], switchInMs: 2000 }
         });
         const r = Tactics.plan(s);
-        assert.deepEqual(r.goal, { x: 140, y: 300 });
+        // Default center 750 clamped into the next bands [70, 400].
+        assert.deepEqual(r.goal, { x: 140, y: 369 });
         assert.ok(r.options[r.recommended].end.y < 738, 'must move up toward the next bands');
     });
 
@@ -215,9 +217,11 @@ describe('pilot tactics', () => {
     it('holds the lane axis still when already in-lane on a boss', () => {
         // 30px off a weaving boss with a clean arena: chasing the weave
         // lags by the shot flight, so lock the lane axis and let the
-        // stream group. Drift along the firing axis stays free.
+        // stream group. Drift along the firing axis stays free. The
+        // ship starts AT station X so only the lane axis discriminates
+        // (an X chase would mask the deadband either way).
         const s = bossSnap({
-            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            player: { x: 279, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
             boss: { x: 599, y: 453, vx: 0, vy: 0, w: 340, h: 178, phase: 1, health: 216 }
         });
         const r = Tactics.plan(s);

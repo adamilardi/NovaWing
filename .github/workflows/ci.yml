@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    name: Syntax check
+    name: Check and unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,13 +16,14 @@ jobs:
         with:
           node-version: '20'
 
-      # No npm install required: check is pure `node --check` on first-party JS,
-      # and the unit suite uses only node builtins plus first-party files.
+      # No npm install: check is pure `node --check`, and this unit subset
+      # uses only node builtins plus first-party files. scripts/rl/tests
+      # needs playwright browsers, so it stays local-only via `npm test`.
       - name: npm run check
         run: npm run check
 
-      - name: npm test
-        run: npm test
+      - name: unit tests (install-free subset)
+        run: node --test tests/*.test.cjs tests/*.test.mjs scripts/validation-loop/tests/*.test.mjs
 
   rl-python:
     name: RL Python tests

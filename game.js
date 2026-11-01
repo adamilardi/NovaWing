@@ -5973,11 +5973,21 @@ function updateExpansionBoss(time, frameDelta) {
             target.setVelocity(0, 0);
             target.y = target.arenaY + Math.sin(time * 0.002) * 5;
             target.x = 400 + Math.sin(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) * 110;
+            // Readout fix (same as the classic settled weaves): report the
+            // sweep velocity instead of 0. Positions untouched.
+            target.setVelocityX(Math.cos(time * (state.id === 'voidCantor' ? 0.0008 : 0.0013)) *
+                (state.id === 'voidCantor' ? 88 : 143));
+            target.setVelocityY(Math.cos(time * 0.002) * 10);
         }
     } else {
         ready = target.x <= 655;
         target.setVelocity(ready ? 0 : -100, 0);
-        if (ready) target.y = target.arenaY + Math.sin(time * 0.0015) * (state.id === 'foundryWarden' ? 55 : 105);
+        if (ready) {
+            target.y = target.arenaY + Math.sin(time * 0.0015) * (state.id === 'foundryWarden' ? 55 : 105);
+            // Readout fix (same as the classic settled weaves): report the
+            // sweep velocity instead of 0. Positions untouched.
+            target.setVelocityY(Math.cos(time * 0.0015) * (state.id === 'foundryWarden' ? 82.5 : 157.5));
+        }
     }
     if (state.mode !== 'recovery' && target.attackAnchor) {
         target.setPosition(target.attackAnchor.x, target.attackAnchor.y);

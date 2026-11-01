@@ -40,7 +40,7 @@ test('both ships are clamped below the HUD strip every frame', () => {
 function bossBarBottom() {
     const match = source.match(/bossHealthBar = this\.add\.rectangle\(400, (\d+), 330, (\d+),/);
     assert.ok(match, 'boss bar geometry missing');
-    return Number(match[1]) + Number(match[2]);
+    return Number(match[1]) + Number(match[2]) / 2; // rectangles are center-origin
 }
 
 test('phase banner clears the boss bar and holds still', () => {
