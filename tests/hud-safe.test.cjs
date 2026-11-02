@@ -24,10 +24,23 @@ test('HUD-safe strip clears the authored panels', () => {
     assert.ok(hudConst() >= hudPanelBottom());
 });
 
+test('solo strip clears the compact solo panels', () => {
+    const match = source.match(/const HUD_PANEL_BOTTOM_SOLO = (\d+);/);
+    assert.ok(match, 'game.js must define HUD_PANEL_BOTTOM_SOLO');
+    // Solo layout is authored first (create); co-op redraws taller panels later.
+    const bottoms = [...source.matchAll(/hudPanel\.fillRoundedRect\(\d+, (\d+), \d+, (\d+),/g)]
+        .map(([, y, h]) => Number(y) + Number(h));
+    assert.ok(bottoms.length >= 6, 'expected solo + co-op layouts');
+    assert.equal(Number(match[1]), 62);
+    assert.ok(Number(match[1]) >= Math.max(...bottoms.slice(0, 3)));
+});
+
 test('both ships are clamped below the HUD strip every frame', () => {
     assert.ok(/clampShipBelowHud\(player, this\.cameras\.main\.scrollY\);/.test(source), 'P1 clamp missing');
     assert.ok(/clampShipBelowHud\(playerTwo, this\.cameras\.main\.scrollY\);/.test(source), 'P2 clamp missing');
     assert.ok(source.includes('function shipHudMinY(ship, scrollY)'), 'strip helper missing');
+    assert.ok(/coopEnabled \? HUD_PANEL_BOTTOM : HUD_PANEL_BOTTOM_SOLO/.test(source),
+        'strip must follow co-op mode');
     assert.ok(source.includes('function clampShipBelowHud(ship, scrollY)'), 'clamp helper missing');
     assert.ok(/shipHudMinY\(player, this\.cameras\.main\.scrollY\)\) axes\.y = 0/.test(source),
         'P1 upward input must be gated at the strip');

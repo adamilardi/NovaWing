@@ -86,6 +86,8 @@
  *   waveOverlapChance     chance a random-wave mode spawns a second pattern
  *   waveClumpMinScale / waveClumpMaxScale
  *                         Supernova clump bounds, as fractions of the wave interval
+ *   rearHunter            false = no rear-entry hunters (Space Cadet default)
+ *   skyDiveCount          top-entry divers per skyDive wave (Space Cadet: 1)
  *
  * Examples:
  *   Meaner L4:           { enemyHealthScale: 1.15, waveIntervalMinMs: 1400 }
@@ -158,7 +160,11 @@
         waveOverlapChance: 0.28,
         // Clump, then a gap. Fractions of the resolved wave interval.
         waveClumpMinScale: 0.55,
-        waveClumpMaxScale: 1.35
+        waveClumpMaxScale: 1.35,
+        // Rear-entry hunter every 12-18s on horizontal waves (x < 0).
+        rearHunter: true,
+        // Top-entry divers per skyDive wave.
+        skyDiveCount: 3
     };
 
     const TIER_DIFFICULTY = {
@@ -224,7 +230,10 @@
             boostRefillOnKill: 24,
             bossTempoScale: 1.25,
             bossHealthScale: 0.8,
-            bossShotSpeedScale: 0.8
+            bossShotSpeedScale: 0.8,
+            // Space Cadet never gets jumped from behind; sky divers come solo.
+            rearHunter: false,
+            skyDiveCount: 1
         },
         hard: {
             interceptorChance: 0.4,

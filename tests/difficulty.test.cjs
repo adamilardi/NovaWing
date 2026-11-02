@@ -223,7 +223,8 @@ test('game applies the future knobs through the shipped helpers', () => {
     for (const key of [
         'playerSpeedScale', 'playerShotSpeedScale', 'playerFireDelayScale',
         'scrollSpeedScale', 'bossMoveScale', 'waveOverlapChance',
-        'waveClumpMinScale', 'waveClumpMaxScale'
+        'waveClumpMinScale', 'waveClumpMaxScale',
+        'rearHunter', 'skyDiveCount'
     ]) {
         assert.ok(src.includes("'" + key + "'"), key + ' is read from the difficulty bag');
     }
@@ -241,4 +242,22 @@ test('scripted canShoot:true thins through typedFireChance instead of bypassing 
     assert.ok(branch, 'scripted arming branch exists');
     assert.ok(!/enemy\.canShoot = options\.canShoot;/.test(branch[0]), 'no raw pass-through');
     assert.ok(branch[0].includes('rollTypedArmed'), 'scripted true rolls through typedFireChance');
+});
+
+test('space cadet drops rear hunters and flies solo sky dives', () => {
+    const easy = Levels.getDifficultyPreset('easy');
+    assert.equal(easy.rearHunter, false);
+    assert.equal(easy.skyDiveCount, 1);
+    for (const mode of ['normal', 'hard']) {
+        const preset = Levels.getDifficultyPreset(mode);
+        assert.equal(preset.rearHunter, undefined, mode + ' inherits rear hunters');
+        assert.equal(preset.skyDiveCount, undefined, mode + ' inherits full sky dives');
+    }
+    const level = Levels.defineLevel({ id: 99 });
+    assert.equal(Levels.resolveSegmentBag(level, null, 'easy').rearHunter, false);
+    assert.equal(Levels.resolveSegmentBag(level, null, 'easy').skyDiveCount, 1);
+    assert.equal(Levels.resolveSegmentBag(level, null, 'normal').rearHunter, true);
+    assert.equal(Levels.resolveSegmentBag(level, null, 'normal').skyDiveCount, 3);
+    assert.equal(Levels.resolveSegmentBag(level, null, 'hard').rearHunter, true);
+    assert.equal(Levels.resolveSegmentBag(level, null, 'hard').skyDiveCount, 3);
 });

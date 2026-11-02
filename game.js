@@ -186,10 +186,12 @@ const RUN_API_URL = '/api/run';
 const LEADERBOARD_LIMIT = 10;
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
-// Bottom edge of the fixed HUD panels (max hudPanel fillRoundedRect bottom
-// across solo and co-op layouts). Ships clamp below scrollY + this + half
-// their hull so the nose never hides.
+// Bottom edge of the fixed HUD panels. Co-op draws taller side panels (90);
+// solo runs a compact three-row layout (62) so the ship can reach the glass.
+// Ships clamp below scrollY + the active strip + half their sprite so art
+// never hides behind a panel in any flight frame.
 const HUD_PANEL_BOTTOM = 90;
+const HUD_PANEL_BOTTOM_SOLO = 62;
 // Base touch layout (game coords 800×600). getTouchLayout() may enlarge for phones/tablets.
 const TOUCH_JOYSTICK = {
     x: 118,
@@ -1716,33 +1718,33 @@ function create() {
     hudPanel.setDepth(9);
     hudPanel.setScrollFactor(0);
     hudPanel.fillStyle(0x081018, 0.94);
-    hudPanel.fillRoundedRect(8, 8, 230, 78, 8);
-    hudPanel.fillRoundedRect(562, 8, 230, 78, 8);
+    hudPanel.fillRoundedRect(8, 8, 230, 54, 8);
+    hudPanel.fillRoundedRect(562, 8, 230, 54, 8);
     hudPanel.fillRoundedRect(274, 8, 252, 50, 8);
     hudPanel.lineStyle(1, 0x66f6ff, 0.22);
-    hudPanel.strokeRoundedRect(8, 8, 230, 78, 8);
-    hudPanel.strokeRoundedRect(562, 8, 230, 78, 8);
+    hudPanel.strokeRoundedRect(8, 8, 230, 54, 8);
+    hudPanel.strokeRoundedRect(562, 8, 230, 54, 8);
     hudPanel.strokeRoundedRect(274, 8, 252, 50, 8);
 
-    scoreText = this.add.text(18, 14, '', {
+    scoreText = this.add.text(18, 12, '', {
         ...hudTextStyle,
-        fontSize: '16px',
+        fontSize: '15px',
         fill: '#e8f0ff'
     }).setDepth(10).setScrollFactor(0);
 
-    weaponText = this.add.text(18, 39, '', {
+    weaponText = this.add.text(18, 32, '', {
         ...hudTextStyle,
-        fontSize: '16px',
+        fontSize: '15px',
         fill: '#66f6ff'
     }).setDepth(10).setScrollFactor(0);
 
-    livesText = this.add.text(782, 14, '', {
+    livesText = this.add.text(782, 12, '', {
         ...hudTextStyle,
         fontSize: '20px',
         fill: '#ffcc55'
     }).setOrigin(1, 0).setDepth(10).setScrollFactor(0);
 
-    livesIcon = this.add.image(738, 25, PLAYER_DEFAULT_TEXTURE)
+    livesIcon = this.add.image(738, 23, PLAYER_DEFAULT_TEXTURE)
         .setDisplaySize(28, 16)
         .setFlipX(true)
         .setDepth(10)
@@ -1752,15 +1754,15 @@ function create() {
         ...hudTextStyle, fontSize: '13px', fill: '#ffb8e8'
     }).setOrigin(0.5, 0).setDepth(10).setScrollFactor(0);
 
-    boostText = this.add.text(782, 40, '', {
+    boostText = this.add.text(782, 34, '', {
         ...hudTextStyle,
-        fontSize: '16px',
+        fontSize: '14px',
         fill: '#66f6ff'
     }).setOrigin(1, 0).setDepth(10).setScrollFactor(0);
 
-    statusText = this.add.text(18, 62, '', {
+    statusText = this.add.text(18, 48, '', {
         ...hudTextStyle,
-        fontSize: '14px',
+        fontSize: '11px',
         fill: '#55ffaa'
     }).setDepth(10).setScrollFactor(0);
 
@@ -1791,7 +1793,7 @@ function create() {
         const segmentX = boostMeterX + index * (BOOST_SEGMENT_WIDTH + BOOST_SEGMENT_GAP);
         boostSegments.push(this.add.rectangle(
             segmentX,
-            65,
+            52,
             BOOST_SEGMENT_WIDTH,
             BOOST_SEGMENT_HEIGHT,
             0x10273a,
@@ -2157,7 +2159,8 @@ function update(time, delta) {
 // never tucks behind a panel. Walls and lanes are world space, so only the
 // ships — the one element the player must always see — clamp here.
 function shipHudMinY(ship, scrollY) {
-    return (Number.isFinite(scrollY) ? scrollY : 0) + HUD_PANEL_BOTTOM + ((ship && ship.displayHeight) || 0) / 2;
+    const strip = coopEnabled ? HUD_PANEL_BOTTOM : HUD_PANEL_BOTTOM_SOLO;
+    return (Number.isFinite(scrollY) ? scrollY : 0) + strip + ((ship && ship.displayHeight) || 0) / 2;
 }
 
 // Backstop for teleports and debug placement: repair goes through body.reset
@@ -4133,7 +4136,7 @@ function spawnSkyDiveWave(scene) {
     }
     const bounds = getHorizontalFlankBounds(scene);
     const baseX = Phaser.Math.Between(380, 600);
-    const count = 3;
+    const count = Math.max(1, Math.round(difficultyNumber('skyDiveCount', 3)));
 
     for (let i = 0; i < count; i++) {
         scheduleWavePart(scene, i * 220, () => {
@@ -4222,6 +4225,7 @@ function spawnRearHunterWave(scene) {
 }
 
 function maybeSpawnRearHunter(scene) {
+    if (!difficultyFlag('rearHunter', true)) return;
     if (isVerticalScroll()) return;
     if (levelEnded || levelTransitioning || gamePhase !== 'waves') return;
     const now = playtestNow(scene);
@@ -5855,11 +5859,11 @@ function startBossFight(encounterKey) {
         bossHealthFill.destroy();
         bossHealthFill = null;
     }
-    bossHealthBar = this.add.rectangle(400, 102, 330, 16, 0x202438, 0.95);
+    bossHealthBar = this.add.rectangle(400, 78, 330, 16, 0x202438, 0.95);
     bossHealthBar.setStrokeStyle(2, 0xff6677, 1);
     bossHealthBar.setDepth(8);
     bossHealthBar.setScrollFactor(0);
-    bossHealthFill = this.add.rectangle(236, 102, 326, 10, 0xff3355, 1);
+    bossHealthFill = this.add.rectangle(236, 78, 326, 10, 0xff3355, 1);
     bossHealthFill.setOrigin(0, 0.5);
     bossHealthFill.setDepth(9);
     bossHealthFill.setScrollFactor(0);
