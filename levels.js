@@ -618,6 +618,10 @@
             enemyMotions: def.enemyMotions && typeof def.enemyMotions === 'object'
                 ? Object.assign({}, def.enemyMotions) : null,
             music: Object.assign({ waves: 'waves', boss: 'boss', transition: null }, def.music),
+            // Classic levels only: start the boss track this many ms before the
+            // boss spawns. Segmented levels switch music on segment change.
+            bossMusicLeadMs: Number.isFinite(def.bossMusicLeadMs) && def.bossMusicLeadMs > 0
+                ? Math.round(def.bossMusicLeadMs) : 0,
             // Multi-segment levels (null = classic waves → boss flow)
             segments: Array.isArray(def.segments) ? def.segments : null,
             scrollMode: def.scrollMode === 'vertical' ? 'vertical' : 'horizontal',
@@ -684,6 +688,8 @@
     const LEVEL_1 = defineLevel({
         id: 1,
         name: 'OPEN SPACE',
+        music: { waves: 'levelOneFlight', boss: 'levelOneBoss' },
+        bossMusicLeadMs: 5000,
         tier: 1,
         // Feel comes from TIER_DIFFICULTY[1]. Overlay only exceptions:
         // difficulty: { interceptorChance: 0.08, playerIFramesMs: 1100 },

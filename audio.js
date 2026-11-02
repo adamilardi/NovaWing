@@ -91,6 +91,11 @@
         powerup: { file: 'assets/audio/sfx/powerup.ogg', volume: 0.5 }
     };
 
+    // Master mix (linear gains). Recorded music tracks bypass these buses and
+    // carry their own volume in src/assets.js; tests/soundtrack.test.cjs pins
+    // the balance between the SFX stack and the recorded masters.
+    const MIX = { master: 0.8, sfxBus: 0.65 };
+
     // Eight-bar scores: harmony, rhythm and lead phrasing change with the scene.
     // null lead notes are intentional rests; roots are MIDI notes.
     const SCORES = {
@@ -204,7 +209,7 @@
                 if (!AudioContext) return null;
                 context = new AudioContext();
                 master = context.createGain();
-                master.gain.value = muted ? 0 : 0.8;
+                master.gain.value = muted ? 0 : MIX.master;
                 // Leave headroom and catch simultaneous impacts on the entire mix.
                 const highpass = context.createBiquadFilter();
                 highpass.type = 'highpass';
@@ -221,7 +226,7 @@
                 limiter.connect(context.destination);
 
                 sfxBus = context.createGain();
-                sfxBus.gain.value = 0.95;
+                sfxBus.gain.value = MIX.sfxBus;
                 rebuildMixChain();
 
                 musicBus = context.createGain();
@@ -750,7 +755,7 @@
 
         function applyMuteGain() {
             if (!master || !context) return;
-            master.gain.setTargetAtTime(muted ? 0 : 0.8, context.currentTime, 0.03);
+            master.gain.setTargetAtTime(muted ? 0 : MIX.master, context.currentTime, 0.03);
         }
 
         function applyStyle(nextId) {
@@ -1129,6 +1134,7 @@
         createSfx: createSfx,
         SCORES: SCORES,
         SFX_SAMPLES: SFX_SAMPLES,
+        MIX: MIX,
         STYLE_IDS: STYLE_ORDER.slice(),
         resolveStyleId: resolveStyleId,
         styleLabel: function (id) {

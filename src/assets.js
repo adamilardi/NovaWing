@@ -472,7 +472,17 @@ const AUDIO_TRACKS = {
     canyonBoss: { procedural: 'canyonBoss' },
     singularity: { procedural: 'singularity' },
     gauntlet: { procedural: 'gauntlet' },
-    finalBoss: { procedural: 'finalBoss' }
+    finalBoss: { procedural: 'finalBoss' },
+    levelOneFlight: {
+        urls: ['assets/music/level-one-flight.ogg'],
+        loop: true,
+        volume: 0.5
+    },
+    levelOneBoss: {
+        urls: ['assets/music/level-one-boss.ogg'],
+        loop: true,
+        volume: 0.7
+    }
 };
 // CC0 one-shot SFX (Kenney). Loaded by audio.js via fetch, not the Phaser
 // loader, but still published by the build. Must match SFX_SAMPLES in

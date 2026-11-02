@@ -2034,6 +2034,12 @@ function update(time, delta) {
             spawnScheduledTerrain.call(this);
             updatePathDeadEndWarnings.call(this, frameDelta);
             const remainingMs = Math.max(0, durationMs - levelProgressMs);
+            // Authored lead-in (L1: 5s): start the boss track before the boss
+            // spawns. Idempotent — the director keeps an unchanged selection,
+            // so the track runs seamlessly into startBossFight.
+            if (levelFlow.shouldPreviewBossMusic(getLevelDef(currentLevel), remainingMs)) {
+                syncLevelMusic('boss');
+            }
             if (remainingMs <= 0) {
                 if (segmented) {
                     finishLevelSegment(this, 'progressComplete');

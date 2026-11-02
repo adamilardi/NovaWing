@@ -42,7 +42,8 @@ function audioHarness() {
         clearInterval(id) { timers.delete(id); }
     };
     vm.runInNewContext(fs.readFileSync(require.resolve('../audio.js'), 'utf8'), { window });
-    return { sfx: window.createSfx('genesis'), scores: window.NovaWingAudio.SCORES, sources, timers,
+    return { sfx: window.createSfx('genesis'), scores: window.NovaWingAudio.SCORES, mix: window.NovaWingAudio.MIX,
+        samples: window.NovaWingAudio.SFX_SAMPLES, sources, timers,
         advance(seconds) {
             for (let frame = 0; frame < seconds * 40; frame++) {
                 context.currentTime += 0.025;
@@ -54,7 +55,7 @@ function audioHarness() {
 test('campaign selects distinct scores and keeps the perspective flip silent', () => {
     const [space, canyon, finale] = Levels.getEffectiveLevelDefs();
     const cases = [
-        [space, null, 'waves', 'waves'], [space, null, 'boss', 'boss'],
+        [space, null, 'waves', 'levelOneFlight'], [space, null, 'boss', 'levelOneBoss'],
         [canyon, null, 'waves', 'canyon'], [canyon, null, 'boss', 'canyonBoss'],
         [finale, finale.segments.find(s => s.id === 'introBoss'), 'boss', 'singularity'],
         [finale, finale.segments.find(s => s.id === 'transition'), 'transition', null],
@@ -69,7 +70,9 @@ test('campaign selects distinct scores and keeps the perspective flip silent', (
 
 test('every registered procedural score schedules a full phrase and stops cleanly', () => {
     const fingerprints = new Set();
-    for (const { procedural } of Object.values(Assets.tracks)) {
+    const proceduralTracks = Object.values(Assets.tracks).filter(track => track.procedural);
+    assert.ok(proceduralTracks.length > 0, 'procedural catalog is non-empty');
+    for (const { procedural } of proceduralTracks) {
         const { sfx, scores, sources, timers, advance } = audioHarness();
         assert.ok(scores[procedural], 'registered score exists: ' + procedural);
         sfx.startMusic(procedural);
@@ -90,7 +93,46 @@ test('every registered procedural score schedules a full phrase and stops cleanl
         assert.ok(sources.length > count, 'score resumes after pause');
         sfx.stopMusic();
     }
-    assert.equal(fingerprints.size, Object.keys(Assets.tracks).length, 'tracks schedule different music');
+    assert.equal(fingerprints.size, proceduralTracks.length, 'tracks schedule different music');
+});
+
+test('level one ships recorded flight/boss tracks packaged by the build', () => {
+    const [space] = Levels.getEffectiveLevelDefs();
+    assert.equal(Music.selectTrack(space, null, 'waves'), 'levelOneFlight');
+    assert.equal(Music.selectTrack(space, null, 'boss'), 'levelOneBoss');
+    for (const key of ['levelOneFlight', 'levelOneBoss']) {
+        const track = Assets.tracks[key];
+        assert.ok(track && Array.isArray(track.urls) && track.urls.length > 0, key + ' has recording urls');
+        assert.equal(track.loop, true, key + ' loops');
+        for (const url of track.urls) {
+            assert.ok(fs.existsSync(url), 'recorded track exists: ' + url);
+            assert.ok(Assets.files().includes(url), 'build packages ' + url);
+            assert.ok(fs.statSync(url).size > 100 * 1024, 'recording is not a stub: ' + url);
+        }
+    }
+});
+
+test('mix balances recorded music against the SFX bus without clipping', () => {
+    const { mix, samples } = audioHarness();
+    // Measured basis: L1 masters peak ~1.0 at RMS ~0.18-0.20; SFX samples
+    // peak ~0.5-0.9 with a procedural layer stacked on top. Music must sit
+    // clearly above the SFX bed while hot masters keep headroom.
+    assert.ok(mix, 'mix constants are exported');
+    assert.equal(mix.sfxBus, 0.65);
+    assert.equal(mix.master, 0.8);
+    const flight = Assets.tracks.levelOneFlight;
+    const boss = Assets.tracks.levelOneBoss;
+    assert.equal(flight.volume, 0.5);
+    assert.equal(boss.volume, 0.7);
+    assert.ok(boss.volume >= flight.volume, 'boss track holds up in busier fights');
+    for (const track of [flight, boss]) {
+        assert.ok(track.volume > 0.35, 'recorded music above the old buried default');
+        assert.ok(track.volume <= 0.9, 'headroom for full-scale masters');
+    }
+    // Loudest SFX one-shot gain stays under the music gain so peaks stay punchy, not dominant.
+    const loudestSample = Math.max(...Object.values(samples).map(spec => spec.volume == null ? 0.5 : spec.volume));
+    assert.ok(loudestSample * mix.sfxBus * mix.master < flight.volume,
+        'SFX peaks stay below music peaks');
 });
 
 test('encounter changes retire the previous phrase and leave one scheduler', () => {

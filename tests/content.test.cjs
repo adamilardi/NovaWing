@@ -121,6 +121,29 @@ test('music remains silent through input, mute and pause changes during transiti
     assert.equal(director.getState().playing, null);
 });
 
+test('classic boss lead-in previews boss music inside its window only', () => {
+    const [space] = Levels.getEffectiveLevelDefs();
+    assert.equal(space.bossMusicLeadMs, 5000);
+    assert.equal(Flow.bossMusicLeadMs(space), 5000);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 5000), true);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 4999), true);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 1), true);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 5001), false);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 30000), false);
+    assert.equal(Flow.shouldPreviewBossMusic(space, 0), false);
+    assert.equal(Flow.shouldPreviewBossMusic(space, NaN), false);
+    // No lead-in, no preview; segmented levels switch on segment change.
+    const plain = Levels.defineLevel({ id: 99 });
+    assert.equal(plain.bossMusicLeadMs, 0);
+    assert.equal(Flow.shouldPreviewBossMusic(plain, 1000), false);
+    const negative = Levels.defineLevel({ id: 99, bossMusicLeadMs: -5000 });
+    assert.equal(negative.bossMusicLeadMs, 0);
+    const segmented = Levels.defineLevel({ id: 99, bossMusicLeadMs: 5000,
+        segments: [{ id: 'a', kind: 'waves', next: 'b' }, { id: 'b', kind: 'boss' }] });
+    assert.equal(Flow.shouldPreviewBossMusic(segmented, 1000), false);
+    assert.equal(Flow.shouldPreviewBossMusic(null, 1000), false);
+});
+
 test('recorded tracks respect segment overrides, mute and lifecycle cleanup', () => {
     const recordings = [];
     const manager = { add(key, config) {

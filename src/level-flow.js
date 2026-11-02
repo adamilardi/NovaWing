@@ -21,6 +21,20 @@
         }, authored);
     }
 
+    function bossMusicLeadMs(level) {
+        const lead = level && level.bossMusicLeadMs;
+        return Number.isFinite(lead) && lead > 0 ? lead : 0;
+    }
+
+    function shouldPreviewBossMusic(level, remainingMs) {
+        // Classic waves → boss flow only; segmented levels switch music on
+        // segment change. True inside the lead-in window, false at zero so the
+        // natural boss trigger owns the exact transition frame.
+        if (!level || (level.segments && level.segments.length)) return false;
+        const lead = bossMusicLeadMs(level);
+        return lead > 0 && Number.isFinite(remainingMs) && remainingMs <= lead && remainingMs > 0;
+    }
+
     function reward(level, key = 'standard') {
         const profile = encounter(level, key);
         if (profile.outcome === 'escape') return { score: 0, kills: 0 };
@@ -144,7 +158,8 @@
         };
     }
 
-    const api = { kind, encounter, reward, totals, afterSegment, validate, createScope };
+    const api = { kind, encounter, reward, totals, afterSegment, validate, createScope,
+        bossMusicLeadMs, shouldPreviewBossMusic };
     if (typeof module === 'object' && module.exports) module.exports = api;
     else root.NovaWingFlow = api;
 })(typeof window !== 'undefined' ? window : globalThis);
