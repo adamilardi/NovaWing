@@ -41,6 +41,7 @@ function audioHarness() {
         setInterval(fn) { timers.set(++timerId, fn); return timerId; },
         clearInterval(id) { timers.delete(id); }
     };
+    vm.runInNewContext(fs.readFileSync(require.resolve('../src/music-scores.js'), 'utf8'), { window });
     vm.runInNewContext(fs.readFileSync(require.resolve('../audio.js'), 'utf8'), { window });
     return { sfx: window.createSfx('genesis'), scores: window.NovaWingAudio.SCORES, mix: window.NovaWingAudio.MIX,
         samples: window.NovaWingAudio.SFX_SAMPLES, sources, timers,
@@ -75,10 +76,14 @@ test('every registered procedural score schedules a full phrase and stops cleanl
     for (const { procedural } of proceduralTracks) {
         const { sfx, scores, sources, timers, advance } = audioHarness();
         assert.ok(scores[procedural], 'registered score exists: ' + procedural);
+        if (procedural !== 'waves' && procedural !== 'boss') {
+            assert.equal(scores[procedural].bars, 32, 'campaign loads the MIDI arrangement');
+            assert.equal(scores[procedural].steps.length, 512);
+        }
         sfx.startMusic(procedural);
-        advance(32 * 60 / scores[procedural].bpm + 0.2);
+        advance((scores[procedural].bars || 8) * 4 * 60 / scores[procedural].bpm + 0.2);
         const notes = sources.filter(source => source.starts[0] != null);
-        assert.ok(notes.length > 100, procedural + ' schedules a full eight-bar phrase');
+        assert.ok(notes.length > 100, procedural + ' schedules a full phrase');
         fingerprints.add(JSON.stringify(notes.map(source => [source.type, source.frequency.value, source.starts[0]])));
         assert.equal(timers.size, 1);
         const count = sources.length;

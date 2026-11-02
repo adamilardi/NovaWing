@@ -7,7 +7,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'dist');
 const ENTRY_FILES = ['index.html', 'levels.js', 'levels.validation.js', 'audio.js', 'game.js',
     'vendor/phaser.min.js',
-    'src/assets.js', 'src/boss-director.js', 'src/level-flow.js', 'src/audio-director.js', 'src/pilot-facts.js', 'src/pilot-tactics.js', 'src/gameplay-rng.js',
+    'src/assets.js', 'src/boss-director.js', 'src/level-flow.js', 'src/audio-director.js', 'src/music-scores.js', 'src/pilot-facts.js', 'src/pilot-tactics.js', 'src/gameplay-rng.js',
     'src/corridor-math.js', 'src/enemy-math.js', 'src/wall-spawn.js', 'src/difficulty-heat.js'];
 
 async function build(output = OUTPUT) {

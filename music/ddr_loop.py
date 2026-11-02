@@ -162,6 +162,8 @@ def notes(track, channel, events):
 
 
 def compose(bpm, bars, style="waves"):
+    if style in CAMPAIGN:
+        return compose_campaign(bpm, bars, style)
     cfg = STYLES[style]
     prog, chords, riff = cfg["prog"], cfg["chords"], cfg["riff"]
     break_bar, build_beats = cfg["break_bar"], cfg["build_beats"]
@@ -315,13 +317,210 @@ def compose(bpm, bars, style="waves"):
     return mid
 
 
+# Campaign arrangements inspired by the G/E tonal centers of the L1 recordings.
+# These are new styles; the original DDR takes above remain reproducible.
+CAMPAIGN = {
+    'canyonFlight': dict(cue='canyon', title='Crystal Slipstream', bpm=144, tonic=43,
+        chords=[0, 5, 3, 7, 0, 3, 5, 7], feel='offbeat', boss=False),
+    'canyonAssault': dict(cue='canyonBoss', title='Prism Breaker', bpm=156, tonic=43,
+        chords=[0, 0, 5, 7, 0, 3, 5, 7], feel='syncopated', boss=True),
+    'eventHorizon': dict(cue='singularity', title='Event Horizon', bpm=92, tonic=40,
+        chords=[0, 0, 5, 3, 0, 5, 1, 7], feel='halftime', boss=True),
+    'starRun': dict(cue='gauntlet', title='Escape Velocity', bpm=148, tonic=40,
+        chords=[0, 5, 2, 6, 0, 3, 5, 7], feel='rolling', boss=False),
+    'coreCollapse': dict(cue='finalBoss', title='Core Collapse', bpm=184, tonic=40,
+        chords=[0, 0, 5, 7, 3, 5, 1, 7], feel='breakbeat', boss=True),
+}
+STYLES.update(CAMPAIGN)
+
+
+def compose_campaign(bpm, bars, style):
+    """32-bar A/A'/break/B arc. All notes and releases stay inside the loop."""
+    if bars < 8 or bars % 8:
+        raise ValueError('Campaign loops need a positive multiple of eight bars')
+    cfg = CAMPAIGN[style]
+    scale = [0, 2, 3, 5, 7, 8, 10]  # natural minor; dominant raised below
+    tonic, feel = cfg['tonic'], cfg['feel']
+    mid = mido.MidiFile(type=1, ticks_per_beat=PPQ)
+    meta = track(mid, cfg['title'], 0)
+    meta.extend([mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm)),
+                 mido.MetaMessage('time_signature', numerator=4, denominator=4)])
+    end = bars * BAR
+    parts = {name: [] for name in ('drums', 'bass', 'lead', 'pad', 'arp')}
+
+    def add(part, step, length, pitch, velocity):
+        start = round(step * PPQ / 4)
+        duration = min(round(length * PPQ / 4), end - start)
+        if 0 <= start < end and duration > 0:
+            parts[part].append((start, duration, pitch, velocity))
+
+    def degree(n):
+        return tonic + 24 + scale[n % 7] + 12 * (n // 7)
+
+    # Related rising-third / falling-second gestures, phrased differently per cue.
+    motifs = {
+        'offbeat': [(0, 4, 1.8), (3, 6, 1.8), (6, 7, 3.6), (12, 6, 2.6),
+                    (16, 4, 3.6), (22, 2, 1.8), (26, 1, 1.8), (28, 0, 3.4)],
+        'syncopated': [(0, 0, 1.6), (3, 0, .8), (6, 2, 1.6), (8, 4, 2.6),
+                       (14, 3, 1.6), (16, 2, 1.6), (19, 4, .8), (22, 6, 1.6),
+                       (24, 4, 1.6), (27, 3, .8), (30, 1, 1.6)],
+        'halftime': [(0, 4, 5.6), (8, 5, 3.6), (16, 2, 5.6), (24, 1, 3.6), (30, 0, 1.6)],
+        'rolling': [(0, 0, 1.6), (2, 2, 1.6), (6, 4, 3.6), (12, 6, 1.6),
+                    (14, 4, 1.6), (18, 7, 3.6), (24, 6, 1.6), (26, 4, 1.6), (28, 3, 3.6)],
+        'breakbeat': [(0, 4, 2.6), (4, 7, 1.6), (7, 6, .8), (10, 4, 1.6),
+                      (14, 2, 1.6), (16, 3, 2.6), (20, 4, 1.6), (23, 6, .8),
+                      (26, 3, 1.6), (28, 1, 3.6)],
+    }
+    for bar in range(bars):
+        base = bar * 16
+        section = (bar // 8) % 4
+        dip = section == 2 and bar % 8 < 4
+        degree_root = cfg['chords'][(bar // 2) % 8]
+        dominant = degree_root == 7
+        root = tonic + (7 if dominant else scale[degree_root])
+        minor = degree_root in (0, 3) and not dominant
+        chord = [root + 12, root + 12 + (3 if minor else 4), root + 19]
+        # A suspended ninth above the flight / ambient beds; triads in combat.
+        pad_notes = chord + ([root + 26] if feel in ('offbeat', 'halftime') else [])
+        for pitch in pad_notes:
+            add('pad', base, 15.6, pitch, 46 if dip else 53)
+
+        kick_steps = {
+            'offbeat': [0, 4, 8, 12], 'syncopated': [0, 6, 8, 11],
+            'halftime': [0, 10], 'rolling': [0, 4, 8, 12],
+            'breakbeat': [0, 3, 8, 10, 14],
+        }[feel]
+        for step in ([0] if dip else kick_steps):
+            add('drums', base + step, .7, KICK, 116 if step == 0 else 106)
+        for step in ([8] if feel == 'halftime' else [4, 12]):
+            add('drums', base + step, .7, SNARE if cfg['boss'] else CLAP, 68 if dip else 104)
+        hat_stride = 4 if dip or feel == 'halftime' else (1 if feel == 'rolling' else 2)
+        for step in range(0, 16, hat_stride):
+            open_hat = not dip and step in (6, 14)
+            add('drums', base + step, .6, OPEN_HAT if open_hat else CLOSED_HAT,
+                72 if open_hat else (52 if step % 4 == 0 else 62))
+        if feel == 'breakbeat' and not dip:
+            for step in ((7,) if bar % 8 == 7 else (7, 15)):
+                add('drums', base + step, .5, SNARE, 46)
+        if bar % 8 == 0 and not dip:
+            add('drums', base, 2, CRASH, 76)
+        if bar % 8 == 7:
+            # One-beat pickup resolves at the next phrase / exact loop boundary.
+            for step in (13, 14, 15):
+                add('drums', base + step, .65, SNARE, 55 + (step - 13) * 14)
+
+        bass_steps = {
+            'offbeat': [2, 6, 10, 14], 'syncopated': [0, 3, 6, 8, 11, 14],
+            'halftime': [0, 7, 10], 'rolling': [0, 2, 3, 6, 8, 10, 11, 14],
+            'breakbeat': [0, 3, 6, 8, 10, 14],
+        }[feel]
+        for step in ([0, 8] if dip else bass_steps):
+            jump = 12 if step in (10, 11) else (7 if step == 14 and section in (1, 3) else 0)
+            length = 5.5 if feel == 'halftime' or dip else (1.65 if feel == 'offbeat' else .8)
+            add('bass', base + step, length, root - 12 + jump, 100 if step % 4 == 0 else 88)
+
+        # Arpeggios move through chord tones, leaving space for the main phrase.
+        arp_steps = range(0, 16, 4 if dip or feel == 'halftime' else 2)
+        for i, step in enumerate(arp_steps):
+            if section == 0 and bar % 2 == 0 and step > 8:
+                continue
+            pitch = chord[(i + bar % 2) % 3] + 12
+            add('arp', base + step, 1.2 if feel != 'halftime' else 2.7, pitch,
+                44 if dip else 58)
+
+        if not dip:
+            for pos, n, length in motifs[feel]:
+                if int(pos // 16) != bar % 2:
+                    continue
+                # B phrase answers lower; A' reaches upward, then returns home.
+                n += (2 if section == 1 and pos >= 16 else -2 if section == 3 and pos >= 16 else 0)
+                pitch = degree(n)
+                if dominant and (pitch - tonic) % 12 == 10:
+                    pitch += 1
+                add('lead', base + pos % 16, length, pitch, 86 if cfg['boss'] else 78)
+        if dip and bar % 2 == 0:
+            add('lead', base, 10, degree(4 if bar % 4 == 0 else 2), 60)
+
+    for part, channel, program in [('drums', 9, None), ('bass', 1, 38),
+                                   ('lead', 2, 81), ('pad', 3, 89), ('arp', 4, 80)]:
+        t = track(mid, part, channel, program, drums=part == 'drums')
+        notes(t, channel, parts[part])
+        t.append(mido.MetaMessage('end_of_track', time=end - sum(m.time for m in t)))
+    meta.append(mido.MetaMessage('end_of_track', time=end))
+    return mid
+
+
+def verify_loop(mid, bars, bpm):
+    end = bars * 4 * mid.ticks_per_beat
+    tempo = mido.bpm2tempo(bpm)
+    assert abs(mid.length - bars * 4 * tempo / 1_000_000) < 1e-7
+    tempos = [m.tempo for t in mid.tracks for m in t if m.type == 'set_tempo']
+    assert tempos == [tempo]
+    count = 0
+    for t in mid.tracks:
+        tick, active = 0, set()
+        for msg in t:
+            tick += msg.time
+            assert 0 <= tick <= end
+            if msg.type == 'note_on' and msg.velocity:
+                assert tick < end
+                key = (msg.channel, msg.note)
+                assert key not in active, (t.name, tick, key)
+                active.add(key)
+                count += 1
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and not msg.velocity):
+                active.remove((msg.channel, msg.note))
+        assert not active
+        assert tick == end
+    return count
+
+
+def export_campaign():
+    """Export MIDI and the same note events for the game's Web Audio synth."""
+    import json
+    from pathlib import Path
+    scores = {}
+    for style, cfg in CAMPAIGN.items():
+        bars, bpm = 32, cfg['bpm']
+        mid = compose_campaign(bpm, bars, style)
+        count = verify_loop(mid, bars, bpm)
+        filename = Path(f'music/{style}.mid')
+        mid.save(filename)
+        steps = [[] for _ in range(bars * 16)]
+        for t in mid.tracks[1:]:
+            tick, active = 0, {}
+            for msg in t:
+                tick += msg.time
+                if msg.type == 'note_on' and msg.velocity:
+                    active[msg.note] = (tick, msg.velocity)
+                elif msg.type == 'note_off':
+                    start, velocity = active.pop(msg.note)
+                    assert start % (PPQ // 4) == 0
+                    steps[start // (PPQ // 4)].append(
+                        [t.name, msg.note, round((tick - start) / PPQ, 4), velocity])
+        # Use MIDI's integer microseconds/beat in both players to avoid tempo drift.
+        scores[cfg['cue']] = dict(bpm=60_000_000 / mido.bpm2tempo(bpm), boss=cfg['boss'],
+                                  bars=bars, title=cfg['title'],
+                                  gain={'halftime': 2.8, 'rolling': 2.5}.get(cfg['feel'], 3.5), steps=steps)
+        print(f'{filename}: {count} notes, {bars} bars, {bpm} BPM, {mid.length:.3f}s')
+    output = '// Generated by music/ddr_loop.py --campaign. Edit the composer, not this file.\n'
+    output += '(function (root) {\n    root.NovaWingMusicScores = ' + json.dumps(scores, separators=(',', ':')) + ';\n'
+    output += '})(typeof window !== "undefined" ? window : globalThis);\n'
+    Path('src/music-scores.js').write_text(output)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compose a DDR game loop")
     parser.add_argument("--out", default=None)
     parser.add_argument("--bpm", type=float, default=None)
-    parser.add_argument("--bars", type=int, default=8)
+    parser.add_argument("--bars", type=int, default=None)
+    parser.add_argument("--campaign", action="store_true", help="Export all five campaign MIDIs and game scores")
     parser.add_argument("--style", choices=list(STYLES), default="waves")
     args = parser.parse_args()
+    if args.campaign:
+        export_campaign()
+        return
+    args.bars = args.bars if args.bars is not None else (32 if args.style in CAMPAIGN else 8)
     bpm = args.bpm if args.bpm else STYLES[args.style]["bpm"]
     out = args.out if args.out else f"music/ddr-{args.style}.mid"
     mid = compose(bpm, args.bars, args.style)

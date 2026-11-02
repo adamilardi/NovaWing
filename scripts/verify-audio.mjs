@@ -9,14 +9,20 @@ const output = path.resolve('.verify-runs', 'audio-' + new Date().toISOString().
 await fs.mkdir(output, { recursive: true });
 const browser = await launchBrowser(chromium, true);
 const reports = [];
+const scenarios = ['waves', 'boss', 'canyon', 'canyonBoss', 'singularity', 'gauntlet', 'finalBoss', 'combat', 'mute', 'pause', 'styles'];
+const selected = process.env.VERIFY_AUDIO_SCENARIOS ? process.env.VERIFY_AUDIO_SCENARIOS.split(',') : scenarios;
 try {
-    for (const scenario of ['waves', 'boss', 'canyon', 'canyonBoss', 'singularity', 'gauntlet', 'finalBoss', 'combat', 'mute', 'pause', 'styles']) {
+    for (const scenario of selected) {
+        assert.ok(scenarios.includes(scenario), 'known audio scenario: ' + scenario);
         const page = await browser.newPage();
+        await page.addScriptTag({ path: path.resolve('src/music-scores.js') });
         await page.addScriptTag({ path: path.resolve('audio.js') });
         const result = await page.evaluate(async scenario => {
             const sampleRate = 24000;
             const isScore = Object.prototype.hasOwnProperty.call(NovaWingAudio.SCORES, scenario);
-            const seconds = isScore ? 19 : 6;
+            const score = NovaWingAudio.SCORES[scenario];
+            // Render across the loop seam, including the entire 32-bar arrangement.
+            const seconds = isScore ? Math.ceil((score.bars || 8) * 4 * 60 / score.bpm + 2) : 6;
             const offline = new OfflineAudioContext(2, sampleRate * seconds, sampleRate);
             let now = 0;
             let sources = 0;
@@ -40,14 +46,16 @@ try {
             window.clearInterval = id => timers.delete(id);
             window.setTimeout = (fn, ms) => { timers.set(++timerId, { fn, at: now + ms / 1000 }); return timerId; };
             const sfx = createSfx('genesis');
-            sfx.startMusic(isScore ? scenario : 'waves');
+            // Exercise the new scores for lifecycle and combat cases too.
+            sfx.unlock();
+            sfx.startMusic(isScore ? scenario : scenario === 'combat' ? 'finalBoss' : 'canyon');
             let burstSources = 0;
             for (let frame = 0; frame < seconds * 100; frame++) {
                 now = frame / 100;
                 if (scenario === 'mute' && frame === 100) sfx.setMuted(true);
                 if (scenario === 'mute' && frame === 350) sfx.setMuted(false);
                 if (scenario === 'pause' && frame === 100) sfx.stopMusic();
-                if (scenario === 'pause' && frame === 350) sfx.startMusic('boss');
+                if (scenario === 'pause' && frame === 350) sfx.startMusic('canyonBoss');
                 if (scenario === 'styles' && frame % 100 === 0) sfx.cycleStyle(1);
                 if (scenario === 'combat' || scenario === 'styles') {
                     if (frame % 10 === 0) sfx.shoot(3, 220);
@@ -111,6 +119,8 @@ try {
         header.writeUInt16LE(4, 32); header.writeUInt16LE(16, 34); header.write('data', 36);
         header.writeUInt32LE(pcm.length, 40);
         await fs.writeFile(path.join(output, scenario + '.wav'), Buffer.concat([header, pcm]));
+        reports.push(result);
+        console.log(JSON.stringify(result));
         assert.equal(result.nonFinite, 0, scenario + ': finite samples');
         assert.ok(result.peak < 0.95, scenario + ': headroom under heavy overlap');
         assert.ok(result.rms > 0.005, scenario + ': audible output');
@@ -120,8 +130,6 @@ try {
             assert.ok(result.resumedRms > 0.005, scenario + ': audio resumes');
         }
         if (scenario === 'combat' || scenario === 'styles') assert.ok(result.burstSources <= 8, 'collision burst is bounded');
-        reports.push(result);
-        console.log(JSON.stringify(result));
         await page.close();
     }
 } finally {

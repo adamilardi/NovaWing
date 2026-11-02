@@ -117,14 +117,14 @@ def main():
     dst = sys.argv[2] if len(sys.argv) > 2 else src.rsplit(".", 1)[0] + ".wav"
     mid = mido.MidiFile(src)
 
-    tempo_map = [(0, 500000)]
+    tempo_by_tick = {0: 500000}
     for track in mid.tracks:
         abs_tick = 0
         for msg in track:
             abs_tick += msg.time
             if msg.type == "set_tempo":
-                tempo_map.append((abs_tick, msg.tempo))
-    tempo_map.sort()
+                tempo_by_tick[abs_tick] = msg.tempo
+    tempo_map = sorted(tempo_by_tick.items())
 
     def tick_to_sec(tick):
         total, last_tick, tempo = 0.0, 0, tempo_map[0][1]
@@ -157,8 +157,9 @@ def main():
     for note, (start, vel, ch, prog) in open_notes.items():
         events.append((start, start + 0.4, note, vel, ch, prog))
 
-    total = max((end for _, end, _, _, _, _ in events), default=1.0) + 0.5
-    mix = np.zeros(int(total * RATE) + RATE)
+    total = mid.length
+    mix = np.zeros(round(total * RATE))
+    np.random.seed(0)  # Reproducible percussion in every preview.
     for start, end, note, vel, ch, prog in events:
         freq = 440.0 * 2 ** ((note - 69) / 12.0)
         if ch == 9:
@@ -166,7 +167,9 @@ def main():
         else:
             pos, sig = render_note(freq, start, end - start, vel, family_timbre(prog))
         i = int(pos * RATE)
-        mix[i:i + len(sig)] += sig[:len(mix) - i]
+        # Wrap release tails over the seam instead of adding silence to the WAV.
+        positions = (i + np.arange(len(sig))) % len(mix)
+        np.add.at(mix, positions, sig)
 
     peak = np.abs(mix).max()
     if peak > 0:

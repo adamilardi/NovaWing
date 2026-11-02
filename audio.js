@@ -157,6 +157,9 @@
         }
     };
 
+    // The campaign MIDI exports and browser sequences share one authored score.
+    Object.assign(SCORES, root.NovaWingMusicScores || {});
+
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
     }
@@ -666,8 +669,60 @@
             }
         }
 
+        function playMidiStep(score, when) {
+            const beat = 60 / score.bpm;
+            const common = { bus: musicBus, when };
+            const warm = styleId === 'n64' || styleId === 'snes';
+            for (const [part, pitch, beats, velocity] of score.steps[musicStep % score.steps.length]) {
+                const frequency = 440 * Math.pow(2, (pitch - 69) / 12);
+                const duration = beats * beat;
+                const level = velocity / 127;
+                if (part === 'drums') {
+                    if (pitch === 36) {
+                        tone({ ...common, frequency: 150, endFrequency: 46, duration: 0.2,
+                            type: 'sine', volume: 0.21 * level });
+                    } else if (pitch === 38 || pitch === 39) {
+                        noiseBurst({ ...common, duration: 0.14, volume: 0.09 * level,
+                            filterFreq: pitch === 39 ? 2400 : 1800, endFilter: 950, pan: 0.08 });
+                        tone({ ...common, frequency: 185, endFrequency: 110, duration: 0.1,
+                            type: 'triangle', volume: 0.045 * level });
+                    } else {
+                        const crash = pitch === 49;
+                        noiseBurst({ ...common, duration: crash ? 0.65 : pitch === 46 ? 0.12 : 0.035,
+                            volume: (crash ? 0.05 : 0.035) * level, type: 'highpass',
+                            filterFreq: crash ? 4200 : 6500, endFilter: crash ? 2200 : 5000,
+                            pan: crash ? 0.3 : -0.3 });
+                    }
+                } else if (part === 'bass') {
+                    tone({ ...common, frequency, duration, type: 'triangle', volume: 0.14 * level,
+                        filterFreq: 750, sustain: true });
+                    tone({ ...common, frequency, duration, type: 'sawtooth', volume: 0.026 * level,
+                        filterFreq: warm ? 400 : 650 });
+                } else if (part === 'pad') {
+                    tone({ ...common, frequency, duration, type: 'triangle', volume: 0.035 * level,
+                        filterFreq: warm ? 1200 : 1900, attack: 0.06, sustain: true,
+                        pan: (pitch % 3 - 1) * 0.55 });
+                } else if (part === 'arp') {
+                    fmTone({ ...common, carrier: frequency, modulator: frequency * 2,
+                        index: frequency * (warm ? 0.2 : 0.4), endIndex: 4,
+                        duration, volume: 0.046 * level, filterFreq: warm ? 2200 : 3400,
+                        pan: musicStep % 4 ? 0.4 : -0.4 });
+                } else {
+                    tone({ ...common, frequency, duration, type: 'sawtooth', volume: 0.05 * level,
+                        filterFreq: warm ? 1800 : 2800, attack: 0.008, sustain: true, pan: 0.1 });
+                    tone({ ...common, frequency, duration, type: 'triangle', volume: 0.035 * level,
+                        detune: 5, filterFreq: 2400, sustain: true, pan: -0.1 });
+                }
+            }
+            musicStep = (musicStep + 1) % score.steps.length;
+        }
+
         function playMusicStep(when) {
             const score = SCORES[musicMode];
+            if (score.steps) {
+                playMidiStep(score, when);
+                return;
+            }
             const isBoss = score.boss;
             const sixteenth = 60 / score.bpm / 4;
             const step = musicStep % 16;
@@ -766,7 +821,7 @@
             rebuildMixChain();
             if (musicBus) {
                 musicBus.gain.setTargetAtTime(
-                    SCORES[musicMode].boss ? style().musicBoss : style().musicWaves,
+                    (SCORES[musicMode].boss ? style().musicBoss : style().musicWaves) * (SCORES[musicMode].gain || 1),
                     context.currentTime,
                     0.05
                 );
@@ -839,7 +894,7 @@
                 musicStep = 0;
                 if (musicBus && context) {
                     musicBus.gain.setTargetAtTime(
-                        SCORES[musicMode].boss ? style().musicBoss : style().musicWaves,
+                        (SCORES[musicMode].boss ? style().musicBoss : style().musicWaves) * (SCORES[musicMode].gain || 1),
                         context.currentTime,
                         0.05
                     );
