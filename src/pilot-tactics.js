@@ -180,6 +180,9 @@ function plan(snap, durationMs = 160, preferred = null) {
         : Math.abs(e.y - p.y) + (e.x - p.x) * 0.35;
     const target = snap.boss || snap.enemies.filter(e => vertical ? e.y < p.y : e.x > p.x)
         .sort((a,b) => laneCost(a)-laneCost(b))[0];
+    // Station stays 140 for bosses too: 170 was tried and reverted
+    // (boss deaths 1.0/run -> 1.33, one 34.9s fight — extra range did
+    // not stop saturation reversals and cost shot grouping).
     let goalX = vertical ? (target?.x ?? bounds.x + bounds.width / 2) : bounds.x + Math.min(140, bounds.width * .22);
     let goalY = vertical ? bounds.y + Math.min(510, bounds.height * .85) : (target?.y ?? bounds.y + bounds.height / 2);
     // Intercept moving targets where our next shots will meet them.
@@ -276,12 +279,19 @@ function plan(snap, durationMs = 160, preferred = null) {
         const dt = Math.min(
             Number.isFinite(timers.volleyAt) ? timers.volleyAt : Infinity,
             Number.isFinite(timers.droneAt) ? timers.droneAt : Infinity) - now;
-        if (dt < 700) shooters.push({ x: snap.boss.x, y: snap.boss.y, dt });
+        if (dt < 700) shooters.push({ x: snap.boss.x, y: snap.boss.y, dt, boss: true });
     }
     // Hot when threats are near: commit to dodges instead of chasing DPS lanes.
     const nearAction = (bodies) => (bodies || []).some(b =>
         Math.abs(b.x - p.x) < 380 && Math.abs(b.y - p.y) < 380);
     const stickWeight = (nearAction(snap.enemyBullets) || nearAction(snap.enemies)) ? 48 : 12;
+    // Aimed-fire season: classic volleys aim at the ship with velocity
+    // lead, so stillness is death (L2 boss chained 3 kills in 5s at the
+    // station). While a volley loads or bullets are near, the deadband
+    // below stands down and the ship keeps drifting; lulls keep the
+    // grouping bonus. Lane pressure and the goal pull are untouched, so
+    // the ship still works the firing lane — it just never parks in it.
+    const bossHot = shooters.some(s => s.boss) || nearAction(snap.enemyBullets);
     const options = {};
     for (const stick of Object.keys(AXES)) for (const boost of [false,true]) {
         if (boost && (stick === 'hold' || snap.boostEnergy <= 0 ||
@@ -334,7 +344,25 @@ function plan(snap, durationMs = 160, preferred = null) {
         // hot heading memory otherwise freezes the correction axis
         // (L16 pod3 sat 50px off for 8s). Vetoes still rule.
         const sprint = laneSprint || relocating || chasingRank;
-        let score = -Math.hypot(a.end.x-goalX,a.end.y-goalY) * (sprint ? 3 : 1);
+        // Vetoed ties keep full goal weight — except tracker vetoes. A
+        // blanket 0.15 whisper was tried and reverted (38.7s boss fight).
+        // Trackers are kinematically different: the ship outruns them
+        // laterally (280 > 175), so the whisper lets heading memory
+        // commit to the outrun instead of reversing into pursuit
+        // (1.67 -> 0.67 tracker deaths/run). A pursuit simulation was
+        // tried instead and reverted (flat trackers, worse waves) —
+        // commitment beats prediction here. Relocation still exempt.
+        const vetoKind = a.predictedDamage && a.predictedDamage.kind;
+        const vetoType = a.predictedDamage && a.predictedDamage.detail
+            ? a.predictedDamage.detail.type : null;
+        const trackerTie = vetoKind === 'enemy' && !relocating &&
+            (vetoType === 'interceptor' || vetoType === 'dart');
+        let score = -Math.hypot(a.end.x-goalX,a.end.y-goalY) *
+            (trackerTie ? 0.15 : (sprint ? 3 : 1));
+        // Vetoes keep full weight: discounting waves bullet vetoes by
+        // re-dodgeability was tried and reverted (decision-time bullets
+        // are rare in waves — funnels are enemy-driven — so it fired
+        // nowhere useful while adding a failure mode).
         if (a.predictedDamage) score -= 10000 + (durationMs-a.predictedDamage.atMs)*5;
         if (a.predictedCollision?.kind === 'event-horizon') score -= 100000;
         if (after.predictedDamage) {
@@ -350,7 +378,9 @@ function plan(snap, durationMs = 160, preferred = null) {
         // Strong enough to beat goal-seeking; real damage still overrides.
         const margin = Math.min(a.end.x - p.w / 2 - bounds.x, bounds.x + bounds.width - p.w / 2 - a.end.x,
             a.end.y - p.h / 2 - bounds.y, bounds.y + bounds.height - p.h / 2 - a.end.y);
-        if (margin < 64) score -= (64 - margin) * 6;
+        score -= edgeMarginPenalty(margin, usesDeepMargin({
+            bossStance: snap.phase === 'boss' && !!snap.boss,
+            wallCount: (snap.walls || []).length, relocating, chasingRank }));
         // Trackers curve toward the ship, so linear prediction under-reads
         // them: keep a space bubble around interceptor-kind enemies.
         // Radius stays 150: 180 was tried and reverted (tracker contacts
@@ -379,6 +409,23 @@ function plan(snap, durationMs = 160, preferred = null) {
             const d = Math.hypot(dx, dy);
             if (d < 60) score -= (60 - d) * 4;
         }
+        // Far walls: only hold-like options pay full price. The check
+        // assumes the ship parks at the hold point for 2.5s, but a ship
+        // in transit crosses the slab's path in ~0.5s and replans every
+        // 80ms — discount purposeful travel so relocation escapes and
+        // rank fetches are not blocked by slabs they will cross early.
+        if (!vertical && snap.walls && snap.walls.length) {
+            const transit = Math.hypot(a.end.x - goalX, a.end.y - goalY) <
+                Math.hypot(p.x - goalX, p.y - goalY) - 20;
+            const far = wallFarPenalty(snap.walls, a.end.x, a.end.y, p.w, p.h);
+            if (far) score += far * (transit ? 0.3 : 1);
+        }
+        // Room trap veto: zero live exits means doom even when the action
+        // window looks clean. Below true vetoes (immediate threats rule);
+        // above all else — and among doomed options it breaks ties toward
+        // exits instead of the atMs lottery.
+        a.trapped = roomSurvivors(snap, a.end.x, a.end.y) === 0;
+        if (a.trapped) score -= 9500;
         // Phase-3 volleys fan out of extra launchers; the muzzle corridor
         // widens so the ship clears the whole spread, not just its center.
         const corridor = (snap.phase === 'boss' && snap.boss && snap.boss.phase >= 3) ? 100 : 46;
@@ -401,6 +448,14 @@ function plan(snap, durationMs = 160, preferred = null) {
                 ? (a.end.y > snap.boss.y && Math.abs(a.end.x - snap.boss.x) < 36)
                 : (a.end.x < snap.boss.x && Math.abs(a.end.y - snap.boss.y) < 36);
             if (inLane) score += 200;
+            // Strafe under aimed fire: volleys lead velocity, so a parked
+            // ship eats the next volley even when the current field looks
+            // clean (L1 held the station, then a led volley overtook the
+            // late flee). While hot, parking pays 400 — more than lane,
+            // hold, goal and calmness return combined — so the ship paces
+            // the lane instead. Clean options only: vetoed ties keep
+            // their damage ordering, and dodges still win first.
+            if (bossHot && Math.hypot(a.end.x - p.x, a.end.y - p.y) < 34) score -= 400;
             // Tracking deadband: a chasing ship lags a weaving boss by
             // the ~0.75s shot flight and sweeps the stream across empty
             // phases. Holding the lane axis still groups shots so the
@@ -408,7 +463,7 @@ function plan(snap, durationMs = 160, preferred = null) {
             // stays free for station-keeping; dodges still override.
             const laneNow = vertical ? Math.abs(p.x - snap.boss.x) : Math.abs(p.y - snap.boss.y);
             const stillAxis = vertical ? AXES[stick][0] === 0 : AXES[stick][1] === 0;
-            if (laneNow < 50 && stillAxis) score += 150;
+            if (laneNow < 50 && stillAxis && !bossHot) score += 150;
         }
         // Calmness: small moves beat arena-wide dashes. Damage penalties
         // still override; this only damps the goal pull when nothing forces
@@ -450,7 +505,94 @@ function plan(snap, durationMs = 160, preferred = null) {
         input:{x:AXES[best.stick][0],y:AXES[best.stick][1],fire:true,boost:best.boost}};
 }
 
-const api = { AXES, evaluateAction, plan };
+/**
+ * Soft edge margin: pinned against an edge, the next dodge has nowhere
+ * to go. Boss stance uses a deeper margin — aimed volleys herd the ship
+ * left, and the x<100 pocket at the station's shoulder is where L2 boss
+ * chains kill (5-missile saturation with the edge behind).
+ */
+function edgeMarginPenalty(margin, bossStance) {
+    const limit = bossStance ? 100 : 64;
+    return margin < limit ? (limit - margin) * 6 : 0;
+}
+
+/**
+ * Deep-margin gate: boss stance (aimed volleys herd the ship to the
+ * edge) plus walled waves (the corridor exit scramble crushes ships
+ * under x=100 in collapsing gaps — L2 chained 3 deaths in 5s at
+ * x=33). Proven escapes keep the shallow margin and full commitment.
+ */
+function usesDeepMargin({ bossStance, wallCount, relocating, chasingRank }) {
+    if (bossStance) return true;
+    return wallCount > 0 && !relocating && !chasingRank;
+}
+
+/**
+ * Far wall check (analytic, no tick sim). The 160ms action window plus
+ * the 700ms hold-after are blind to slow columns: a wall 300px out
+ * arrives in ~2s, so the ship parks in its path, the exit scramble
+ * collapses the gap, and it crushes over multiple deaths (L2 chained
+ * at x=33). Project each leftward wall's x-slab against the hold
+ * position out to 2.5s; full boxes, so a 28px gap reads solid for a
+ * 30px ship. Nearer arrivals pay more, up to veto-adjacent for contact.
+ */
+function wallFarPenalty(walls, endX, endY, shipW, shipH, horizonMs = 2500) {
+    const sx0 = endX - shipW / 2, sx1 = endX + shipW / 2;
+    let worst = 0;
+    for (const wl of (walls || [])) {
+        const vx = wl.vx || 0;
+        if (vx >= 0) continue;
+        if (Math.abs(endY - (wl.y || 0)) >= (shipH + (wl.h || 0)) / 2) continue;
+        const faceL = (wl.x || 0) - (wl.w || 0) / 2;
+        const faceR = (wl.x || 0) + (wl.w || 0) / 2;
+        if (faceR < sx0) continue;
+        const tEnter = faceL <= sx1 ? 0 : (faceL - sx1) / -vx * 1000;
+        if (tEnter >= horizonMs) continue;
+        worst = Math.min(worst, -(horizonMs - tEnter) * 0.6);
+    }
+    return Math.round(worst * 100) / 100;
+}
+
+// NOTE: a faithful pursuit simulation (lane resample, lead, commit)
+// for interceptor/dart threats was tried and reverted: tracker deaths
+// stayed flat (0.67 -> 0.67/run with the whisper, 1.67 alone) while
+// its earlier vetoes maneuvered the ship into walls and traffic
+// (waves 1.3 -> 3.7/run). Prediction accuracy is not the binder;
+// commitment is — see the tracker whisper at the goal term.
+
+/**
+ * Live exits from a hold point: four cardinal 160ms probes (one replan
+ * of room) tested linearly against every body. A probe off the arena
+ * is dead — clamping survives but stays trapped. Linear only: a
+ * far-wall criterion was tried and reverted (walls within 1.2s are
+ * ubiquitous in corridors, so it fired constantly and veto-scale noise
+ * turned decisions into a lottery — 8-death runs). Far walls stay a
+ * soft standalone term; the trap veto fires only on true surrounds.
+ */
+function roomSurvivors(snap, endX, endY) {
+    const p = snap.player;
+    const bodies = [...(snap.enemyBullets || []), ...(snap.enemies || []),
+        ...(snap.obstacles || []), ...(snap.walls || []),
+        ...(snap.boss ? [snap.boss] : [])];
+    const now = snap.time || 0;
+    const bounds = (snap.world && snap.world.bounds) || { x: 0, y: 0, width: 800, height: 600 };
+    const step = 45;
+    const from = { x: endX, y: endY, w: p.w, h: p.h };
+    let alive = 0;
+    for (const [px, py] of [[endX + step, endY], [endX - step, endY], [endX, endY + step], [endX, endY - step]]) {
+        if (px - p.w / 2 < bounds.x || px + p.w / 2 > bounds.x + bounds.width ||
+            py - p.h / 2 < bounds.y || py + p.h / 2 > bounds.y + bounds.height) continue;
+        let dead = false;
+        for (const b of bodies) {
+            if (b.expiresAt && now + 160 > b.expiresAt) continue;
+            if (sweptOverlap(from, { x: px, y: py }, b, 0, 160)) { dead = true; break; }
+        }
+        if (!dead) alive++;
+    }
+    return alive;
+}
+
+const api = { AXES, evaluateAction, plan, edgeMarginPenalty, usesDeepMargin, wallFarPenalty, roomSurvivors };
 root.NovaWingTactics = api;
 if(typeof module === "object" && module.exports) module.exports=api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -334,6 +334,141 @@ describe('pilot tactics', () => {
             'imminent volley timer must discount the in-lane hold');
     });
 
+    it('withholds the boss deadband still-bonus while bullets are near', () => {
+        // Classic volleys are aimed at the ship with velocity lead, so a
+        // stationary ship is a dead ship (L2 boss chained 3 deaths in 5s
+        // at the station). Clamped twins share end, goal and penalties,
+        // so their hold difference is exactly the two hot withholds: the
+        // 150 deadband plus the 400 anti-parking strafe term.
+        const mk = (bx) => bossSnap({
+            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: bx, y: 100, vx: -380, vy: 0, w: 20, h: 20 }]
+        });
+        const hot = Tactics.plan(mk(400));
+        const calm = Tactics.plan(mk(700));
+        for (const [name, r] of [['hot', hot], ['calm', calm]]) {
+            assert.equal(r.options.hold.predictedDamage, null, `${name} hold must be clean`);
+            assert.equal(r.options.hold.postActionDamage, null, `${name} hold-after must be clean`);
+        }
+        assert.equal(calm.options.hold.score - hot.options.hold.score, 550);
+    });
+
+    it('room survivors counts live 160ms exits from a hold point', () => {
+        const room = (over, x = 200, y = 300) => Tactics.roomSurvivors(snap({
+            player: { x: 200, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            ...over
+        }), x, y);
+        assert.equal(room({}), 4, 'open space keeps all exits');
+        // Four static slabs at ±55: every 45px probe segment crosses one.
+        const box = [[255, 300], [145, 300], [200, 245], [200, 355]]
+            .map(([x, y]) => ({ x, y, vx: 0, vy: 0, w: 30, h: 30 }));
+        assert.equal(room({ walls: box }), 0, 'surrounded means no exits');
+        // Linear only: arriving slabs are the standalone wall-far term's
+        // job, not the probes' — a slab 200px out closes nothing yet.
+        assert.equal(room({ walls: [{ x: 400, y: 300, w: 88, h: 600, vx: -200, vy: 0 }] }), 4);
+        // Off-arena probes are dead: clamping survives but stays trapped.
+        assert.equal(room({}, 30, 300), 3);
+    });
+
+    it('trapless holds pay the room veto on top of other penalties', () => {
+        // Twins share end, goal and vetoes; the boxed twin adds the
+        // 9500 trap veto plus wall-bubble adjacency (2×200 on the long
+        // axis, 2×140 on the short axis of the 60×30 ship).
+        const mk = (walls) => snap({
+            player: { x: 200, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            walls
+        });
+        const box = [[255, 300], [145, 300], [200, 245], [200, 355]]
+            .map(([x, y]) => ({ x, y, vx: 0, vy: 0, w: 30, h: 30 }));
+        const open = Tactics.plan(mk([]));
+        const trapped = Tactics.plan(mk(box));
+        assert.equal(open.options.hold.predictedDamage, null);
+        assert.equal(trapped.options.hold.predictedDamage, null);
+        assert.equal(open.options.hold.score - trapped.options.hold.score, 10180);
+        assert.equal(open.options.hold.trapped, false);
+        assert.equal(trapped.options.hold.trapped, true);
+    });
+
+    it('basic dodging beats a vetoed hold', () => {
+        const dodge = Tactics.plan(snap({
+            player: { x: 400, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            enemyBullets: [{ x: 500, y: 300, vx: -500, vy: 0, w: 20, h: 20 }]
+        }));
+        assert.notEqual(dodge.recommended, 'hold');
+        assert.equal(dodge.options[dodge.recommended].predictedDamage, null);
+    });
+
+    it('tracker vetoes whisper the goal so the dodge commits (ship outruns 280 > 175)', () => {
+        // Clamped twins: same veto geometry and atMs, only the enemy
+        // type differs. The interceptor twin pulls 0.15 (commit to the
+        // outrun); the regular twin keeps full weight. dist=260, so the
+        // holds differ by exactly 260*0.85=221.
+        const mk = (type) => snap({
+            player: { x: 400, y: 300, vx: 0, vy: 0, w: 60, h: 30 },
+            enemies: [{ x: 600, y: 300, vx: -1500, vy: 0, w: 60, h: 30,
+                type, health: 4, canShoot: false }]
+        });
+        const tracker = Tactics.plan(mk('interceptor'));
+        const plain = Tactics.plan(mk('regular'));
+        assert.equal(tracker.options.hold.predictedDamage.kind, 'enemy');
+        assert.equal(plain.options.hold.predictedDamage.kind, 'enemy');
+        assert.equal(tracker.options.hold.predictedDamage.atMs,
+            plain.options.hold.predictedDamage.atMs, 'twins must share atMs');
+        assert.equal(tracker.options.hold.score - plain.options.hold.score, 221);
+    });
+
+    it('wall-far check sees arriving columns the 160ms window cannot', () => {
+        // Ship holding at (140,738); a column slab approaches from the
+        // right at 200px/s. t_enter=(456-170)/200=1430ms ->
+        // -(2500-1430)*0.6 = -642. Passed/right-moving/gapped walls score 0.
+        const w = Tactics.wallFarPenalty;
+        const ship = { endX: 140, endY: 738, shipW: 60, shipH: 30 };
+        const slab = (x, y, vx) => [{ x, y, w: 88, h: 312, vx }];
+        assert.equal(w(slab(500, 738, -200), ship.endX, ship.endY, ship.shipW, ship.shipH), -642);
+        assert.equal(w(slab(100, 738, -200), ship.endX, ship.endY, ship.shipW, ship.shipH), -1500);
+        assert.equal(w(slab(500, 100, -200), ship.endX, ship.endY, ship.shipW, ship.shipH), 0);
+        assert.equal(w(slab(500, 738, 50), ship.endX, ship.endY, ship.shipW, ship.shipH), 0);
+        assert.equal(w([], ship.endX, ship.endY, ship.shipW, ship.shipH), 0);
+        const gap = [{ x: 500, y: 570, w: 88, h: 200, vx: -200 },
+            { x: 500, y: 910, w: 88, h: 200, vx: -200 }];
+        assert.equal(w(gap, ship.endX, 740, ship.shipW, ship.shipH), 0);
+    });
+
+    it('deep margin covers boss stance and walled waves, never proven escapes', () => {
+        const deep = (over) => Tactics.usesDeepMargin({
+            bossStance: false, wallCount: 0, relocating: false, chasingRank: false, ...over
+        });
+        assert.equal(deep({ bossStance: true }), true);
+        assert.equal(deep({ wallCount: 3 }), true, 'corridor exit scramble crushes edge ships');
+        assert.equal(deep({}), false, 'open waves keep the shallow margin');
+        assert.equal(deep({ wallCount: 3, relocating: true }), false, 'pocket escapes keep full commitment');
+        assert.equal(deep({ wallCount: 3, chasingRank: true }), false, 'rank fetch keeps full commitment');
+    });
+
+    it('boss stance keeps a deeper edge margin than waves', () => {
+        const m = Tactics.edgeMarginPenalty;
+        assert.equal(m(70, false), 0, 'waves margin starts at 64');
+        assert.equal(m(70, true), 180, 'boss margin reaches the x<100 trap pocket');
+        assert.equal(m(30, true), 420);
+        assert.equal(m(30, false), 204);
+        assert.equal(m(200, true), 0);
+        assert.equal(m(200, false), 0);
+    });
+
+    it('withholds the boss deadband still-bonus while a volley is loading', () => {
+        // dt=500 sits outside the 400ms small-move window, so without the
+        // withhold the corridor term alone (-160) loses to lane+deadband
+        // (+350) and the ship sits for aimed fire. Twins differ by the
+        // corridor term plus the two hot withholds (150 + 400).
+        const mk = (volleyAt) => bossSnap({
+            player: { x: 196, y: 423, vx: 0, vy: 0, w: 60, h: 30 },
+            combatHazards: { attackTimers: { volleyAt, droneAt: Infinity } }
+        });
+        const loading = Tactics.plan(mk(10500));
+        const idle = Tactics.plan(mk(20000));
+        assert.equal(idle.options.hold.score - loading.options.hold.score, 710);
+    });
+
     it('fetches distant rank loot while under-ranked', () => {
         // Rank 1 at a boss is a coin flip (7/13); rank 3 nearly doubles
         // rank 2 boss DPS (40 vs 24). Cross the arena for the gun.

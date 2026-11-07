@@ -65,7 +65,7 @@
             if (keys == null || !known) return;
             for (const key of keys) if (!known.has(key)) errors.push(label + ': unknown key ' + key);
         };
-        for (const [index, level] of levels.entries()) {
+        for (const level of levels) {
             const label = 'Level ' + level.id;
             if (ids.has(level.id)) errors.push(label + ': ids must be unique campaign positions');
             ids.add(level.id);

@@ -46,9 +46,12 @@ export function installSimpleBot() {
     window.__novawingSimpleBotDecisions = 0;
     window.__novawingSimpleBotBoostDecisions = 0;
     window.__novawingSimpleBotBoostStats = { ticks: 0, noBoostOptions: 0, allDirty: 0, holdDirty: 0, tiltLost: 0, boostWon: 0, boostSwitches: 0, lastBoost: false };
+    window.__novawingSimpleBotTrapPicks = 0;
     window.__novawingSimpleBotError = null;
     window.__novawingSimpleBotLast = '';
     window.__novawingSimpleBotPreferred = null;
+    window.__novawingSimpleBotDeathPlans = [];
+    window.__novawingSimpleBotLastLives = null;
     const tick = () => {
         try {
             const snap = window.__novawingDebug.getBotSnapshot();
@@ -93,9 +96,38 @@ export function installSimpleBot() {
             window.__novawingSimpleBotLast = result.recommended;
             window.__novawingSimpleBotGoal = result.goal;
             const chosen = result.options[result.recommended] || {};
+            if (chosen.trapped) window.__novawingSimpleBotTrapPicks += 1;
             window.__novawingSimpleBotPred =
                 (chosen.predictedCollision ? chosen.predictedCollision.kind : '-') + '/' +
                 (chosen.postActionDamage ? chosen.postActionDamage.kind : '-');
+            // Death-time truth: Node polls up to a burst late, so capture
+            // the exact pre-death plan in-page the tick lives decrease.
+            const lives = Number.isFinite(snap.lives) ? snap.lives : null;
+            if (window.__novawingSimpleBotLastLives !== null && lives !== null &&
+                lives < window.__novawingSimpleBotLastLives) {
+                const prev = window.__novawingSimpleBotPrevPlan || {};
+                window.__novawingSimpleBotDeathPlans.push({
+                    t: Math.round(snap.elapsedMs || 0),
+                    level: snap.level, phase: snap.phase, lives,
+                    pos: { x: Math.round(snap.player.x), y: Math.round(snap.player.y) },
+                    vel: { x: Math.round(snap.player.vx || 0), y: Math.round(snap.player.vy || 0) },
+                    last: prev.last || null, goal: prev.goal || null, pred: prev.pred || null,
+                    invulnMs: Math.round((snap.playerInvulnerableUntil || 0) - snap.time),
+                    bullets: (snap.enemyBullets || []).map(b => ({ x: Math.round(b.x), y: Math.round(b.y),
+                        vx: Math.round(b.vx || 0), vy: Math.round(b.vy || 0) })).slice(0, 6),
+                    enemies: (snap.enemies || []).map(e => ({ type: e.type || '?',
+                        x: Math.round(e.x), y: Math.round(e.y),
+                        vx: Math.round(e.vx || 0), vy: Math.round(e.vy || 0) })).slice(0, 6),
+                    hist: (window.__novawingSimpleBotPlanHist || []).slice()
+                });
+            }
+            if (lives !== null) window.__novawingSimpleBotLastLives = lives;
+            window.__novawingSimpleBotPrevPlan = { last: result.recommended,
+                goal: result.goal, pred: window.__novawingSimpleBotPred };
+            const hist = window.__novawingSimpleBotPlanHist || [];
+            hist.push({ last: result.recommended, pred: window.__novawingSimpleBotPred });
+            while (hist.length > 3) hist.shift();
+            window.__novawingSimpleBotPlanHist = hist;
         } catch (err) {
             window.__novawingSimpleBotError = String((err && err.message) || err);
         }
@@ -150,7 +182,7 @@ async function main() {
     if (!await page.evaluate(installSimpleBot)) throw new Error('Failed to install simple bot');
 
     const started = Date.now();
-    let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0, lastSeg = null, lastRank = null, lastLootKey = '';
+    let lastLog = 0, continuesUsed = 0, won = false, cleared = false, finalSnap = null, decisions = 0, trapPicks = 0, lastSeg = null, lastRank = null, lastLootKey = '';
     let boostDecisions = 0, bossEntryMs = null, boostStats = null;
     let maxLevel = LEVEL || 1, lastLevel = null, lastPlayer = { x: 400, y: 300 };
     let lastErrorLogged = '', stalls = 0, switches = 0;
@@ -158,6 +190,7 @@ async function main() {
     let lastDecisions = 0, lastDecisionsT = Date.now();
     const deathsByCause = {};
     const deaths = [];
+    let deathPlans = [];
     let prevLives = null;
     // Attribute every lost life, not just wipes: single deaths used to be
     // invisible (lives 5->4 never touched deathsByCause), which hid the
@@ -173,6 +206,10 @@ async function main() {
                 ...(s.walls || []).map(w => ({ kind: 'wall', x: w.x, y: w.y }))];
             if (s.boss) all.push({ kind: 'boss', x: s.boss.x, y: s.boss.y });
             return { at: { x: Math.round(px), y: Math.round(py) },
+                vel: s.player ? { x: Math.round(s.player.vx || 0), y: Math.round(s.player.vy || 0) } : null,
+                plan: { last: window.__novawingSimpleBotLast || null,
+                    goal: window.__novawingSimpleBotGoal || null,
+                    pred: window.__novawingSimpleBotPred || null },
                 near: all.map(t => ({ kind: t.kind, d: Math.round(Math.hypot(t.x - px, t.y - py)) }))
                     .sort((a, b) => a.d - b.d).slice(0, 4),
                 walls: (s.walls || []).map(w => ({ x: Math.round(w.x), y: Math.round(w.y),
@@ -189,7 +226,8 @@ async function main() {
             elapsedMs: Math.round(snap.elapsedMs || 0), lives: snap.lives,
             pos: { x: Math.round(lastPlayer.x), y: Math.round(lastPlayer.y) },
             cause: topCause, near: causes ? causes.near : null,
-            at: causes ? causes.at : null, walls: causes ? causes.walls : null,
+            at: causes ? causes.at : null, vel: causes ? causes.vel : null,
+            plan: causes ? causes.plan : null, walls: causes ? causes.walls : null,
             bands: causes ? causes.bands : null, reloc: causes ? causes.reloc : null });
         return causes;
     };
@@ -213,6 +251,7 @@ async function main() {
             goal: goal ? `(${Math.round(goal.x)},${Math.round(goal.y)})` : '',
             pred: window.__novawingSimpleBotPred || '',
             decisions: window.__novawingSimpleBotDecisions || 0,
+            trapPicks: window.__novawingSimpleBotTrapPicks || 0,
             boostDecisions: window.__novawingSimpleBotBoostDecisions || 0,
             boostStats: window.__novawingSimpleBotBoostStats || null,
             last: window.__novawingSimpleBotLast || '',
@@ -249,6 +288,7 @@ async function main() {
             const snap = status.snap;
             finalSnap = snap;
             decisions = status.decisions;
+            trapPicks = status.trapPicks || 0;
             boostDecisions = status.boostDecisions || 0;
             if (status.boostStats) boostStats = status.boostStats;
             if (bossEntryMs === null && snap && (snap.phase === 'boss' || snap.boss) &&
@@ -376,6 +416,7 @@ async function main() {
             if (!fast) await page.waitForTimeout(100);
         }
     } finally {
+        deathPlans = await page.evaluate(() => window.__novawingSimpleBotDeathPlans || []).catch(() => []);
         await page.evaluate(() => { window.__novawingSimpleBotStop?.(); }).catch(() => {});
         if (fast) await paintFastPlayFrame(page).catch(() => {});
         await page.screenshot({ path: path.join(OUT, 'final.png') }).catch(() => {});
@@ -383,10 +424,10 @@ async function main() {
     }
     const report = {
         when: new Date().toISOString(), level: LEVEL, won, cleared, continuesUsed,
-        decisions, boostDecisions, boostStats,
+        decisions, trapPicks, boostDecisions, boostStats,
         boostFraction: decisions > 0 ? Math.round(boostDecisions / decisions * 1000) / 1000 : 0,
         bossEntryMs: bossEntryMs === null ? null : Math.round(bossEntryMs),
-        deaths,
+        deaths, deathPlans,
         maxLevel, wallMs: Date.now() - started, fastPlay: fast,
         gameCapMs, switches, stalls, deathsByCause, bossGun, pageErrors,
         final: finalSnap && {

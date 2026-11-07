@@ -1,0 +1,17 @@
+node_modules/
+dist/
+vendor/
+.venv*/
+.wrangler/
+.verify-runs/
+.bot-runs/
+art-candidates/
+art-selections/
+assets/
+music/
+sfx-reference/
+rl/demos/
+rl/weights/
+data/
+*.min.js
+package-lock.json

@@ -160,16 +160,6 @@ function classifyDeath(snap, history) {
     return 'combat_or_unknown';
 }
 
-async function waitForGame(page, timeout = 25000) {
-    await page.waitForFunction(() => {
-        return window.__novawingDebug &&
-            window.__novawingDebug.ready &&
-            window.__novawingDebug.ready() &&
-            typeof window.__novawingDebug.setBotInput === 'function' &&
-            typeof window.__novawingDebug.getBotSnapshot === 'function';
-    }, null, { timeout });
-}
-
 async function installExpert(page, policy) {
     if (EXPERT === 'policy') {
         if (!policy) throw new Error(`Policy required at ${POLICY_PATH}`);

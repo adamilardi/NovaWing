@@ -735,7 +735,6 @@ let nextBoostTrailAt = 0;
 let currentPlayerAnimation = null;
 let playerAnimationOverride = null;
 let playerAnimationOverrideUntil = 0;
-let starfieldOffset = 0;
 let starLayers = null;
 let nebulaGraphics = null;
 let vignette = null;
@@ -839,8 +838,6 @@ function syncLevelMusic(phase) {
     if (musicDirector) musicDirector.select(getLevelDef(currentLevel), getLevelSegmentDef(), phase);
 }
 let audioMuted = false;
-let leaderboardEntries = [];
-let leaderboardStatus = 'Loading online leaderboard...';
 let leaderboardLoadPromises = new Map();
 let campaignRunState = null;
 let levelRunState = null;
@@ -1505,7 +1502,6 @@ function create() {
     currentPlayerAnimation = null;
     playerAnimationOverride = null;
     playerAnimationOverrideUntil = 0;
-    starfieldOffset = 0;
     starLayers = null;
     nebulaGraphics = null;
     this.environmentProps = null;
@@ -1574,8 +1570,6 @@ function create() {
     runtimeSessionGen += 1;
     leaderboardDebugTainted = false;
     leaderboardIneligibleReason = null;
-    leaderboardEntries = getLocalLeaderboard(makeLeaderboardScope('campaign', getDifficultyMode()));
-    leaderboardStatus = leaderboardEntries.length ? 'Offline scores shown' : 'Loading online leaderboard...';
     loadLeaderboardFromServer(makeLeaderboardScope('campaign', getDifficultyMode()));
     campaignRunState = null;
     levelRunState = null;
@@ -1931,7 +1925,6 @@ function update(time, delta) {
     }
     // Player movement
     let axes = getMovementAxes();
-    const isMoving = axes.x !== 0 || axes.y !== 0;
     let wantsBoost = isBoostHeld();
     if (!player || !player.active) { axes = { x: 0, y: 0 }; wantsBoost = false; }
     const gliding = shipGlide && simTime < shipGlide.until;
@@ -4986,6 +4979,7 @@ function openBandsSignature(bands) {
     return window.NovaWingCorridor.openBandsSignature(bands);
 }
 
+// eslint-disable-next-line no-unused-vars -- pinned corridor-compat wrapper (tests/corridor-math.test.cjs)
 function openBandsRoughlyEqual(a, b) {
     return window.NovaWingCorridor.openBandsRoughlyEqual(a, b);
 }
@@ -4994,10 +4988,12 @@ function yOverlapsBand(y, band, pad = 0) {
     return window.NovaWingCorridor.yOverlapsBand(y, band, pad);
 }
 
+// eslint-disable-next-line no-unused-vars -- pinned corridor-compat wrapper (tests/corridor-math.test.cjs)
 function yInOpenBands(y, bands, pad = 0) {
     return window.NovaWingCorridor.yInOpenBands(y, bands, pad);
 }
 
+// eslint-disable-next-line no-unused-vars -- pinned corridor-compat wrapper (tests/corridor-math.test.cjs)
 function bandHasSignificantOverlap(fromBand, toBands, minOverlap = 90) {
     return window.NovaWingCorridor.bandHasSignificantOverlap(fromBand, toBands, minOverlap);
 }
@@ -5884,7 +5880,6 @@ function updateBossFight(time, frameDelta) {
         return;
     }
 
-    const arenaY = Number.isFinite(boss.arenaY) ? boss.arenaY : (player ? player.y : 300);
     if (!Number.isFinite(boss.arenaY)) boss.arenaY = boss.y;
     const dt = playtestStepSeconds(frameDelta, 0.008, 0.05);
 
@@ -7441,10 +7436,6 @@ function enterBossSegment(scene, segDef) {
     startBossFight.call(scene, encounter);
 }
 
-function enterIntroBoss(scene, segDef) {
-    enterBossSegment(scene, segDef);
-}
-
 function enterProgressWaves(scene, segDef, reason) {
     levelTransitioning = false;
     gamePhase = 'waves';
@@ -7655,10 +7646,6 @@ function enterTransition(scene, segDef) {
         playerInvulnerableUntil = Math.max(playerInvulnerableUntil, playtestNow(scene) + 800);
         finishLevelSegment(scene, 'transitionComplete');
     });
-}
-
-function enterFinalBoss(scene, segDef) {
-    enterBossSegment(scene, segDef);
 }
 
 // ---------------------------------------------------------------------------
@@ -9021,6 +9008,7 @@ function approachValue(current, target, maxStep) {
     return target;
 }
 
+// eslint-disable-next-line no-unused-vars -- pinned aim-compat wrapper (tests/enemy-facing.test.cjs)
 function normalizeAngleDegrees(angle) {
     return window.NovaWingEnemyMath.normalizeAngleDegrees(angle);
 }
@@ -9136,30 +9124,33 @@ function handleKeyboardDown(event) {
         return;
     }
 
+    // Toggles and cycles fire once per physical press: a held key auto-repeats
+    // keydown, which would otherwise strobe pause/mute, spin the difficulty
+    // and audio pickers, and blow through the restart double-press confirm.
     if (isPauseInput(event)) {
-        togglePause();
+        if (!event.repeat) togglePause();
         event.preventDefault();
         return;
     }
 
     if (gamePaused) {
         if (isMuteInput(event)) {
-            toggleMute();
+            if (!event.repeat) toggleMute();
             event.preventDefault();
             return;
         }
         if (isDifficultyMenuInput(event)) {
-            cycleDifficultyMode(event.shiftKey || event.code === 'ArrowLeft' || event.key === 'ArrowLeft' ? -1 : 1);
+            if (!event.repeat) cycleDifficultyMode(event.shiftKey || event.code === 'ArrowLeft' || event.key === 'ArrowLeft' ? -1 : 1);
             event.preventDefault();
             return;
         }
         if (isPauseRestartInput(event)) {
-            confirmPauseRestart();
+            if (!event.repeat) confirmPauseRestart();
             event.preventDefault();
             return;
         }
         if (isPauseResumeInput(event)) {
-            togglePause();
+            if (!event.repeat) togglePause();
             event.preventDefault();
             return;
         }
@@ -9168,13 +9159,13 @@ function handleKeyboardDown(event) {
     }
 
     if (isMuteInput(event)) {
-        toggleMute();
+        if (!event.repeat) toggleMute();
         event.preventDefault();
         return;
     }
 
     if (isAudioStyleInput(event)) {
-        cycleAudioStyle(event.code === 'BracketLeft' || event.key === '[' ? -1 : 1);
+        if (!event.repeat) cycleAudioStyle(event.code === 'BracketLeft' || event.key === '[' ? -1 : 1);
         event.preventDefault();
         return;
     }
@@ -10490,11 +10481,6 @@ function confirmPauseRestart(scene) {
     }
     setPaused(active, false, { skipResumePhysics: true });
     active.scene.restart();
-}
-
-function panFromX(x) {
-    if (!Number.isFinite(x)) return 0;
-    return Phaser.Math.Clamp((x / GAME_WIDTH) * 2 - 1, -1, 1);
 }
 
 function handleKeyboardUp(event) {
@@ -12144,7 +12130,6 @@ function drawBackgroundLayers(scene, frameDelta, time) {
     if (!starLayers) return;
 
     const boostMul = Phaser.Math.Linear(1, 1.85, boostIntensity);
-    starfieldOffset += frameDelta * 0.01;
 
     // Expansion environments have moving distant wreckage, separate from solid terrain.
     if (currentLevel >= 4) {
@@ -12565,24 +12550,18 @@ function recordLocalLeaderboard(entry, scope = entry && entry.scope) {
     const rank = sorted.findIndex(candidate => candidate.id === savedEntry.id) + 1;
     const entries = sorted.slice(0, LEADERBOARD_LIMIT);
     saveLocalLeaderboard(entries, normalizedScope);
-    if (normalizedScope === 'campaign') leaderboardEntries = entries;
 
     return { rank, entries };
 }
 
 function loadLeaderboardFromServer(scope = 'campaign') {
     const normalizedScope = sanitizeLeaderboardScope(scope);
-    const sessionGen = runtimeSessionGen;
     if (leaderboardLoadPromises.has(normalizedScope)) {
         return leaderboardLoadPromises.get(normalizedScope);
     }
 
     if (!window.fetch) {
         const entries = getLocalLeaderboard(normalizedScope);
-        if (normalizedScope === 'campaign') {
-            leaderboardEntries = entries;
-            leaderboardStatus = 'Offline scores shown';
-        }
         return Promise.resolve({ scope: normalizedScope, entries, online: false });
     }
 
@@ -12596,18 +12575,10 @@ function loadLeaderboardFromServer(scope = 'campaign') {
         })
         .then(payload => {
             const entries = normalizeLeaderboardEntries(payload.entries, normalizedScope);
-            if (sessionGen === runtimeSessionGen && normalizedScope === 'campaign') {
-                leaderboardEntries = entries;
-                leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
-            }
             return { scope: normalizedScope, entries, online: true };
         })
         .catch(() => {
             const entries = getLocalLeaderboard(normalizedScope);
-            if (sessionGen === runtimeSessionGen && normalizedScope === 'campaign') {
-                leaderboardEntries = entries;
-                leaderboardStatus = entries.length ? 'Offline scores shown' : 'Leaderboard unavailable';
-            }
             return { scope: normalizedScope, entries, online: false };
         });
 
@@ -12763,7 +12734,6 @@ function submitLeaderboard(entry, state) {
         }
         if (!completion) {
             const result = recordLocalLeaderboard(scopedEntry, scope);
-            leaderboardStatus = 'Saved locally; online run verification unavailable';
             result.online = false;
             return result;
         }
@@ -12789,10 +12759,6 @@ function submitLeaderboard(entry, state) {
             .then(payload => {
                 const entries = normalizeLeaderboardEntries(payload.entries, scope);
                 if (sessionGen === runtimeSessionGen) {
-                    if (scope === 'campaign') {
-                        leaderboardEntries = entries;
-                        leaderboardStatus = entries.length ? 'Online leaderboard' : 'No completed online runs yet';
-                    }
                     saveLocalLeaderboard(entries, scope);
                 }
                 return {
@@ -12807,7 +12773,6 @@ function submitLeaderboard(entry, state) {
                     return { rank: null, entries: [], entry: verifiedEntry, online: false };
                 }
                 const result = recordLocalLeaderboard(verifiedEntry, scope);
-                leaderboardStatus = 'Saved locally; online leaderboard unavailable';
                 result.online = false;
                 return result;
             });
@@ -13046,7 +13011,6 @@ function endLevel(title, color, options = {}) {
                 ? unrankedLine
                 : 'Complete the boss fight to set a time'));
     let submittedEntry = null;
-    let submittedRank = null;
     let heldRecord = null;
     let heldRecordReady = false;
     const postedTimeMs = () => {
@@ -13394,7 +13358,6 @@ function endLevel(title, color, options = {}) {
         const rank = Number(result.rank);
         const rankedInTop = Number.isFinite(rank) && rank > 0 && rank <= LEADERBOARD_LIMIT;
         submittedEntry = result.entry || (fallbackEntry ? normalizeLeaderboardEntry(fallbackEntry) : null);
-        submittedRank = rank;
         if (submittedEntry && Number.isFinite(submittedEntry.timeMs) && submittedEntry.timeMs > 0) {
             statsText.setText(formatResultStats(submittedEntry.timeMs));
             personalBestText.setText('PERSONAL BEST  ' + getPersonalBestScore(
@@ -13957,10 +13920,6 @@ function applyEnemyOrientation(enemy) {
 }
 
 /** Pick vertical texture key for a combat type (from ENEMY_TYPES). */
-function resolveVerticalEnemyTexture(type, options) {
-    return resolveEnemyTexture(type, options || {}, null);
-}
-
 // Procedural SFX lives in audio.js (loaded before this file).
 // createSfx is provided as a global by NovaWingAudio.
 

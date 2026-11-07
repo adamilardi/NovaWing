@@ -18,3 +18,5 @@ rl/weights/
 __pycache__/
 *.pyc
 .agents/memory/*.lock
+# friend-facing SFX reference renders (local only, regenerated on demand)
+sfx-reference/

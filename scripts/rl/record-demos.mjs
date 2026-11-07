@@ -25,6 +25,7 @@ import { fastPlayEnabled, installFastPlay, stepHeldSim } from '../fast-play.mjs'
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { installInPagePilot } from '../play-bot.mjs';
+import { chooseBossGun } from '../bot-guns.mjs';
 import { RUNTIME_PURE_PATH } from './load-runtime.mjs';
 import { launchBrowser } from './chrome.mjs';
 import { createRequire } from 'module';
@@ -35,8 +36,7 @@ import {
     OBS_SIZE,
     ACTION_SIZE,
     OBS_LAYOUT,
-    encodeObservation,
-    encodeAction
+    encodeObservation
 } from './obs-encode.mjs';
 import {
     REWARD_WIN,
@@ -106,6 +106,26 @@ function uniqueSuffix() {
     return `w${WORKER_ID}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function resolveExpertMode(expert) {
+    const name = String(expert || '').toLowerCase();
+    if (name === 'policy') return 'policy';
+    if (name === 'tactics') return 'tactics';
+    return 'heuristic';
+}
+
+/**
+ * Boss-gun discipline for the tactics expert, mirroring simple-bot: a
+ * boss-immune gun (laser) equipped at boss entry can never win, so swap
+ * once per boss level exactly like a human pressing Q. Other experts
+ * manage their own guns (heuristic swaps in-page; policy has no Q key).
+ */
+export function bossGunSwapNeeded(mode, snap, swappedLevels) {
+    if (mode !== 'tactics') return false;
+    if (!snap || (!snap.boss && snap.phase !== 'boss')) return false;
+    if (!Number.isFinite(snap.level)) return false;
+    return !swappedLevels.has(snap.level);
+}
+
 async function stopExpert(page, mode) {
     await page.evaluate((m) => {
         if (m === 'policy') {
@@ -131,6 +151,15 @@ export function installTacticsPilot() {
     window.__novawingTacticsTick = () => {
         try {
             const snap = window.__novawingDebug.getBotSnapshot();
+            if (!snap || !snap.ready || snap.paused || snap.levelEnded ||
+                snap.continuePending || snap.levelTransitioning || snap.victoryPending || !snap.player) {
+                if (snap && window.__novawingDebug &&
+                    (snap.levelTransitioning || snap.paused || snap.levelEnded)) {
+                    window.__novawingDebug.setBotInput({ x: 0, y: 0, fire: false, boost: false });
+                }
+                window.__novawingTacticsLastInput = { x: 0, y: 0, fire: false, boost: false };
+                return;
+            }
             const result = window.NovaWingTactics.plan(snap, 160, window.__novawingTacticsPreferred);
             if (!result || result.error) throw new Error((result && result.error) || 'tactics plan failed');
             window.__novawingDebug.setBotInput(result.input);
@@ -191,7 +220,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
         }
     }
     if (START_SEGMENT && !BOSS_SKIP) await jumpControlledSegment(page, START_SEGMENT);
-    const mode = EXPERT === 'policy' ? 'policy' : EXPERT === 'tactics' ? 'tactics' : 'heuristic';
+    const mode = resolveExpertMode(EXPERT);
     if (mode === 'policy') await page.evaluate(p => { window.__novawingRolloutPolicy = p; }, policy);
     if (mode === 'heuristic') {
         await page.evaluate(installInPagePilot);
@@ -217,6 +246,7 @@ async function recordEpisode(browser, episodeIndex, policy) {
     let simulatedMs = 0;
     let terminal = false;
     let pendingObs = null;
+    const bossSwappedLevels = new Set();
     let nextProgressLog = 20000;
     const profile = PROFILE_STEPS ? { snap: 0, decide: 0, clock: 0, encode: 0, n: 0 } : null;
     const mark = PROFILE_STEPS
@@ -252,6 +282,19 @@ async function recordEpisode(browser, episodeIndex, policy) {
             }
             // One decision, one held action, one transition. No autonomous rAF pilot
             // can replace the action while the recorder advances the frozen game.
+            if (bossGunSwapNeeded(mode, before, bossSwappedLevels)) {
+                bossSwappedLevels.add(before.level);
+                const gun = await page.evaluate(() => (
+                    typeof activeWeaponId === 'function' ? activeWeaponId(null) : null
+                )).catch(() => null);
+                const swaps = chooseBossGun({ gun, rank: before.weaponLevel });
+                for (let i = 0; i < swaps; i++) {
+                    await page.evaluate(() => (
+                        typeof cycleTopTierWeapon === 'function' ? cycleTopTierWeapon(null) : false
+                    )).catch(() => false);
+                }
+                if (swaps > 0) console.log(`episode ${episodeIndex}: boss gun ${gun} -> Qx${swaps} at L${before.level}`);
+            }
             const obs = pendingObs || Array.from(encodeObservation(before));
             t0 = PROFILE_STEPS ? performance.now() : 0;
             const decision = await page.evaluate(({ obs, mode }) => {

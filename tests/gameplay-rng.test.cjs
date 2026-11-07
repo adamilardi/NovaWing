@@ -27,7 +27,7 @@ test('level-flow accepts sparse but unique ids', () => {
 });
 
 test('audio-director falls back instead of throwing on unknown track', async () => {
-    const mod = await import('../src/audio-director.js').catch(() => null);
+    await import('../src/audio-director.js').catch(() => null);
     // audio-director is UMD (no ESM export); load via vm as fallback
     const fs = require('node:fs');
     const vm = require('node:vm');

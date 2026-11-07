@@ -157,7 +157,6 @@ export async function caseContent(browser, base, evidenceDir) {
                 }));
         });
         await page.evaluate(() => {
-            const scene = getActiveScene();
             musicDirector.stop();
             getLevelDef(currentLevel).music.boss = 'boss';
             NovaWingLevels.getEffectiveLevelDefs().pop(); // Remove the temporary regression level.

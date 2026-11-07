@@ -12,7 +12,6 @@ const PORT = Number(process.env.PORT) || 4000;
 const HOST = '0.0.0.0';
 const LEADERBOARD_LIMIT = 10;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
-const RUN_TOKEN_TTL_MS = 15 * 60 * 1000;
 // A full campaign opens one campaign token plus one token per level.
 const RUN_REQUEST_LIMIT = 120;
 const RUN_REQUEST_WINDOW_MS = 60 * 60 * 1000;

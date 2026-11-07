@@ -286,3 +286,26 @@ Also fixed in same session: stale `page.route('**/phaser.min.js')` missing `?v=`
 - Also re-rejected: sine-phase stationing (needs game-side amplitude + fragile fits, weak ratio), lives-adaptive risk (math says YOLO always under bot economy), 80/80 (unclear direction).
 - LOOP STATUS: CONVERGED WITH PROOF. Recommend stopping the cron or redirecting (commit pile, human playtesting, new content). Further "improve" fires will churn.
 - Gates: 309/309, check clean. No code changed.
+
+
+## Record sweep (2026-11-07, goal run): 14 level records + campaign record
+- 123 simple-bot level trials (51+36+24+12) + 2 campaigns, 100% clears, all on
+  current tree (repeat-guard + lint cleanup; no gameplay behavior change).
+- NEW single-level records (sim seconds): L4 77.5 (-0.1), L5 74.6 (-0.7),
+  L6 78.0 (-5.0), L7 85.1 (-0.8), L8 83.3 (-1.6), L9 92.2 (-4.6),
+  L10 72.0 (-1.1), L11 69.6 (-2.4), L12 65.5 (-0.1), L13 86.6 (-12.0),
+  L14 70.1 (-1.4), L15 62.6 (-0.2), L16 97.6 (-2.3), L17 72.3 (-0.2).
+  Big jumps (L6/L9/L13) are first real sampling, not new speed: those bests
+  were single first-look runs. L13 t2 verified clean (spread entry, 0 cont,
+  0 page errors, 20s boss vs 29s siblings).
+- NEW campaign record: 250.8s, 0 cont, 7 deaths, all-spread entries (was 254s).
+  Attempt 1 was 258.0s (4 deaths in L3 final, ended lives 1).
+- Still holding after 17 trials each: L1 58.6 (session best 61.0),
+  L2 92.7 (session best 94.0), L3 93.0 untried (sits below the 94.3s floor
+  estimate; 7 session trials best 98.7).
+- Current full best table: L1 58.6 / L2 92.7 / L3 93.0 / L4 77.5 / L5 74.6 /
+  L6 78.0 / L7 85.1 / L8 83.3 / L9 92.2 / L10 72.0 / L11 69.6 / L12 65.5 /
+  L13 86.6 / L14 70.1 / L15 62.6 / L16 97.6 / L17 72.3. Campaign 250.8s.
+- Evidence: `.bot-runs/beat-rate/simple-2026-11-07T15-55-53` (r1),
+  `...T16-00-39` (r2), `...T16-03-54` (r3), `...T16-1x` (r4 L1/L2);
+  campaigns in /tmp/novawing-campaign-rec1|2 (scratch, not kept).

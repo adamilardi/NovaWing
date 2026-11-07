@@ -1848,7 +1848,6 @@ export function installInPagePilot() {
             }
         }
 
-        const aimY = snap.phase === 'boss' ? state.safeY : target.y;
         const ttcLabel = ttc === Infinity ? 'inf' : ttc.toFixed(2);
         const prog = snap.levelProgressMs != null
             ? Math.round((snap.levelProgressMs / (snap.levelDurationMs || 60000)) * 100) + '%'
