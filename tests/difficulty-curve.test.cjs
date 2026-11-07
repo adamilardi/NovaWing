@@ -104,6 +104,37 @@ test('space cadet learns a dodge on the graveyard without catching hotshot', () 
     assert.ok(approach.score < cadetGrave.peak - 8, 'the wreck approach teaches before the exam');
 });
 
+test('campaign modes climb, breathe, and leave the graveyard as the hottest peak', () => {
+    const levels = Levels.getEffectiveLevelDefs();
+    const curve = (id, mode) => Levels.scoreLevelCurve(levels.find(level => level.id === id), mode);
+    const hot = [1, 2, 3].map(id => curve(id, 'normal'));
+    const hotPeaks = hot.map(item => item.peak);
+    assert.ok(hotPeaks[0] < hotPeaks[1] && hotPeaks[1] < hotPeaks[2],
+        'Hotshot peaks rise L1 < L2 < L3 (' + hotPeaks.join(', ') + ')');
+    assert.ok(hotPeaks[2] < curve(7, 'normal').peak, 'the graveyard stays hotter than the finale');
+    hot.forEach((item, index) => {
+        const waves = item.segments.filter(segment => segment.kind === 'waves');
+        const scores = waves.map(segment => segment.score);
+        const calm = Math.min(...scores);
+        const hotMinute = Math.max(...scores);
+        assert.ok(calm < 40, `L${index + 1} Hotshot needs a breather, calmest is ${calm}`);
+        assert.ok(hotMinute - calm >= 12, `L${index + 1} Hotshot arc is flat`);
+        assert.equal(scores.filter(score => score >= 60).length, index === 2 ? 1 : 0,
+            `L${index + 1} Hotshot chaos slices`);
+    });
+    const cadetPeaks = [1, 2, 3].map(id => curve(id, 'easy').peak);
+    assert.ok(cadetPeaks[0] < cadetPeaks[1] && cadetPeaks[1] < cadetPeaks[2],
+        'Space Cadet peaks rise through the campaign (' + cadetPeaks.join(', ') + ')');
+    assert.ok(cadetPeaks[2] < curve(7, 'easy').peak, 'Cadet finale stays under the graveyard exam');
+    assert.ok(cadetPeaks[2] >= 40, 'the Cadet finale teaches a real dodge');
+    for (const id of [1, 2, 3]) {
+        const easy = curve(id, 'easy');
+        const hard = curve(id, 'hard');
+        assert.ok(hard.peak <= 95, `L${id} Supernova peak ${hard.peak}`);
+        assert.ok(hard.mean >= easy.mean + 30, `L${id} Supernova is not a different job`);
+    }
+});
+
 test('ashen graveyard stays the hottest Hotshot peak', () => {
     const peaks = Levels.getEffectiveLevelDefs().map(
         level => ({ id: level.id, peak: Levels.scoreLevelCurve(level, 'normal').peak }));

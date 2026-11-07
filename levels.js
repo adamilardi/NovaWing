@@ -55,6 +55,10 @@
  *   5b. level/segment difficultyModes.easy|normal|hard — that fight, that mode.
  *        Applied after the campaign preset so L3 can ease Space Cadet without
  *        flattening Supernova.
+ *   5c. difficultyBeats[{ id, untilMs, easy|normal|hard }] — an arc inside one
+ *        clock. Each partial overlays the resolved bag while progressMs is
+ *        below untilMs. Put it on a classic level or on one segment. Supernova
+ *        still draws the full catalog; a beat only changes the knobs.
  *   6. URL overlay             — playtest knobs on top of the selected mode.
  *        ?enemyHealthScale=0.7&enemyCadenceScale=1.4  (also unranked)
  *
@@ -340,7 +344,69 @@
      * Mirrors getActiveDifficulty minus the URL query overlay (scoring
      * covers authored values; debug overlays unrank and are unscored).
      */
-    function resolveSegmentBag(levelDef, segment, mode) {
+    // Classic levels hang the arc on the level. A real segment that does not
+    // opt in stays flat. The scorer's synthetic waves stand-in sets
+    // synthetic:true so it can read that level arc.
+    function beatHost(levelDef, segment) {
+        if (segment && Array.isArray(segment.difficultyBeats) && segment.difficultyBeats.length) {
+            return segment;
+        }
+        if (segment && !segment.synthetic) return null;
+        if (levelDef && Array.isArray(levelDef.difficultyBeats) && levelDef.difficultyBeats.length) {
+            return levelDef;
+        }
+        return null;
+    }
+
+    function beatAtProgress(host, progressMs) {
+        const beats = host && host.difficultyBeats;
+        if (!Array.isArray(beats) || !beats.length) return null;
+        const progress = Number.isFinite(progressMs) ? progressMs : 0;
+        for (let i = 0; i < beats.length; i++) {
+            const until = Number(beats[i] && beats[i].untilMs);
+            if (!Number.isFinite(until) || progress < until) return beats[i];
+        }
+        return beats[beats.length - 1];
+    }
+
+    /**
+     * Overlay the beat whose window contains progressMs. Omitted modes keep
+     * the resolved bag, so a Supernova slice can stay on the preset.
+     */
+    function applyProgressBeat(bag, levelDef, segment, mode, progressMs) {
+        if (!Number.isFinite(progressMs)) return bag;
+        const beat = beatAtProgress(beatHost(levelDef, segment), progressMs);
+        const m = normalizeDifficultyMode(mode) || 'normal';
+        if (!beat || !beat[m]) return bag;
+        return overlayDifficulty(bag, beat[m]);
+    }
+
+    function patternKeysAt(levelDef, segment, mode, progressMs, randomWaves) {
+        const fallback = segment && Object.prototype.hasOwnProperty.call(segment, 'wavePatternKeys')
+            ? segment.wavePatternKeys
+            : (levelDef ? levelDef.wavePatternKeys : null);
+        if (randomWaves) return fallback;
+        const scheduled = (segment && (segment.wavePatternSchedule || segment.wavePatternScheduleByMode))
+            ? segment : levelDef;
+        if (!scheduled) return fallback;
+        const byMode = scheduled.wavePatternScheduleByMode;
+        const m = normalizeDifficultyMode(mode) || 'normal';
+        const schedule = (byMode && Array.isArray(byMode[m]) && byMode[m].length)
+            ? byMode[m]
+            : scheduled.wavePatternSchedule;
+        if (!Array.isArray(schedule) || !schedule.length) return fallback;
+        const progress = Number.isFinite(progressMs) ? progressMs : 0;
+        for (let i = 0; i < schedule.length; i++) {
+            const step = schedule[i];
+            if (!step || !Array.isArray(step.keys)) continue;
+            const until = Number(step.untilMs);
+            if (!Number.isFinite(until) || progress < until) return step.keys;
+        }
+        const last = schedule[schedule.length - 1];
+        return last && Array.isArray(last.keys) ? last.keys : fallback;
+    }
+
+    function resolveSegmentBag(levelDef, segment, mode, progressMs) {
         const m = normalizeDifficultyMode(mode) || 'normal';
         let bag = overlayDifficulty({}, levelDef.difficulty || {});
         if (segment && segment.difficulty) bag = overlayDifficulty(bag, segment.difficulty);
@@ -351,6 +417,7 @@
         if (segment && segment.difficultyModes && segment.difficultyModes[m]) {
             bag = overlayDifficulty(bag, segment.difficultyModes[m]);
         }
+        if (Number.isFinite(progressMs)) bag = applyProgressBeat(bag, levelDef, segment, m, progressMs);
         return bag;
     }
 
@@ -421,18 +488,50 @@
         const raw = Array.isArray(levelDef.segments) && levelDef.segments.length
             ? levelDef.segments.filter(
                 s => s.kind === 'waves' || s.kind === 'boss' || s.kind === 'transition')
-            : [{ id: 'waves', kind: 'waves', durationMs: levelDef.durationMs,
+            : [{ id: 'waves', kind: 'waves', synthetic: true, durationMs: levelDef.durationMs,
                 difficulty: null, wavePatternKeys: levelDef.wavePatternKeys },
             { id: 'finalBoss', kind: 'boss', durationMs: 0, difficulty: null }];
-        const segments = raw.map(seg => {
+        const segments = [];
+        raw.forEach(function (seg) {
             // Transitions are non-combat cinematics: true breathers by role.
-            const score = seg.kind === 'boss'
-                ? scoreBossSegment(levelDef, seg, mode)
-                : seg.kind === 'transition'
-                    ? 5
-                    : scoreWavesBag(resolveSegmentBag(levelDef, seg, mode), seg.wavePatternKeys);
-            return { id: seg.id, kind: seg.kind, score: score,
-                role: pressureRole(score), durationMs: seg.durationMs || 0 };
+            if (seg.kind === 'transition') {
+                segments.push({ id: seg.id, kind: 'transition', score: 5,
+                    role: pressureRole(5), durationMs: seg.durationMs || 0 });
+                return;
+            }
+            if (seg.kind === 'boss') {
+                const score = scoreBossSegment(levelDef, seg, mode);
+                segments.push({ id: seg.id, kind: 'boss', score: score,
+                    role: pressureRole(score), durationMs: seg.durationMs || 0 });
+                return;
+            }
+            const host = beatHost(levelDef, seg);
+            const beats = host && host.difficultyBeats;
+            if (!beats) {
+                const score = scoreWavesBag(resolveSegmentBag(levelDef, seg, mode), seg.wavePatternKeys);
+                segments.push({ id: seg.id, kind: 'waves', score: score,
+                    role: pressureRole(score), durationMs: seg.durationMs || 0 });
+                return;
+            }
+            let prev = 0;
+            const span = seg.durationMs || levelDef.durationMs || 0;
+            beats.forEach(function (beat) {
+                const until = Number(beat.untilMs);
+                const end = Number.isFinite(until) ? until : span;
+                const sliceDur = Math.max(0, end - prev);
+                const sample = prev + Math.max(1, sliceDur * 0.5);
+                const bag = resolveSegmentBag(levelDef, seg, mode, sample);
+                const keys = patternKeysAt(levelDef, seg, mode, sample, bag.randomWaves);
+                const score = scoreWavesBag(bag, keys);
+                segments.push({
+                    id: beat.id || seg.id,
+                    kind: 'waves',
+                    score: score,
+                    role: pressureRole(score),
+                    durationMs: sliceDur
+                });
+                prev = end;
+            });
         });
         let total = 0;
         let weight = 0;
@@ -622,6 +721,7 @@
             difficultyModes: def.difficultyModes && typeof def.difficultyModes === 'object'
                 ? def.difficultyModes
                 : null,
+            difficultyBeats: Array.isArray(def.difficultyBeats) ? def.difficultyBeats : null,
             interceptorChance: difficulty.interceptorChance,
             enemyFireChance: difficulty.enemyFireChance,
             art: def.art && typeof def.art === 'object' ? Object.assign({}, def.art) : null,
@@ -735,6 +835,30 @@
             { untilMs: 14000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise', 'asteroidWall', 'minefield'] },
             { keys: ['diagonal', 'vFormation', 'chaser', 'asteroidWall', 'swarm', 'minefield', 'sandwich', 'skyDive', 'floorRise', 'oppositeInterceptors'] }
         ],
+        // Open space: learn the shot, cruise, then a short press into the boss.
+        // Narrow enough that the canyon and the finale still climb past it.
+        difficultyBeats: [
+            { id: 'teach', untilMs: 14000,
+                easy: { typedFireChance: 0.42, enemyFireChance: 0.14, interceptorChance: 0.05,
+                    enemyCadenceScale: 1.48, waveIntervalMinMs: 2300, waveIntervalMaxMs: 3000,
+                    enemyShotSpeedScale: 0.74 },
+                normal: { typedFireChance: 0.45, enemyFireChance: 0.22, interceptorChance: 0.07,
+                    enemyCadenceScale: 1.18, waveIntervalMinMs: 2000, waveIntervalMaxMs: 2700,
+                    enemyShotSpeedScale: 0.94 },
+                hard: { typedFireChance: 0.88, enemyFireChance: 0.48, interceptorChance: 0.26,
+                    enemyCadenceScale: 0.92, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500,
+                    enemyShotSpeedScale: 1.04 } },
+            { id: 'cruise', untilMs: 42000 },
+            { id: 'press', untilMs: 60000,
+                easy: { typedFireChance: 0.58, enemyFireChance: 0.2, interceptorChance: 0.09,
+                    enemyCadenceScale: 1.25, waveIntervalMinMs: 1800, waveIntervalMaxMs: 2400,
+                    enemyShotSpeedScale: 0.8 },
+                normal: { typedFireChance: 0.68, enemyFireChance: 0.34, interceptorChance: 0.16,
+                    enemyCadenceScale: 0.94, waveIntervalMinMs: 1550, waveIntervalMaxMs: 2050,
+                    enemyShotSpeedScale: 1.02 },
+                hard: { enemyCadenceScale: 0.74, waveIntervalMinMs: 1450, waveIntervalMaxMs: 1950,
+                    enemyShotSpeedScale: 1.14 } }
+        ],
         hasPathWalls: false,
         powerups: [
             { progressMs: 4000, type: 'weapon', y: 200 },
@@ -796,10 +920,45 @@
         // in the roomy mid intro, then flanks that teach vertical awareness;
         // trackers and splitters join once the corridor starts moving.
         // Final step mirrors wavePatternKeys above.
+        // Trackers and splitters wait until the three-lane stretch. The
+        // single-lane squeezes (about 20–48s) stay on maneuver patterns.
         wavePatternSchedule: [
             { untilMs: 9000, keys: ['vFormation', 'diagonal'] },
             { untilMs: 18000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise'] },
+            { untilMs: 48000, keys: ['diagonal', 'vFormation', 'swarm', 'skyDive', 'floorRise'] },
             { keys: ['diagonal', 'oppositeInterceptors', 'chaser', 'vFormation', 'pincer', 'swarm', 'sandwich', 'skyDive', 'floorRise', 'splitterPair', 'splitterAmbush'] }
+        ],
+        // The walls are the puzzle. Fire eases in the squeezes, presses
+        // while three lanes are open, then exhales into the boss funnel.
+        difficultyBeats: [
+            { id: 'teach', untilMs: 18000,
+                easy: { typedFireChance: 0.4, enemyFireChance: 0.14, interceptorChance: 0.05,
+                    enemyCadenceScale: 1.55, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3200 },
+                normal: { typedFireChance: 0.46, enemyFireChance: 0.24, interceptorChance: 0.1,
+                    enemyCadenceScale: 1.32, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3100,
+                    enemyShotSpeedScale: 0.92 },
+                hard: { typedFireChance: 0.85, enemyFireChance: 0.48, interceptorChance: 0.28,
+                    enemyCadenceScale: 0.95, waveIntervalMinMs: 2000, waveIntervalMaxMs: 2700 } },
+            { id: 'lanes', untilMs: 48000,
+                easy: { typedFireChance: 0.5, enemyFireChance: 0.2, interceptorChance: 0.1,
+                    enemyCadenceScale: 1.3, waveIntervalMinMs: 2100, waveIntervalMaxMs: 2800 },
+                normal: { typedFireChance: 0.58, enemyFireChance: 0.32, interceptorChance: 0.16,
+                    enemyCadenceScale: 1.08, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500 },
+                hard: { enemyCadenceScale: 0.82, waveIntervalMinMs: 1600, waveIntervalMaxMs: 2200 } },
+            { id: 'press', untilMs: 70000,
+                easy: { typedFireChance: 0.54, enemyFireChance: 0.24, interceptorChance: 0.12,
+                    enemyCadenceScale: 1.16, enemyShotSpeedScale: 0.82,
+                    waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500 },
+                normal: { typedFireChance: 0.74, enemyFireChance: 0.4, interceptorChance: 0.24,
+                    enemyCadenceScale: 0.96, waveIntervalMinMs: 1650, waveIntervalMaxMs: 2150 } },
+            { id: 'exhale', untilMs: 90000,
+                easy: { typedFireChance: 0.42, enemyFireChance: 0.14, interceptorChance: 0.06,
+                    enemyCadenceScale: 1.5, waveIntervalMinMs: 2400, waveIntervalMaxMs: 3200 },
+                normal: { typedFireChance: 0.46, enemyFireChance: 0.24, interceptorChance: 0.1,
+                    enemyCadenceScale: 1.32, waveIntervalMinMs: 2500, waveIntervalMaxMs: 3200,
+                    enemyShotSpeedScale: 0.9 },
+                hard: { typedFireChance: 0.85, enemyFireChance: 0.5, interceptorChance: 0.3,
+                    enemyCadenceScale: 0.9, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500 } }
         ],
         hasPathWalls: true,
         paths: CANYON_PATHS,
@@ -868,7 +1027,8 @@
             },
             normal: {
                 // Intro and final are the same boss. A touch slower than the
-                // authored volleys, still quicker than Space Cadet.
+                // authored volleys, still quicker than Space Cadet. The
+                // gauntlet climax, not this duel, is the campaign's hot minute.
                 bossTempoScale: 1.28,
                 bossShotSpeedScale: 0.9,
                 playerIFramesMs: 1050
@@ -969,26 +1129,67 @@
                     { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
                 ],
                 wavePatternScheduleByMode: {
+                    // Same windows as difficultyBeats. The crossfire stretch is
+                    // the dodge exam. Mines and the mixed rush never appear.
                     easy: [
-                        { untilMs: 28000, keys: ['verticalRegular', 'verticalV'] },
-                        { untilMs: 54000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
-                        { untilMs: 78000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
-                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing'] }
+                        { untilMs: 22000, keys: ['verticalRegular', 'verticalV'] },
+                        { untilMs: 48000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
+                        { untilMs: 72000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing'] },
+                        { keys: ['verticalRegular', 'verticalV', 'crossfireStrafe'] }
                     ],
-                    // Longer teach, mines and the mixed rush only in the last stretch.
+                    // Fire-up teach, then crossfire, then one mine climax, then
+                    // a simple lane while the black hole starts to pull.
                     normal: [
-                        { untilMs: 28000, keys: ['verticalRegular', 'verticalV'] },
-                        { untilMs: 52000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
-                        { untilMs: 78000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'orbiterRing', 'pincerDive'] },
-                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
+                        { untilMs: 22000, keys: ['verticalRegular', 'verticalV'] },
+                        { untilMs: 48000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] },
+                        { untilMs: 72000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] },
+                        { keys: ['verticalRegular', 'verticalV', 'crossfireStrafe'] }
                     ],
                     // Kept for ?randomWaves=false. Supernova skips schedules and uses wavePatternKeys.
                     hard: [
-                        { untilMs: 10000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
-                        { untilMs: 24000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'pincerDive'] },
-                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] }
+                        { untilMs: 8000, keys: ['verticalRegular', 'verticalV', 'riserColumns'] },
+                        { untilMs: 28000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'pincerDive'] },
+                        { untilMs: 72000, keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe', 'mineCurtain', 'pincerDive', 'orbiterRing', 'mixedGauntlet'] },
+                        { keys: ['verticalRegular', 'verticalV', 'riserColumns', 'crossfireStrafe'] }
                     ]
                 },
+                // Windows match the schedules above. Hotshot's one chaos
+                // minute is the mine climax. The pull starts in the exhale.
+                difficultyBeats: [
+                    { id: 'teach', untilMs: 22000,
+                        easy: { typedFireChance: 0.3, enemyFireChance: 0.14, interceptorChance: 0.05,
+                            enemyCadenceScale: 1.58, enemyShotSpeedScale: 0.7, enemySpeedScale: 0.82,
+                            waveIntervalMinMs: 2800, waveIntervalMaxMs: 3600 },
+                        normal: { typedFireChance: 0.42, enemyFireChance: 0.28, interceptorChance: 0.12,
+                            enemyCadenceScale: 1.36, enemyShotSpeedScale: 0.86, enemySpeedScale: 0.9,
+                            waveIntervalMinMs: 2500, waveIntervalMaxMs: 3200 },
+                        hard: { typedFireChance: 0.9, enemyFireChance: 0.5, interceptorChance: 0.32,
+                            enemyCadenceScale: 0.86, enemyShotSpeedScale: 1.05,
+                            waveIntervalMinMs: 1400, waveIntervalMaxMs: 1900 } },
+                    { id: 'crossfire', untilMs: 48000,
+                        easy: { typedFireChance: 0.54, enemyFireChance: 0.26, interceptorChance: 0.14,
+                            enemyCadenceScale: 1.1, enemyShotSpeedScale: 0.84, enemySpeedScale: 0.88,
+                            waveIntervalMinMs: 2000, waveIntervalMaxMs: 2550 },
+                        normal: { typedFireChance: 0.58, enemyFireChance: 0.38, interceptorChance: 0.22,
+                            enemyCadenceScale: 1.05, enemyShotSpeedScale: 0.96, enemySpeedScale: 0.98,
+                            waveIntervalMinMs: 2000, waveIntervalMaxMs: 2600 } },
+                    { id: 'climax', untilMs: 72000,
+                        easy: { typedFireChance: 0.4, enemyFireChance: 0.2, interceptorChance: 0.1,
+                            enemyCadenceScale: 1.32, enemyShotSpeedScale: 0.76, enemySpeedScale: 0.84,
+                            waveIntervalMinMs: 2400, waveIntervalMaxMs: 3100 },
+                        normal: { typedFireChance: 0.74, enemyFireChance: 0.48, interceptorChance: 0.3,
+                            enemyCadenceScale: 0.92, enemyShotSpeedScale: 1.02, enemySpeedScale: 1.02,
+                            waveIntervalMinMs: 1650, waveIntervalMaxMs: 2100 } },
+                    { id: 'exhale', untilMs: 90000,
+                        easy: { typedFireChance: 0.32, enemyFireChance: 0.16, interceptorChance: 0.06,
+                            enemyCadenceScale: 1.55, enemyShotSpeedScale: 0.7,
+                            waveIntervalMinMs: 2700, waveIntervalMaxMs: 3500 },
+                        normal: { typedFireChance: 0.42, enemyFireChance: 0.28, interceptorChance: 0.12,
+                            enemyCadenceScale: 1.35, enemyShotSpeedScale: 0.88, enemySpeedScale: 0.9,
+                            waveIntervalMinMs: 2500, waveIntervalMaxMs: 3300 },
+                        hard: { enemyCadenceScale: 0.84, enemyShotSpeedScale: 1.05,
+                            waveIntervalMinMs: 1350, waveIntervalMaxMs: 1850 } }
+                ],
                 difficultyModes: {
                     easy: {
                         firstWaveDelayMs: 1800,
@@ -999,7 +1200,7 @@
                         waveIntervalScale: 1,
                         enemySpeedScale: 0.8,
                         enemyShotSpeedScale: 0.68,
-                        blackHolePreviewAtMs: 82000,
+                        blackHolePreviewAtMs: 84000,
                         playerIFramesMs: 1600
                     },
                     normal: {
@@ -1011,7 +1212,7 @@
                         waveIntervalScale: 1,
                         enemySpeedScale: 0.92,
                         enemyShotSpeedScale: 0.88,
-                        blackHolePreviewAtMs: 80000,
+                        blackHolePreviewAtMs: 76000,
                         playerIFramesMs: 1100
                     },
                     hard: {
@@ -1021,7 +1222,7 @@
                         waveIntervalMinMs: 1050,
                         waveIntervalMaxMs: 1450,
                         waveIntervalScale: 1,
-                        blackHolePreviewAtMs: 48000
+                        blackHolePreviewAtMs: 68000
                     }
                 },
                 powerups: [
@@ -2057,6 +2258,7 @@
         defineLevel: defineLevel,
         resolveDifficulty: resolveDifficulty,
         resolveSegmentBag: resolveSegmentBag,
+        applyProgressBeat: applyProgressBeat,
         scoreWavesBag: scoreWavesBag,
         scoreBossSegment: scoreBossSegment,
         scoreLevelCurve: scoreLevelCurve,
@@ -2109,6 +2311,7 @@
     root.getLevelDifficulty = getLevelDifficulty;
     root.resolveDifficulty = resolveDifficulty;
     root.resolveSegmentBag = resolveSegmentBag;
+    root.applyProgressBeat = applyProgressBeat;
     root.scoreWavesBag = scoreWavesBag;
     root.scoreBossSegment = scoreBossSegment;
     root.scoreLevelCurve = scoreLevelCurve;

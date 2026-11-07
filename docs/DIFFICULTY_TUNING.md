@@ -54,7 +54,17 @@ overriding later menu choices. Explicit numeric playtest overlays still
 apply and unrank. Bot sessions keep their query-preset behavior.
 
 How to overlay knobs on a level or segment: see the tuning block at the top
-of `levels.js` and [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md).
+of `levels.js` and [CONTENT_AUTHORING.md](CONTENT_AUTHORING.md). A
+`difficultyBeats` list shapes one wave clock (teach, then press, then
+exhale) without replacing the mode preset. Supernova still draws its full
+catalog; a beat only changes the knobs inside that window.
+
+Campaign Hotshot climbs by peak, not by a flat mean: Open Space breathes
+then presses, the Canyon eases fire while a lane is squeezed and presses
+when three lanes are open, and Singularity Run teaches fire-up, spends one
+chaos minute on the mine climax, then exhales before the black hole pulls.
+Space Cadet follows the same shape one step calmer. Ashen Graveyard stays
+the hottest peak in the catalog.
 
 These knobs exist for later tweaks. Every mode currently leaves them at the
 shipped feel, so setting nothing changes nothing. A non-positive scale is

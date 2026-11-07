@@ -186,7 +186,10 @@ try {
             });
             assert.equal(completion.awardedScore, completion.expectedScore);
             assert.equal(completion.awardedKills, 1);
-            await tick(100);
+            // Boss death holds the results card for BOSS_DEATH_REVEAL_MS of
+            // scene time. This run is at 8×, so a short wall wait still lands
+            // after the card.
+            await tick(800);
             Object.assign(completion, await page.evaluate(() => ({ next: awaitingNextLevel, victory: victoryPending,
                 ended: levelEnded, bonus: bonusTestingLevel, continuing: continuePending })));
             if (completion.bonus) {

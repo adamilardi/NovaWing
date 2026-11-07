@@ -130,6 +130,46 @@ test('L3 gauntlet teaches vertical fire before mines and eases Space Cadet', () 
     assert.ok(easy.blackHolePreviewAtMs > normal.blackHolePreviewAtMs);
     assert.ok(normal.blackHolePreviewAtMs > hard.blackHolePreviewAtMs);
     assert.ok(l3.difficultyModes.easy.bossTempoScale > l3.difficultyModes.normal.bossTempoScale);
+
+    const normalSchedule = topdown.wavePatternScheduleByMode.normal;
+    const climax = normalSchedule[normalSchedule.length - 2];
+    const exhale = normalSchedule[normalSchedule.length - 1];
+    assert.equal(exhale.keys.includes('mineCurtain'), false, 'the pull is not stacked on a mine curtain');
+    assert.equal(exhale.keys.includes('mixedGauntlet'), false);
+    assert.ok(climax.keys.includes('mineCurtain'), 'mines are the climax, not the opener');
+    assert.ok(normal.blackHolePreviewAtMs >= climax.untilMs, 'Hotshot pull starts after the mine climax');
+    assert.ok(hard.blackHolePreviewAtMs > 60000, 'Supernova pull is not on for half the gauntlet');
+});
+
+test('campaign beats change the live bag and the game applies them', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
+    assert.ok(src.includes('applyProgressBeat('), 'game.js applies the wave arc');
+
+    const levels = Levels.getEffectiveLevelDefs();
+    const l1 = levels.find(level => level.id === 1);
+    const l2 = levels.find(level => level.id === 2);
+    const teach = Levels.resolveSegmentBag(l1, null, 'normal', 2000);
+    const cruise = Levels.resolveSegmentBag(l1, null, 'normal', 25000);
+    assert.ok(teach.typedFireChance < cruise.typedFireChance, 'L1 teach arms fewer guns than the cruise');
+    assert.ok(teach.waveIntervalMinMs > cruise.waveIntervalMinMs);
+
+    const lanes = l2.wavePatternSchedule[2];
+    assert.equal(lanes.untilMs, 48000);
+    for (const key of lanes.keys) {
+        assert.ok(!['chaser', 'oppositeInterceptors', 'pincer', 'sandwich', 'splitterPair', 'splitterAmbush'].includes(key),
+            'narrow canyon lanes do not spawn ' + key);
+    }
+
+    const l3 = Levels.getLevel3Def();
+    const topdown = l3.segments.find(segment => segment.id === 'topdown');
+    const climax = Levels.resolveSegmentBag(l3, topdown, 'normal', 60000);
+    const exhale = Levels.resolveSegmentBag(l3, topdown, 'normal', 80000);
+    const hardClimax = Levels.resolveSegmentBag(l3, topdown, 'hard', 60000);
+    assert.ok(climax.enemyCadenceScale < exhale.enemyCadenceScale, 'the finale exhales before the pull');
+    assert.ok(climax.typedFireChance > exhale.typedFireChance);
+    assert.ok(hardClimax.enemyCadenceScale < climax.enemyCadenceScale, 'Supernova climax stays hotter');
 });
 
 test('L1/L2 openers teach flybys before trackers (played 2026-11-07)', () => {

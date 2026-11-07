@@ -3665,6 +3665,11 @@ function getActiveDifficulty() {
     }
     bag = overlayAuthoredModeDifficulty(bag, def, mode, overlayFn);
     bag = overlayAuthoredModeDifficulty(bag, seg, mode, overlayFn);
+    // Teach / press / exhale inside a wave clock. Boss fights keep the
+    // level bag so a late beat cannot retune the volley mid-duel.
+    if (gamePhase === 'waves' && typeof applyProgressBeat === 'function') {
+        bag = applyProgressBeat(bag, def, seg, mode, levelProgressMs);
+    }
     const queryBag = getDifficultyQueryOverlay();
     if (queryBag && Object.keys(queryBag).length) {
         bag = overlayFn(bag, queryBag);
@@ -6795,6 +6800,195 @@ function bossEscapes(reason) {
     finishLevelSegment(this, reason || 'escape');
 }
 
+// Hull breakup plays on the scene clock, then the results card. Rewards and
+// the level-complete flags still land in the same call as the kill.
+const BOSS_DEATH_REVEAL_MS = 1400;
+const BOSS_DEATH_BEATS = [
+    { at: 0, ox: 0.14, oy: 0, qty: 28, palette: 'orange', shake: 0.0034, boom: 1.1 },
+    { at: 140, ox: -0.24, oy: -0.2, qty: 16, palette: 'cyan' },
+    { at: 250, ox: -0.18, oy: 0.24, qty: 16, palette: 'red' },
+    { at: 420, ox: 0.3, oy: 0.02, qty: 30, palette: 'orange', shake: 0.005, boom: 1.25, ring: true, crack: true },
+    { at: 660, ox: 0.02, oy: -0.18, qty: 18, palette: 'cyan' },
+    { at: 900, ox: 0, oy: 0, qty: 70, palette: 'orange', shake: 0.011, boom: 1.55, ring: true, finale: true }
+];
+let bossDeathRevealMs = 0;
+
+function bossDeathPoint(shell, wreck, beat) {
+    const lx = beat.ox * wreck.w;
+    const ly = beat.oy * wreck.h;
+    const rad = shell.rotation || 0;
+    return {
+        x: shell.x + lx * Math.cos(rad) - ly * Math.sin(rad),
+        y: shell.y + lx * Math.sin(rad) + ly * Math.cos(rad)
+    };
+}
+
+function spawnBossDeathShell(scene, bossSprite) {
+    const shell = scene.add.container(bossSprite.x, bossSprite.y).setDepth(3);
+    const pieces = [];
+    const parts = (bossSprite.animatedParts || []).filter(part => part.sprite && part.sprite.active);
+    if (parts.length) {
+        parts.forEach(part => {
+            const sprite = part.sprite;
+            const img = scene.add.image(sprite.x - bossSprite.x, sprite.y - bossSprite.y, sprite.texture.key, sprite.frame.name);
+            img.setScale(sprite.scaleX, sprite.scaleY);
+            img.setAngle(sprite.angle);
+            shell.add(img);
+            pieces.push({
+                img,
+                ox: sprite.x - bossSprite.x,
+                oy: sprite.y - bossSprite.y
+            });
+        });
+    } else {
+        const frame = bossSprite.frame;
+        const texW = frame.width || frame.realWidth || bossSprite.width;
+        const texH = frame.height || frame.realHeight || bossSprite.height;
+        shell.setAngle(bossSprite.angle || 0);
+        [
+            { u: 0, v: 0, ox: -1, oy: -1 },
+            { u: 0.5, v: 0, ox: 1, oy: -1 },
+            { u: 0, v: 0.5, ox: -1, oy: 1 },
+            { u: 0.5, v: 0.5, ox: 1, oy: 1 }
+        ].forEach(quad => {
+            const img = scene.add.image(0, 0, bossSprite.texture.key, frame.name);
+            img.setDisplaySize(bossSprite.displayWidth, bossSprite.displayHeight);
+            img.setCrop(quad.u * texW, quad.v * texH, texW * 0.5, texH * 0.5);
+            if (bossSprite.flipX) img.setFlipX(true);
+            if (bossSprite.flipY) img.setFlipY(true);
+            shell.add(img);
+            pieces.push({
+                img,
+                ox: quad.ox * bossSprite.displayWidth * 0.25,
+                oy: quad.oy * bossSprite.displayHeight * 0.25
+            });
+        });
+    }
+    return {
+        shell,
+        pieces,
+        w: Math.max(80, bossSprite.displayWidth || 200),
+        h: Math.max(60, bossSprite.displayHeight || 120)
+    };
+}
+
+function bossDeathEmber(scene, shell, x, y, tint) {
+    if (!scene.textures || !scene.textures.exists('glowOrb')) return;
+    const ember = scene.add.image(x, y, 'glowOrb');
+    ember.setTint(tint);
+    ember.setBlendMode(Phaser.BlendModes.ADD);
+    ember.setScale(0.55);
+    ember.setAlpha(0.95);
+    shell.add(ember);
+    scene.tweens.add({
+        targets: ember,
+        alpha: 0.4,
+        scale: 0.9,
+        duration: 120,
+        yoyo: true,
+        repeat: 8
+    });
+}
+
+function bossDeathShock(scene, x, y, scale, tint) {
+    const ring = scene.add.circle(x, y, 16, tint, 0.02).setDepth(5);
+    ring.setStrokeStyle(4, tint, 0.95);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+        targets: ring,
+        scale,
+        alpha: 0,
+        duration: scale > 12 ? 460 : 340,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy()
+    });
+}
+
+function playBossDeath(scene, wreck) {
+    const shell = wreck.shell;
+    const pieces = wreck.pieces;
+    pieces.forEach(piece => piece.img.setTintFill(0xffffff));
+    scene.time.delayedCall(70, () => {
+        pieces.forEach(piece => {
+            if (piece.img.active) piece.img.setTint(0xffaa77);
+        });
+    });
+    bossDeathEmber(scene, shell, wreck.w * 0.16, 0, 0xff6622);
+    bossDeathEmber(scene, shell, -wreck.w * 0.08, wreck.h * 0.12, 0xffcc44);
+    scene.tweens.add({
+        targets: shell,
+        x: shell.x + 8,
+        duration: 32,
+        yoyo: true,
+        repeat: 12,
+        ease: 'Sine.easeInOut'
+    });
+
+    const beats = fxQualityTier === 'low'
+        ? BOSS_DEATH_BEATS.filter(beat => beat.at === 0 || beat.finale || beat.crack)
+        : BOSS_DEATH_BEATS;
+    beats.forEach(beat => {
+        scene.time.delayedCall(beat.at, () => {
+            if (!shell.scene) return;
+            const point = bossDeathPoint(shell, wreck, beat);
+            createExplosion(scene, point.x, point.y, beat.qty, {
+                palette: beat.palette,
+                ring: Boolean(beat.ring),
+                debris: Boolean(beat.finale)
+            });
+            if (beat.boom && sfx && sfx.explosion) sfx.explosion(beat.boom, point.x);
+            if (beat.shake) shakeCombatCamera(scene, beat.finale ? 220 : 120, beat.shake);
+            if (beat.at === 0) flashVignette(scene, 0xffcc88, 0.45);
+            if (beat.crack) {
+                bossDeathShock(scene, shell.x, shell.y, 9, 0xff8844);
+                pieces.forEach(piece => {
+                    const len = Math.hypot(piece.ox, piece.oy) || 1;
+                    scene.tweens.add({
+                        targets: piece.img,
+                        x: piece.img.x + (piece.ox / len) * 34,
+                        y: piece.img.y + (piece.oy / len) * 34,
+                        angle: piece.img.angle + Math.sign(piece.ox || 1) * 10,
+                        duration: 260,
+                        ease: 'Quad.easeOut'
+                    });
+                });
+            }
+            if (!beat.finale) return;
+
+            flashVignette(scene, 0xffeeaa, 0.62);
+            bossDeathShock(scene, point.x, point.y, 18, 0xfff2c4);
+            scene.tweens.killTweensOf(shell);
+            pieces.forEach(piece => {
+                scene.tweens.killTweensOf(piece.img);
+                const len = Math.hypot(piece.ox, piece.oy) || 1;
+                scene.tweens.add({
+                    targets: piece.img,
+                    x: piece.img.x + (piece.ox / len) * 110,
+                    y: piece.img.y + (piece.oy / len) * 110,
+                    angle: piece.img.angle + Math.sign(piece.ox || 1) * 36,
+                    alpha: 0,
+                    scaleX: piece.img.scaleX * 1.15,
+                    scaleY: piece.img.scaleY * 1.15,
+                    duration: 420,
+                    ease: 'Sine.easeIn'
+                });
+            });
+            scene.time.delayedCall(460, () => {
+                if (shell.scene) shell.destroy();
+            });
+        });
+    });
+}
+
+function holdLevelResult(scene, sessionGen, revealMs, reveal) {
+    const fire = () => {
+        if (sessionGen !== runtimeSessionGen) return;
+        reveal();
+    };
+    if (revealMs > 0) scene.time.delayedCall(revealMs, fire);
+    else window.setTimeout(fire, 0);
+}
+
 function defeatBoss(bossSprite) {
     if (victoryPending || levelTransitioning) return;
 
@@ -6804,6 +6998,7 @@ function defeatBoss(bossSprite) {
         return;
     }
 
+    const wreck = spawnBossDeathShell(this, bossSprite);
     const bossX = bossSprite.x;
     const bossY = bossSprite.y;
 
@@ -6821,11 +7016,7 @@ function defeatBoss(bossSprite) {
         bossHealthFill.destroy();
         bossHealthFill = null;
     }
-    createExplosion(this, bossX, bossY, 100, { palette: 'orange', ring: true });
-    createExplosion(this, bossX - 70, bossY - 45, 60, { palette: 'cyan', ring: true });
-    createExplosion(this, bossX - 70, bossY + 45, 60, { palette: 'red', ring: true });
-    flashVignette(this, 0xffcc55, 0.55);
-    sfx.explosion(1.4, bossX);
+    playBossDeath(this, wreck);
 
     // Award the boss kill before locking this level's stats on the server.
     const reward = levelFlow.reward(getLevelDef(currentLevel), bossEncounterKey || 'standard');
@@ -6834,6 +7025,7 @@ function defeatBoss(bossSprite) {
     refillBoost(this, BOOST_MAX, bossX, bossY);
     updateScoreText();
 
+    bossDeathRevealMs = BOSS_DEATH_REVEAL_MS;
     finishLevelSegment(this, 'bossDefeated');
 }
 
@@ -6844,7 +7036,12 @@ function finishLevelSegment(scene, reason) {
 }
 
 function completeLevel() {
-    if (levelEnded || victoryPending || levelTransitioning) return;
+    if (levelEnded || victoryPending || levelTransitioning) {
+        bossDeathRevealMs = 0;
+        return;
+    }
+    const revealMs = bossDeathRevealMs;
+    bossDeathRevealMs = 0;
     segmentScope.reset();
     levelTransitioning = true;
     this.physics.pause();
@@ -6879,10 +7076,10 @@ function completeLevel() {
     }
 
     if (!isFinalLevel) {
-        musicDirector.stop();
-        sfx.victory();
-        window.setTimeout(() => {
-            if (sessionGen !== runtimeSessionGen || levelEnded || victoryPending) return;
+        holdLevelResult(scene, sessionGen, revealMs, () => {
+            if (levelEnded || victoryPending) return;
+            musicDirector.stop();
+            sfx.victory();
             endLevel.call(scene, 'LEVEL ' + clearedLevel + ' CLEAR', '#55ffaa', {
                 continueToNext: true,
                 completed: true,
@@ -6895,25 +7092,27 @@ function completeLevel() {
                 continues: levelContinues,
                 leaderboardState: levelRunState
             });
-        }, 0);
+        });
         return;
     }
 
     if (bonusTestingLevel || validationTestingLevel) {
-        levelTransitioning = false;
-        endLevel.call(scene, validationTestingLevel ? 'VALIDATION STAGE CLEAR' : 'BONUS STAGE CLEAR', '#55ffaa', {
-            completed: true, completionTimeMs: levelTimeMs, skipLeaderboard: true
+        holdLevelResult(scene, sessionGen, revealMs, () => {
+            if (levelEnded) return;
+            levelTransitioning = false;
+            endLevel.call(scene, validationTestingLevel ? 'VALIDATION STAGE CLEAR' : 'BONUS STAGE CLEAR', '#55ffaa', {
+                completed: true, completionTimeMs: levelTimeMs, skipLeaderboard: true
+            });
         });
         return;
     }
     victoryPending = true;
     const completionTimeMs = playtestNow(this) - levelStartTime;
     holdPlayerAnimation(this, PLAYER_ANIMATION_KEYS.victory, Infinity);
-    musicDirector.stop();
-    if (sfx.campaignVictory) sfx.campaignVictory();
-    else sfx.victory();
-    window.setTimeout(() => {
-        if (sessionGen !== runtimeSessionGen) return;
+    holdLevelResult(scene, sessionGen, revealMs, () => {
+        musicDirector.stop();
+        if (sfx.campaignVictory) sfx.campaignVictory();
+        else sfx.victory();
         showCampaignVictoryBeat(scene, () => {
             if (sessionGen !== runtimeSessionGen) return;
             endLevel.call(scene, 'CAMPAIGN COMPLETE', '#55ffaa', {
@@ -6937,7 +7136,7 @@ function completeLevel() {
                 }
             });
         });
-    }, 0);
+    });
 }
 
 function showCampaignVictoryBeat(scene, onComplete) {

@@ -197,23 +197,25 @@ describe('level authoring surface', () => {
         assert.equal(Levels.getLevelBossScore(3), 2500);
     });
 
-    it('gives Hotshot a longer Level 3 teach before mines', () => {
+    it('teaches Hotshot fire-up, spends mines in one climax, then exhales before the pull', () => {
         const topdown = Levels.getLevelDef(3).segments.find(segment => segment.id === 'topdown');
         const hotshot = topdown.wavePatternScheduleByMode.normal;
         const teach = hotshot[0];
         const finale = hotshot[hotshot.length - 1];
-        assert.ok(teach.untilMs >= 28000);
+        assert.ok(teach.untilMs >= 20000);
         assert.equal(teach.keys.includes('mineCurtain'), false);
         assert.equal(teach.keys.includes('mixedGauntlet'), false);
-        assert.ok(finale.keys.includes('mineCurtain'));
-        assert.ok(finale.keys.includes('mixedGauntlet'));
+        assert.equal(finale.keys.includes('mineCurtain'), false);
+        assert.equal(finale.keys.includes('mixedGauntlet'), false);
         const minesAt = hotshot.find(step => step.keys.includes('mineCurtain'));
-        assert.equal(minesAt, finale);
+        assert.ok(minesAt && minesAt !== teach && minesAt !== finale);
+        assert.ok(minesAt.untilMs >= 48000);
         const tune = topdown.difficultyModes.normal;
         assert.ok(tune.waveIntervalMinMs >= 2200);
         assert.ok(tune.enemyCadenceScale > 1.2);
         assert.ok(tune.typedFireChance < 0.6);
-        assert.ok(tune.blackHolePreviewAtMs >= 78000);
+        assert.ok(tune.blackHolePreviewAtMs >= minesAt.untilMs);
+        assert.ok(tune.blackHolePreviewAtMs < 90000);
         assert.ok(Levels.getLevelDef(3).difficultyModes.normal.bossTempoScale > 1.2);
     });
 

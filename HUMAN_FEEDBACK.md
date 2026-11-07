@@ -44,6 +44,18 @@ HP, patterns, or drops. Ranked-safe: the loop is the intended
 experience, not an assist. Live-verified (0.4 → 0.41 on kills/calm →
 0.15 floor after damage, 0 errors). Interceptors excluded for now.
 
+## campaign difficulty — 2026-11-07 (rebalanced, needs a human clear)
+
+Hotshot no longer sits flat, and the finale is no longer the calmest
+scored stage. Peaks climb L1 53 / L2 58 / L3 63, each with a breather
+under 40. L3's one chaos minute is the mine climax; the black-hole pull
+starts after it (Hotshot 76s, Supernova 68s, Cadet 84s). Canyon trackers
+and splitters wait until the three-lane stretch, so the squeezes are the
+terrain puzzle. Space Cadet peaks climb 36 / 40 / 42 and stay under the
+graveyard exam (44). Supernova stays the remix (means 73 / 72 / 76).
+Ashen Graveyard remains the hottest Hotshot peak (65). Human campaign
+clear is still the open gate.
+
 ## campaign difficulty — 2026-10-09 (fixed, needs feel-check)
 
 1. "The level difficulty is off now" (too hard, campaign scope) — FIXED
