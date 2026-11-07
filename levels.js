@@ -5,7 +5,8 @@
  * ------------------
  * 1. Append a new object to LEVEL_DEFS_SHIPPED (use defineLevel). Campaign length
  *    is live via getTotalLevels() — do not hardcode "3" in game logic.
- * 2. Classic flow (L1/L2): waves → boss. Set wavePatternKeys, powerups, durationMs.
+ * 2. Classic flow (L1/L2): waves → boss. Set wavePatternKeys, powerups, durationMs,
+ *    and a wavePatternSchedule teach opener (Supernova skips schedules).
  * 3. Segmented flow: segments[] with kind 'waves' | 'boss' | 'transition'
  *    (or omit kind and set bossEncounter / cinematic / progressDriven).
  *    Each segment may have its own wavePatternKeys, powerups, scrollMode,
@@ -701,7 +702,9 @@
         bossMusicLeadMs: 5000,
         tier: 1,
         // Feel comes from TIER_DIFFICULTY[1]. Overlay only exceptions:
-        // difficulty: { interceptorChance: 0.08, playerIFramesMs: 1100 },
+        // The first wave waits out the entry + hint bar (played 2026-11-07:
+        // a 650ms wave converged trackers onto the zero-power ship).
+        difficulty: { firstWaveDelayMs: 1500 },
         bossScore: 1500,
         durationMs: 60000,
         worldHeight: GAME_HEIGHT,
@@ -722,6 +725,15 @@
             'skyDive',
             'floorRise',
             'oppositeInterceptors'
+        ],
+        // Teach schedule (Cadet/Hotshot; Supernova skips schedules): flybys
+        // until the first weapon pod is collectible, then obstacles and
+        // flanks; trackers join once the ship has a gun. Final step mirrors
+        // wavePatternKeys above.
+        wavePatternSchedule: [
+            { untilMs: 7000, keys: ['vFormation', 'diagonal'] },
+            { untilMs: 14000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise', 'asteroidWall', 'minefield'] },
+            { keys: ['diagonal', 'vFormation', 'chaser', 'asteroidWall', 'swarm', 'minefield', 'sandwich', 'skyDive', 'floorRise', 'oppositeInterceptors'] }
         ],
         hasPathWalls: false,
         powerups: [
@@ -755,6 +767,9 @@
         name: 'THE CANYON',
         music: { waves: 'canyon', boss: 'canyonBoss' },
         tier: 2,
+        // Opener exception (played 2026-11-07): the first wave waits out the
+        // entry so interceptors don't meet the ship in the corridor mouth.
+        difficulty: { firstWaveDelayMs: 1500 },
         bossScore: 1500,
         durationMs: 90000,
         worldHeight: 1500,
@@ -776,6 +791,15 @@
             'floorRise',
             'splitterPair',
             'splitterAmbush'
+        ],
+        // Teach schedule (Cadet/Hotshot; Supernova skips schedules): flybys
+        // in the roomy mid intro, then flanks that teach vertical awareness;
+        // trackers and splitters join once the corridor starts moving.
+        // Final step mirrors wavePatternKeys above.
+        wavePatternSchedule: [
+            { untilMs: 9000, keys: ['vFormation', 'diagonal'] },
+            { untilMs: 18000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise'] },
+            { keys: ['diagonal', 'oppositeInterceptors', 'chaser', 'vFormation', 'pincer', 'swarm', 'sandwich', 'skyDive', 'floorRise', 'splitterPair', 'splitterAmbush'] }
         ],
         hasPathWalls: true,
         paths: CANYON_PATHS,

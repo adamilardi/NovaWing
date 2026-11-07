@@ -132,6 +132,36 @@ test('L3 gauntlet teaches vertical fire before mines and eases Space Cadet', () 
     assert.ok(l3.difficultyModes.easy.bossTempoScale > l3.difficultyModes.normal.bossTempoScale);
 });
 
+test('L1/L2 openers teach flybys before trackers (played 2026-11-07)', () => {
+    // Tracking packs converged on the zero-power entry ship within 5s and
+    // chained kills through respawns. The opener teaches flybys until the
+    // first weapon pod is collectible, then opens the full catalog.
+    const TRACKERS = new Set(['chaser', 'oppositeInterceptors', 'pincer', 'sandwich']);
+    for (const id of [1, 2]) {
+        const level = Levels.getEffectiveLevelDefs().find(l => l.id === id);
+        assert.ok(level, `L${id} exists`);
+        const schedule = level.wavePatternSchedule;
+        assert.ok(Array.isArray(schedule) && schedule.length >= 2, `L${id} has a teach schedule`);
+        const [first, ...rest] = schedule;
+        assert.ok(first.untilMs >= 6000, `L${id} teaches past the first pod (untilMs ${first.untilMs})`);
+        for (const step of [first, ...rest.slice(0, -1)]) {
+            for (const key of step.keys) {
+                assert.ok(!TRACKERS.has(key), `L${id} teach step spawns no ${key}`);
+            }
+        }
+        const last = rest[rest.length - 1];
+        for (const key of level.wavePatternKeys) {
+            assert.ok(last.keys.includes(key), `L${id} full catalog keeps ${key}`);
+        }
+        for (const mode of ['easy', 'normal']) {
+            const delay = Levels.resolveSegmentBag(level, null, mode).firstWaveDelayMs;
+            assert.ok(delay >= 1400, `L${id} ${mode} first wave at ${delay}ms, not on the hint bar`);
+        }
+    }
+    assert.equal(Levels.getDifficultyPreset('hard').randomWaves, true,
+        'Supernova still skips teach schedules');
+});
+
 test('difficulty query preset is overlaid by explicit numeric knobs only', () => {
     const overlay = Levels.readDifficultyQueryOverlay(
         '?diff=easy&enemyHealthScale=0.8&enemyCadenceScale=1.7&unknown=999'
