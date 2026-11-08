@@ -18,6 +18,7 @@ const browserCrossFileGlobals = [
     'NovaWingBosses',
     'NovaWingHeat',
     'NovaWingWallSpawn',
+    'applyProgressBeat',
     'clumpedWaveBounds',
     'createSfx',
     'getDifficultyContinues',
