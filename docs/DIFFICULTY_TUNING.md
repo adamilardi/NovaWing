@@ -66,6 +66,19 @@ chaos minute on the mine climax, then exhales before the black hole pulls.
 Space Cadet follows the same shape one step calmer. Ashen Graveyard stays
 the hottest peak in the catalog.
 
+Open Space now spaces waves out at 28–34 seconds and 54–60 seconds, with
+flyby patterns on Space Cadet and Hotshot. The Canyon adds a middle-lane
+recovery at 29.7–33.8 seconds and a quieter route decision at 48.2–55 seconds.
+Supernova keeps its full pattern catalog but also spaces out new waves in
+these windows. Existing enemies and bullets remain; recovery is not a screen clear.
+
+At 48.2 seconds the Canyon announces an optional upper weapon route. From
+52–61.2 seconds that passage is 190 pixels high, beside the unchanged
+400-pixel middle route. At 55 seconds the upper branch gets a weapon and
+the middle gets a shield. Both travel at terrain speed to stay within their
+branches. The full shaft at 61.2 seconds reconnects the routes. These times
+are level progress; boost can advance the route clock faster.
+
 These knobs exist for later tweaks. Every mode currently leaves them at the
 shipped feel, so setting nothing changes nothing. A non-positive scale is
 ignored. Overlay them the same way as the table above: a mode preset, a

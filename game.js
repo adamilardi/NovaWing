@@ -6,6 +6,9 @@ const config = {
     height: 600,
     parent: 'game-container',
     backgroundColor: '#04060f',
+    // Phaser 3 defaulted roundPixels to true; Phaser 4 defaults it to false.
+    // Keep the v3-era pixel snapping so sprite placement matches the old look.
+    roundPixels: true,
     scale: {
         mode: Phaser.Scale.FIT,
         // CSS flex on #game-container handles centering. Phaser autoCenter
@@ -91,8 +94,9 @@ const WALL_SCROLL_SPEED = -128;
 const WALL_MIN_BLOCK_HEIGHT = 18;
 const WALL_TEXTURE_FALLBACK_SIZE = 40;
 // Pre-place corridor slices so canyon levels open as a tunnel from frame one.
-// ~92px step slightly under WALL_SLICE_WIDTH so columns overlap (no sky gaps).
+// ~92px step. Slices are wider than this so jagged edges overlap (no sky gaps).
 const WALL_SEED_XS = [140, 232, 324, 416, 508, 600, 692, 784, 876];
+let canyonSliceSerial = 1;
 // How far ahead (by level progress) to flash dead-end warnings before a route seals.
 const PATH_WARNING_LEAD_MS = 3800;
 const PATH_WARNING_MIN_CLOSE_HEIGHT = 70;
@@ -872,30 +876,39 @@ function createCombatTextures(scene) {
     if (scene.textures.exists('bullet') && scene.textures.exists('missile') &&
         scene.textures.exists('bossLaser') && scene.textures.exists('spark')) return;
     // Distinct silhouettes, with the original texture bounds / collision sizes.
+    // An opaque dark keyline sits outside the color so a round still reads on
+    // a bright sky, a neon field, or the middle of an explosion.
     const bolt = scene.add.graphics();
-    bolt.fillStyle(0x49dfff, 0.22);
+    bolt.fillStyle(0x062033, 1);
     bolt.fillTriangle(0, 5, 22, 0, 28, 5);
     bolt.fillTriangle(0, 5, 22, 10, 28, 5);
+    bolt.fillStyle(0x49dfff, 1);
+    bolt.fillTriangle(2, 5, 21, 1, 26, 5);
+    bolt.fillTriangle(2, 5, 21, 9, 26, 5);
     bolt.fillStyle(0x70eeff, 1);
     bolt.fillRect(5, 3, 16, 4);
-    bolt.fillTriangle(21, 2, 28, 5, 21, 8);
+    bolt.fillTriangle(21, 2, 27, 5, 21, 8);
     bolt.fillStyle(0xf3ffff, 1);
     bolt.fillRect(10, 4, 13, 2);
     bolt.generateTexture('bullet', 28, 10);
     bolt.clear();
-    bolt.fillStyle(0x83f8c8, 0.25);
+    bolt.fillStyle(0x062033, 1);
     bolt.fillTriangle(0, 5, 20, 0, 28, 5);
     bolt.fillTriangle(0, 5, 20, 10, 28, 5);
+    bolt.lineStyle(4, 0x062033, 1);
+    bolt.beginPath(); bolt.moveTo(8, 1); bolt.lineTo(24, 5); bolt.lineTo(8, 9); bolt.strokePath();
     bolt.lineStyle(2, 0x8dffd5, 1);
     bolt.beginPath(); bolt.moveTo(9, 1); bolt.lineTo(23, 5); bolt.lineTo(9, 9); bolt.strokePath();
     bolt.fillStyle(0xffffff, 1);
     bolt.fillTriangle(17, 3, 26, 5, 17, 7);
     bolt.generateTexture('spreadBullet', 28, 10);
     bolt.clear();
-    bolt.fillStyle(0x51bfff, 0.22);
-    bolt.fillEllipse(18, 7, 32, 14);
+    bolt.fillStyle(0x062033, 1);
+    bolt.fillEllipse(18, 7, 34, 14);
+    bolt.fillStyle(0x51bfff, 1);
+    bolt.fillEllipse(18, 7, 28, 10);
     bolt.fillStyle(0x5de4ff, 1);
-    bolt.fillTriangle(9, 1, 34, 7, 9, 13);
+    bolt.fillTriangle(9, 1, 33, 7, 9, 13);
     bolt.fillRect(4, 3, 9, 2); bolt.fillRect(4, 9, 9, 2);
     bolt.fillStyle(0xf2ffff, 1);
     bolt.fillTriangle(12, 4, 30, 7, 12, 10);
@@ -903,11 +916,13 @@ function createCombatTextures(scene) {
     bolt.clear();
     // Hostile rounds are hot magenta diamonds: instant read against red mines,
     // red boss beams and friendly cyan lances. Same 22x12 frame, same body.
-    bolt.fillStyle(0xff3fd4, 0.35);
+    bolt.fillStyle(0x2a0630, 1);
     bolt.fillEllipse(11, 6, 22, 12);
+    bolt.fillStyle(0xff3fd4, 1);
+    bolt.fillEllipse(11, 6, 16, 8);
     bolt.fillStyle(0xff54da, 1);
-    bolt.fillTriangle(2, 6, 11, 0, 20, 6);
-    bolt.fillTriangle(2, 6, 11, 11, 20, 6);
+    bolt.fillTriangle(3, 6, 11, 1, 19, 6);
+    bolt.fillTriangle(3, 6, 11, 11, 19, 6);
     bolt.fillStyle(0xffe6fa, 1);
     bolt.fillTriangle(6, 6, 11, 2, 16, 6);
     bolt.fillTriangle(6, 6, 11, 10, 16, 6);
@@ -1979,6 +1994,8 @@ function update(time, delta) {
     }
     if (coopEnabled && coopState) { coopState.boostEnergy = boostEnergy; coopState.hasShield = hasShield; coopState.weaponLevel = weaponLevel; coopState.lives = lives; updateCoopText(); }
     updateBoostUi();
+    updatePlayerFlightVisuals(player, simTime, frameDelta);
+    updatePlayerFlightVisuals(playerTwo, simTime, frameDelta);
     updateShieldVisual(simTime);
     if (sfx && sfx.setEngine) sfx.setEngine(boostIntensity, player.x);
 
@@ -2082,25 +2099,28 @@ function update(time, delta) {
     }
 
     // Cleanup (orientation-aware; pads tuned to match pre-PR1 horizontal culls).
-    // Indexed loops over entries avoid the per-frame getChildren() array allocs.
-    for (let i = 0, list = bullets.children.entries, n = list.length; i < n; i++) {
-        const b = list[i];
+    // Phaser 4 stores group members in a native Set. Set.entries is a method,
+    // so an indexed walk never ran: shots stayed live offscreen until the
+    // pool filled and the gun went silent.
+    for (const b of bullets.children) {
         if (b.active && isOffscreen(b, 30)) releaseSprite(b);
     }
 
     updateProjectileTrails();
 
-    for (let i = 0, list = enemies.children.entries, n = list.length; i < n; i++) {
-        const e = list[i];
+    for (const e of enemies.children) {
         if (!e.active) continue;
         updateEnemyMovement(e, frameDelta);
         maybeFireEnemyShot.call(this, e, simTime);
         updateEnemyAnimation(e, simTime, frameDelta);
+        if (e.damageVisual) {
+            e.damageVisual.setPosition(e.x, e.y).setRotation(e.rotation);
+            e.damageVisual.setAlpha(0.65 + Math.sin(simTime * 0.025) * 0.2);
+        }
         if (isOffscreen(e, 40)) releaseSprite(e);
     }
 
-    for (let i = 0, list = enemyBullets.children.entries, n = list.length; i < n; i++) {
-        const b = list[i];
+    for (const b of enemyBullets.children) {
         if (!b.active) continue;
         if (b.sporeWeave) updateSporeWeave(b, simTime);
         if (b.tideSeeker) updateTideSeeker(b, frameDelta);
@@ -2115,18 +2135,17 @@ function update(time, delta) {
         if (isOffscreen(b, 10)) releaseSprite(b);
     }
 
-    for (let i = 0, list = obstacles.children.entries, n = list.length; i < n; i++) {
-        const o = list[i];
+    for (const o of obstacles.children) {
         if (!o.active) continue;
         updateScrollVelocity(o);
         if (isOffscreen(o, 60)) releaseSprite(o);
     }
 
     if (walls) {
-        for (let i = 0, list = walls.children.entries, n = list.length; i < n; i++) {
-            const w = list[i];
+        for (const w of walls.children) {
             if (!w.active) continue;
             updateScrollVelocity(w);
+            if (w.terrainLighting) w.terrainLighting.setPosition(w.x, w.y).setAlpha(w.alpha);
             // Pad covers the furthest terrain spawn (x = 910 + along, max
             // 975): staggered gate faces must survive until they scroll in,
             // not die on their birth frame. tests/terrain-spawn-range pins it.
@@ -2134,8 +2153,7 @@ function update(time, delta) {
         }
     }
 
-    for (let i = 0, list = powerups.children.entries, n = list.length; i < n; i++) {
-        const p = list[i];
+    for (const p of powerups.children) {
         if (!p.active) continue;
         updateScrollVelocity(p);
         if (p.aura && p.aura.active) {
@@ -2212,16 +2230,15 @@ function hitEnemy(bullet, enemy) {
     const hitX = bullet.x;
     const hitY = bullet.y;
     const impactAngle = getProjectileImpactAngle(bullet);
+    const impactKind = bullet.texture.key === 'spreadBullet' ? 'spread' : damage > 1 ? 'heavy' : 'single';
     releaseSprite(bullet);
 
     enemy.health = Math.max(0, (enemy.health || 1) - damage);
     shotsHit++;
+    createWeaponImpact(this, hitX, hitY, impactKind, impactAngle);
 
     if (enemy.health > 0) {
-        createExplosion(this, hitX, hitY, damage > 1 ? 12 : 8, {
-            palette: 'cyan', flash: damage > 1, direction: impactAngle,
-            spread: damage > 1 ? 50 : 34
-        });
+        showEnemyArmorDamage(this, enemy);
         flashCombatTarget(this, enemy, damage > 1 ? 0x99ffff : 0xffffff, damage > 1 ? 70 : 48);
         sfx.spark(hitX);
         return;
@@ -2244,7 +2261,9 @@ function flashCombatTarget(scene, target, tint, duration) {
     if (!scene || !target || !target.active) return;
     const flashToken = (target.combatFlashToken || 0) + 1;
     target.combatFlashToken = flashToken;
-    target.setTintFill(tint);
+    // Phaser 4 removed setTintFill; FILL is now a tint mode. clearTint below
+    // resets the mode to MULTIPLY, so later multiply tints are unaffected.
+    target.setTint(tint).setTintMode(Phaser.TintModes.FILL);
     segmentScope.delay(scene, duration, () => {
         if (target.active && target.combatFlashToken === flashToken) target.clearTint();
     });
@@ -2269,6 +2288,7 @@ function destroyEnemy(enemy, options = {}) {
     const explosionSize = heavyEnemy ? 46 : (enemyType === 'splitterDrone' ? 18 : 34);
 
     enemy.dying = true;
+    if (heavyEnemy) createEnemyBreakup(this, enemy);
     releaseSprite(enemy);
     createExplosion(this, enemyX, enemyY, explosionSize, {
         palette: enemyType === 'splitter' ? 'red' : 'orange',
@@ -2323,6 +2343,7 @@ function hitBoss(bullet, bossSprite) {
     const hitX = bullet.x;
     const hitY = bullet.y;
     const impactAngle = getProjectileImpactAngle(bullet);
+    const impactKind = bullet.texture.key === 'spreadBullet' ? 'spread' : damage > 1 ? 'heavy' : 'single';
     releaseSprite(bullet);
     shotsHit++;
     if (bossSprite.encounterState && bossSprite.encounterState.id === 'tempestCondenser'
@@ -2337,7 +2358,7 @@ function hitBoss(bullet, bossSprite) {
         return;
     }
     if (bossSprite.encounterState && bossSprite.encounterState.id === 'gardenEngine') {
-        damageGardenEngine.call(this, bossSprite, hitX, hitY, damage, impactAngle);
+        damageGardenEngine.call(this, bossSprite, hitX, hitY, damage, impactAngle, impactKind);
         return;
     }
     const gateFloor = bossPhaseDamageFloor();
@@ -2351,12 +2372,7 @@ function hitBoss(bullet, bossSprite) {
         updateBossPhase.call(this);
     }
     updateBossHealthBar();
-    createExplosion(this, hitX, hitY, damage > 1 ? 12 : 7, {
-        palette: damage > 1 ? 'cyan' : 'orange',
-        flash: damage > 1,
-        direction: impactAngle,
-        spread: damage > 1 ? 48 : 30
-    });
+    createWeaponImpact(this, hitX, hitY, impactKind, impactAngle);
     sfx.spark(hitX);
 
     flashCombatTarget(this, bossSprite, damage > 1 ? 0x99ffff : 0xffffff, damage > 1 ? 70 : 48);
@@ -2369,7 +2385,7 @@ function hitBoss(bullet, bossSprite) {
  * Intro encounter escapes at escapeHpRatio; otherwise defeat at 0 HP.
  * @returns {boolean} true if the fight ended this call
  */
-function damageGardenEngine(bossSprite, hitX, hitY, damage, impactAngle) {
+function damageGardenEngine(bossSprite, hitX, hitY, damage, impactAngle, impactKind) {
     const state = bossSprite.encounterState;
     const sections = (state && state.sections) || {};
     const dw = bossSprite.displayWidth;
@@ -2391,9 +2407,7 @@ function damageGardenEngine(bossSprite, hitX, hitY, damage, impactAngle) {
     if (sectionHit) {
         const section = sections[sectionHit];
         section.hp -= damage;
-        createExplosion(this, hitX, hitY, damage > 1 ? 12 : 7, {
-            palette: 'cyan', flash: damage > 1, direction: impactAngle, spread: 30
-        });
+        createWeaponImpact(this, hitX, hitY, impactKind, impactAngle);
         sfx.spark(hitX);
         flashCombatTarget(this, bossSprite, 0x7dff6a, 48);
         if (section.hp <= 0) {
@@ -2411,12 +2425,7 @@ function damageGardenEngine(bossSprite, hitX, hitY, damage, impactAngle) {
     bossHealth = Math.max(0, bossHealth - bodyDamage);
     if (bossHealth > 0) updateBossPhase.call(this);
     updateBossHealthBar();
-    createExplosion(this, hitX, hitY, bodyDamage > 1 ? 12 : 7, {
-        palette: bodyDamage > 1 ? 'cyan' : 'orange',
-        flash: bodyDamage > 1,
-        direction: impactAngle,
-        spread: bodyDamage > 1 ? 48 : 30
-    });
+    createWeaponImpact(this, hitX, hitY, impactKind, impactAngle);
     sfx.spark(hitX);
     flashCombatTarget(this, bossSprite, bodyDamage > 1 ? 0x99ffff : 0xffffff, bodyDamage > 1 ? 70 : 48);
     maybeResolveBossAfterDamage(this, bossSprite, 'bullet');
@@ -2496,13 +2505,23 @@ function resolvePlayerWallCollisions() {
     }
 }
 
+// The sprite is already at the separated position. Arcade postUpdate adds
+// (position - prevFrame) to the sprite, so a stale prevFrame replays the nudge.
+function commitShipBody(ship) {
+    const body = ship && ship.body;
+    if (!body) return;
+    if (body.updateFromGameObject) body.updateFromGameObject();
+    if (body.prev) body.prev.copy(body.position);
+    if (body.prevFrame) body.prevFrame.copy(body.position);
+}
+
 /**
  * Push the player out of a solid wall AABB.
  * Returns true only for a hard front-face scrape (damage). Ceiling/floor bumps
  * separate without costing a life so corridors stay navigable.
  */
 function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
-    if (!ship || !ship.active || !ship.body || !wall || !wall.body) return false;
+    if (!ship || !ship.active || !ship.body || !wall || !wall.body || wall.canyonLipVisual) return false;
     // Spawn grace: a brand-new wall's pooled body still sits at its old
     // position until preUpdate syncs it. Skip separation and damage alike
     // on a stale body (L12/L13 lost a life at t=0 to one).
@@ -2535,9 +2554,7 @@ function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
     if (fitsX && (!fitsY || overlapX < overlapY)) {
         const push = pushX;
         ship.x += push;
-        if (ship.body && ship.body.updateFromGameObject) {
-            ship.body.updateFromGameObject();
-        }
+        commitShipBody(ship);
         // Oncoming wall face (to the right of the ship) is the deadly scrape.
         // Require a real bite so grazing a corner does not chain-damage.
         if (push < 0 && overlapX > 6) hardHit = true;
@@ -2547,9 +2564,7 @@ function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
     } else {
         const push = pushY;
         ship.y += push;
-        if (ship.body && ship.body.updateFromGameObject) {
-            ship.body.updateFromGameObject();
-        }
+        commitShipBody(ship);
         // Floor/ceiling: separate only. Deep embeds (wrong route sealed) still hurt.
         if (overlapY > 22 && overlapX > 18) hardHit = true;
         if (pb.velocity && ((push < 0 && pb.velocity.y > 0) || (push > 0 && pb.velocity.y < 0))) {
@@ -2564,7 +2579,7 @@ function resolvePlayerAgainstWall(wall, applyDamage, ship = player) {
             Math.min(bounds.right - pb.halfWidth, pb.center.x)) - pb.center.x;
         ship.y += Math.max(bounds.y + pb.halfHeight,
             Math.min(bounds.bottom - pb.halfHeight, pb.center.y)) - pb.center.y;
-        if (pb.updateFromGameObject) pb.updateFromGameObject();
+        commitShipBody(ship);
     }
     if (applyDamage && hardHit) {
         createExplosion(this, ship.x + 18, ship.y, 12, { palette: 'orange', flash: false });
@@ -2584,7 +2599,7 @@ function hitObstacleWithBullet(bullet, obstacle) {
 }
 
 function hitWallWithBullet(bullet, wall) {
-    if (!bullet || !bullet.active) return;
+    if (!bullet || !bullet.active || (wall && wall.canyonLipVisual)) return;
     const hitX = bullet.x;
     const hitY = bullet.y;
     releaseSprite(bullet);
@@ -2984,8 +2999,8 @@ function detonateScreenBomb(scene, originX, originY) {
     updateScoreText();
 }
 
-function hitEnemyBulletWithObstacle(enemyBullet) {
-    if (!enemyBullet || !enemyBullet.active) return;
+function hitEnemyBulletWithObstacle(enemyBullet, wall) {
+    if (!enemyBullet || !enemyBullet.active || (wall && wall.canyonLipVisual)) return;
     // Boss laser spans the playfield; do not let a single asteroid cancel it.
     if (enemyBullet.isBossLaser) return;
 
@@ -3257,6 +3272,7 @@ function meltOnScreenEnemies(scene) {
         enemy.active && !enemy.dying && !isOffscreen(enemy, 0)
     ));
     live.forEach(enemy => {
+        createWeaponImpact(scene, enemy.x, enemy.y, 'laser', combatOrientation === 'up' ? -90 : 0);
         destroyEnemy.call(scene, enemy, { allowSplit: false, boostAmount: 0 });
     });
 }
@@ -4690,6 +4706,7 @@ function spawnEnemy(options = {}) {
     const levelMotions = getLevelDef(currentLevel).enemyMotions;
     enemy.animationId = levelMotions && levelMotions[type] ? levelMotions[type] : null;
     applyDifficultyToEnemy(enemy);
+    enemy.spawnHealth = enemy.health;
     applyEnemyOrientation(enemy);
     if (enemy.facePlayer && !isVerticalScroll()) snapEnemyFaceAngle(enemy);
     playEnemyIdleAnimation(enemy);
@@ -4970,7 +4987,12 @@ function spawnScheduledPathWalls() {
         nextPathEventIndex < levelDef.pathEvents.length &&
         levelProgressMs >= levelDef.pathEvents[nextPathEventIndex].progressMs
     ) {
-        spawnWallSlice.call(this, levelDef.pathEvents[nextPathEventIndex].openBands);
+        const event = levelDef.pathEvents[nextPathEventIndex];
+        spawnWallSlice.call(this, event.openBands);
+        if (event.routeHint) {
+            showFloatingText(this, 400, 145, event.routeHint, '#a8ecff',
+                { screenSpace: true, risePx: 0, duration: 3600 });
+        }
         nextPathEventIndex += 1;
     }
 }
@@ -5353,21 +5375,84 @@ function spawnWallSlice(openBands, options = {}) {
     const maxChunk = 340;
     const sliceVariant = this.wallArtSequence || 0;
     this.wallArtSequence = (sliceVariant + 1) % 4;
+    // Wider than the column step so a broken edge still covers the neighbor.
+    const columnWidth = WALL_SLICE_WIDTH + 12;
+    const seam = 8;
+    // Only the crystal canyon is broken into a lip. Other path art stays rectangular.
+    const breakRock = ((currentLevelArt && currentLevelArt.wall) || 'wall') === 'wall';
+    const scene = this;
     blocked.forEach(([top, bottom]) => {
-        let cursor = top;
-        while (cursor < bottom) {
-            const chunkBottom = Math.min(bottom, cursor + maxChunk);
-            const height = chunkBottom - cursor;
+        const faceTop = breakRock && top > 2;
+        const faceBottom = breakRock && bottom < worldHeight - 2;
+        const faces = (faceTop ? 1 : 0) + (faceBottom ? 1 : 0);
+        // Recess into the rock only, and leave a solid core so a thin cap is not eaten.
+        const budget = faces
+            ? Math.min(76, Math.floor(Math.max(0, (bottom - top) - 48) / faces))
+            : 0;
+        const useTeeth = budget >= 18;
+        const topProfile = faceTop && useTeeth ? canyonLipProfile(x, columnWidth, 1, budget) : null;
+        const botProfile = faceBottom && useTeeth ? canyonLipProfile(x, columnWidth, 2, budget) : null;
+        const topCut = topProfile ? topProfile.cut : 0;
+        const botCut = botProfile ? botProfile.cut : 0;
+        const massTop = top + topCut;
+        const massBottom = bottom - botCut;
+        let cursor = massTop;
+        while (cursor < massBottom) {
+            const chunkBottom = Math.min(massBottom, cursor + maxChunk);
+            const drawTop = cursor === massTop ? cursor : cursor - seam;
+            const height = chunkBottom - drawTop;
             if (height >= WALL_MIN_BLOCK_HEIGHT) {
-                const centerY = (cursor + chunkBottom) * 0.5;
+                const centerY = (drawTop + chunkBottom) * 0.5;
                 const sealsPath = closing.some(region => yOverlapsBand(centerY, region, 0));
-                spawnWallBlock.call(this, x, centerY, WALL_SLICE_WIDTH, height, {
+                // Narrower than the lip so a shallow neighbor cannot fill the next bay.
+                const massWidth = (topProfile || botProfile) ? WALL_SLICE_WIDTH : columnWidth;
+                spawnWallBlock.call(scene, x, centerY, massWidth, height, {
                     danger: sealsPath,
-                    artVariant: (sliceVariant + Math.floor(cursor / maxChunk)) % 4
+                    artVariant: (sliceVariant + Math.floor(cursor / maxChunk)) % 4,
+                    column: true,
+                    lipTop: false,
+                    lipBottom: false
                 });
             }
             cursor = chunkBottom;
         }
+        // One painted lip follows the curve. Narrow bodies track it so the
+        // bay is open air and the peak still stops the hull.
+        const spawnLip = (profile, edgeY, intoRock) => {
+            if (!profile || profile.cut < 8) return;
+            const lipH = profile.cut + seam;
+            const tail = edgeY + intoRock * lipH;
+            const centerY = (edgeY + tail) * 0.5;
+            const sealsPath = closing.some(region => yOverlapsBand(centerY, region, 0));
+            spawnWallBlock.call(scene, x, centerY, profile.width, lipH, {
+                danger: sealsPath,
+                artVariant: sliceVariant,
+                column: true,
+                lipVisual: true,
+                lipProfile: {
+                    side: intoRock > 0 ? 'top' : 'bottom',
+                    insets: profile.insets
+                }
+            });
+            const segments = profile.insets.length - 1;
+            const pitch = profile.width / segments;
+            for (let i = 0; i < segments; i++) {
+                const peak = Math.min(profile.insets[i], profile.insets[i + 1]);
+                const front = edgeY + intoRock * peak;
+                const y0 = Math.min(front, tail);
+                const y1 = Math.max(front, tail);
+                const height = y1 - y0;
+                if (height < 8) continue;
+                spawnWallBlock.call(scene, profile.left + pitch * (i + 0.5), (y0 + y1) * 0.5, pitch + 2, height, {
+                    danger: sealsPath,
+                    artVariant: sliceVariant,
+                    column: true,
+                    collideOnly: true
+                });
+            }
+        };
+        spawnLip(topProfile, top, 1);
+        spawnLip(botProfile, bottom, -1);
     });
 }
 
@@ -5395,6 +5480,115 @@ function seedLevelPathWalls(scene) {
     previousOpenBands = null;
 }
 
+function canyonEdgeNoise(seed) {
+    let n = Math.imul(seed | 0, 0x6d2b79f5);
+    n = Math.imul(n ^ (n >>> 15), n | 1);
+    n ^= n + Math.imul(n ^ (n >>> 7), n | 61);
+    return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
+}
+
+function canyonSmoothNoise(x, edge) {
+    const x0 = Math.floor(x);
+    const blend = x - x0;
+    const smooth = blend * blend * (3 - 2 * blend);
+    const n0 = canyonEdgeNoise(x0 * 17 + edge * 1000);
+    const n1 = canyonEdgeNoise((x0 + 1) * 17 + edge * 1000);
+    return n0 + (n1 - n0) * smooth;
+}
+
+// How far this point on a lane lip sits back into the rock. 0 keeps the
+// authored pinch. The value never crosses into the open band.
+function canyonLipInset(worldX, edge, budget) {
+    const slow = canyonSmoothNoise(worldX / 200, edge);
+    const mid = canyonSmoothNoise(worldX / 64, edge + 5);
+    const bay = Math.pow(Math.max(0, (slow - 0.42) / 0.58), 1.15);
+    const wobble = Math.max(0, (mid - 0.25) / 0.75) * 0.22;
+    return Math.round(Math.min(1, bay * 0.78 + wobble) * budget);
+}
+
+function canyonLipProfile(columnX, columnWidth, edge, budget) {
+    const width = columnWidth + 8;
+    const steps = 16;
+    const left = columnX - width / 2;
+    const insets = [];
+    for (let i = 0; i <= steps; i++) {
+        insets.push(canyonLipInset(left + (width * i) / steps, edge, budget));
+    }
+    return { width, left, insets, cut: Math.max(...insets) };
+}
+
+// The installed wall tile is a 96px squash of the atlas, so it reads as a
+// brick repeat. Sample the full atlas instead, a little larger than the tile.
+function paintCanyonRock(context, source, worldLeft, worldTop, w, h) {
+    const sourcePerWorld = source.width > 400 ? 1.15 : 0.4;
+    const tileW = source.width / sourcePerWorld;
+    const tileH = source.height / sourcePerWorld;
+    const col0 = Math.floor(worldLeft / tileW);
+    const col1 = Math.floor((worldLeft + w - 1) / tileW);
+    const row0 = Math.floor(worldTop / tileH);
+    const row1 = Math.floor((worldTop + h - 1) / tileH);
+    for (let col = col0; col <= col1; col++) {
+        for (let row = row0; row <= row1; row++) {
+            context.drawImage(
+                source,
+                col * tileW - worldLeft,
+                row * tileH - worldTop,
+                tileW,
+                tileH
+            );
+        }
+    }
+}
+
+function clipCanyonLip(context, w, h, profile) {
+    const insets = profile && profile.insets;
+    if (!insets || insets.length < 2) return;
+    const last = insets.length - 1;
+    context.globalCompositeOperation = 'destination-in';
+    context.fillStyle = '#fff';
+    context.beginPath();
+    if (profile.side === 'top') {
+        context.moveTo(0, h);
+        context.lineTo(w, h);
+        for (let i = last; i >= 0; i--) context.lineTo((w * i) / last, insets[i]);
+    } else {
+        context.moveTo(0, 0);
+        context.lineTo(w, 0);
+        for (let i = last; i >= 0; i--) context.lineTo((w * i) / last, h - insets[i]);
+    }
+    context.closePath();
+    context.fill();
+}
+
+// One continuous rock field, clipped on the lane lip, so the columns are not bricks.
+function paintCanyonColumn(scene, wall, width, height, crop, lips) {
+    const tex = scene && scene.textures && scene.textures.get && scene.textures.get('wall');
+    const source = (tex && tex.novaWallSource) || (tex && tex.getSourceImage && tex.getSourceImage());
+    if (!source || !scene || !scene.textures || typeof document === 'undefined') return false;
+    const w = Math.max(4, Math.round(width));
+    const h = Math.max(4, Math.round(height));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const context = canvas.getContext('2d');
+    if (!context) return false;
+    context.imageSmoothingEnabled = true;
+    paintCanyonRock(context, source, wall.x - width / 2, wall.y - height / 2, w, h);
+    if (lips && lips.profile) clipCanyonLip(context, w, h, lips.profile);
+    if (!wall.canyonSliceId) wall.canyonSliceId = canyonSliceSerial++;
+    const key = 'canyonSlice' + wall.canyonSliceId;
+    if (scene.textures.exists(key)) scene.textures.remove(key);
+    scene.textures.addCanvas(key, canvas);
+    wall.setTexture(key);
+    wall.setScale(1, 1);
+    wall.setCrop();
+    if (wall.body) {
+        if (wall.body.updateFromGameObject) wall.body.updateFromGameObject();
+        wall.body.setSize(w, h, true);
+    }
+    return true;
+}
+
 function spawnWallBlock(x, y, width, height, options = {}) {
     if (!walls) return null;
 
@@ -5413,7 +5607,7 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     const sourceW = Math.max(1, wall.frame ? wall.frame.width : WALL_TEXTURE_FALLBACK_SIZE);
     const sourceH = Math.max(1, wall.frame ? wall.frame.height : WALL_TEXTURE_FALLBACK_SIZE);
     // Fill the block by center-cropping (never stretching) so atlas cells keep
-    // their authored proportions at any block size; collision is unchanged.
+    // their authored proportions at any block size. The body matches this crop.
     const cover = Math.max(width / sourceW, height / sourceH);
     wall.setScale(cover, cover);
     const crop = (typeof NovaWingWallSpawn !== 'undefined' && NovaWingWallSpawn.coverCropRect)
@@ -5429,6 +5623,7 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     }
     wall.isWall = true;
     wall.isDangerWall = Boolean(options.danger);
+    wall.canyonLipVisual = Boolean(options.lipVisual);
     const scroll = worldScrollSpeed();
     wall.baseVelocityX = options.vertical ? 0 : scroll;
     wall.baseVelocityY = options.vertical ? -scroll : 0;
@@ -5438,12 +5633,26 @@ function spawnWallBlock(x, y, width, height, options = {}) {
         wall.body.setAllowGravity(false);
         wall.body.setImmovable(true);
         // Sync the pooled body to the spawned sprite now so the first frames
-        // are not tested against a stale position; the inset below still wins.
+        // are not tested against a stale position. setSize below replaces it.
         if (wall.body.updateFromGameObject) wall.body.updateFromGameObject();
-        // Slight inset so crystal art can overhang without unfair corner snags.
-        const insetX = Math.max(2, Math.round(sourceW * 0.06));
-        const insetY = Math.max(2, Math.round(sourceH * 0.04));
-        wall.body.setSize(sourceW - insetX * 2, sourceH - insetY * 2, true);
+        // The atlas cell is often much taller than the slice on screen (a 70px
+        // canyon ceiling lives in a 320px cell). Sizing the body to the cell
+        // pushed solid rock into the open lane. The body is the cropped block.
+        wall.body.setSize(Math.max(4, crop.w), Math.max(4, crop.h), true);
+        if (options.column && wallKey === 'wall') {
+            if (options.collideOnly) {
+                // Hidden slices follow the lip. The painted sprite is the curve.
+                wall.setScale(1, 1);
+                wall.setVisible(false);
+                if (wall.body.updateFromGameObject) wall.body.updateFromGameObject();
+                wall.body.setSize(Math.max(4, Math.round(width)), Math.max(4, Math.round(height)), true);
+            } else {
+                paintCanyonColumn(this, wall, width, height, crop, {
+                    profile: options.lipProfile || null
+                });
+                if (options.lipVisual) wall.setDepth(1.02);
+            }
+        }
         // Pooled bodies keep the prevFrame of their last life (or creation);
         // the reposition above would otherwise replay as motion in the next
         // postUpdate, flinging large-art walls offscreen on frame one.
@@ -5452,6 +5661,7 @@ function spawnWallBlock(x, y, width, height, options = {}) {
     // Stamp the spawn frame for the collision grace above. Walls spawn
     // offscreen and scroll in, so two skipped frames cost nothing legit.
     wall.spawnedFrame = typeof game !== 'undefined' && game.loop ? game.loop.frame : null;
+    createTerrainLighting(this, wall, width, height, options);
 
     if (options.danger && this && this.tweens) {
         this.tweens.add({
@@ -5860,11 +6070,12 @@ function startBossFight(encounterKey) {
         bossHealthFill.destroy();
         bossHealthFill = null;
     }
-    bossHealthBar = this.add.rectangle(400, 78, 330, 16, 0x202438, 0.95);
+    const healthY = coopEnabled ? HUD_PANEL_BOTTOM + 14 : 78;
+    bossHealthBar = this.add.rectangle(400, healthY, 330, 16, 0x202438, 0.95);
     bossHealthBar.setStrokeStyle(2, 0xff6677, 1);
     bossHealthBar.setDepth(8);
     bossHealthBar.setScrollFactor(0);
-    bossHealthFill = this.add.rectangle(236, 78, 326, 10, 0xff3355, 1);
+    bossHealthFill = this.add.rectangle(236, healthY, 326, 10, 0xff3355, 1);
     bossHealthFill.setOrigin(0, 0.5);
     bossHealthFill.setDepth(9);
     bossHealthFill.setScrollFactor(0);
@@ -6280,9 +6491,8 @@ function detonateSporeBloom(target, bloom) {
         spore.setTexture('enemyBullet');
         activateSprite(spore, bloom.x, bloom.y);
         spore.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-        spore.setAngle(0);
+        faceHostileRound(spore, Math.cos(angle), Math.sin(angle));
         spore.setDepth(2);
-        spore.setTint(0xff9430);
         spore.body.setSize(spore.width * 0.7, spore.height * 0.7, true);
     }
 }
@@ -6309,9 +6519,8 @@ function detonateTideMote(target, mote) {
         orb.setTexture('enemyBullet');
         activateSprite(orb, mote.x, mote.y);
         orb.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-        orb.setAngle(0);
+        faceHostileRound(orb, Math.cos(angle), Math.sin(angle));
         orb.setDepth(2);
-        orb.setTint(0x2ee6c8);
         orb.setScale(1.15);
         orb.body.setSize(orb.width * 0.7, orb.height * 0.7, true);
         orb.tideSeeker = { t0: now, steerMs: 2200, turn: 2.6 };
@@ -6902,10 +7111,12 @@ function bossDeathShock(scene, x, y, scale, tint) {
 function playBossDeath(scene, wreck) {
     const shell = wreck.shell;
     const pieces = wreck.pieces;
-    pieces.forEach(piece => piece.img.setTintFill(0xffffff));
+    pieces.forEach(piece => piece.img.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL));
     scene.time.delayedCall(70, () => {
         pieces.forEach(piece => {
-            if (piece.img.active) piece.img.setTint(0xffaa77);
+            // Phaser 4 keeps the tint mode across setTint calls (v3 reset it),
+            // so restore MULTIPLY explicitly for the ember glow.
+            if (piece.img.active) piece.img.setTint(0xffaa77).setTintMode(Phaser.TintModes.MULTIPLY);
         });
     });
     bossDeathEmber(scene, shell, wreck.w * 0.16, 0, 0xff6622);
@@ -8057,7 +8268,8 @@ function applyPlaytestClock(scene) {
     const scale = getPlaytestTimeScale();
     if (!scene) return;
     if (scene.physics && scene.physics.world) {
-        // Phaser 3.55 Arcade: values above 1 slow the world. Clock/Tweens use the opposite.
+        // Arcade World timeScale divides the step rate (2.0 = half speed), so it
+        // takes the reciprocal. Clock/Tweens multiply, so they take it as-is.
         scene.physics.world.timeScale = scale === 1 ? 1 : 1 / scale;
     }
     if (scene.time) scene.time.timeScale = scale;
@@ -8102,9 +8314,8 @@ function maybeFireEnemyShot(enemy, time) {
         shot.setTexture('enemyBullet');
         activateSprite(shot, fire.x, fire.y);
         shot.setVelocity(fire.vx, fire.vy);
-        shot.setAngle(0);
+        faceHostileRound(shot, fire.vx, fire.vy);
         shot.setDepth(2);
-        shot.setTint(0xff9430);
         shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
         shot.sporeWeave = { baseVx: fire.vx, baseVy: fire.vy, t0: time, amp: 110, freq: 0.005 };
         enemy.enemyAnimationFiredAt = time;
@@ -8132,7 +8343,7 @@ function maybeFireEnemyShot(enemy, time) {
             shot.setTexture('enemyBullet');
             activateSprite(shot, enemy.x, enemy.y);
             shot.setVelocity(d.vx, d.vy);
-            shot.setAngle(0);
+            faceHostileRound(shot, d.vx, d.vy);
             shot.setDepth(2);
             shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
         });
@@ -8148,11 +8359,15 @@ function maybeFireEnemyShot(enemy, time) {
     shot.setTexture('enemyBullet');
     activateSprite(shot, fire.x, fire.y);
     shot.setVelocity(fire.vx, fire.vy);
-    shot.setAngle(0);
+    faceHostileRound(shot, fire.vx, fire.vy);
     shot.setDepth(2);
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
     enemy.enemyAnimationFiredAt = time;
     sfx.enemyShoot(enemy.x);
+}
+
+function faceHostileRound(shot, vx, vy) {
+    shot.setRotation(Math.atan2(vy, vx));
 }
 
 function fireEnemyLobShot(enemy) {
@@ -8168,9 +8383,8 @@ function fireEnemyLobShot(enemy) {
     shot.setTexture('enemyBullet');
     activateSprite(shot, fire.x, fire.y);
     shot.setVelocity(fire.vx, fire.vy);
-    shot.setAngle(0);
+    faceHostileRound(shot, fire.vx, fire.vy);
     shot.setDepth(2);
-    shot.setTint(0xffd166);
     shot.setScale(1.25);
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
     shot.isLobbed = true;
@@ -8184,7 +8398,10 @@ function updateSporeWeave(shot, time) {
     if (!weave || !shot.body) return;
     const mag = Math.hypot(weave.baseVx, weave.baseVy) || 1;
     const k = Math.sin((time - weave.t0) * weave.freq) * weave.amp;
-    shot.setVelocity(weave.baseVx - weave.baseVy / mag * k, weave.baseVy + weave.baseVx / mag * k);
+    const vx = weave.baseVx - weave.baseVy / mag * k;
+    const vy = weave.baseVy + weave.baseVx / mag * k;
+    shot.setVelocity(vx, vy);
+    faceHostileRound(shot, vx, vy);
 }
 
 // Tide seeker: a slow orb that bends toward the nearest live pilot for a
@@ -8197,9 +8414,8 @@ function fireEnemyTideShot(enemy, time) {
     shot.setTexture('enemyBullet');
     activateSprite(shot, fire.x, fire.y);
     shot.setVelocity(fire.vx, fire.vy);
-    shot.setAngle(0);
+    faceHostileRound(shot, fire.vx, fire.vy);
     shot.setDepth(2);
-    shot.setTint(0x2ee6c8);
     shot.setScale(1.15);
     shot.body.setSize(shot.width * 0.7, shot.height * 0.7, true);
     shot.tideSeeker = { t0: time, steerMs: 2400, turn: 3.2 };
@@ -8231,6 +8447,7 @@ function updateTideSeeker(shot, frameDelta) {
     while (delta < -Math.PI) delta += Math.PI * 2;
     const next = current + Phaser.Math.Clamp(delta, -seek.turn * step, seek.turn * step);
     shot.setVelocity(Math.cos(next) * speed, Math.sin(next) * speed);
+    faceHostileRound(shot, Math.cos(next), Math.sin(next));
 }
 
 function fireEnemyMissile(enemy) {
@@ -8357,9 +8574,16 @@ function updateProjectileTrails() {
         const dx = velocity.x / speed, dy = velocity.y / speed;
         const color = bullet.ownerPlayer === playerTwo ? 0xffa6e7
             : bullet.texture.key === 'spreadBullet' ? 0x8dffd5 : 0x66eaff;
-        projectileTrails.lineStyle(heavy ? 3 : 2, color, 0.24);
-        projectileTrails.lineBetween(bullet.x - dx * 8, bullet.y - dy * 8,
-            bullet.x - dx * (8 + length), bullet.y - dy * (8 + length));
+        const tailX = bullet.x - dx * (8 + length);
+        const tailY = bullet.y - dy * (8 + length);
+        const headX = bullet.x - dx * 8;
+        const headY = bullet.y - dy * 8;
+        // Dark understroke carries the streak on a bright sky. It disappears
+        // into a dark field, where the colored line is the one you see.
+        projectileTrails.lineStyle(heavy ? 5 : 3, 0x041018, 0.7);
+        projectileTrails.lineBetween(headX, headY, tailX, tailY);
+        projectileTrails.lineStyle(heavy ? 3 : 2, color, 0.42);
+        projectileTrails.lineBetween(headX, headY, tailX, tailY);
     });
 }
 
@@ -8874,9 +9098,17 @@ function updateRosterEnemyAnimation(enemy, time, frameDelta) {
     }
     const type = enemy.enemyType;
     const upright = Boolean(SPRITES[enemy.texture.key]?.upright || ENEMY_TYPES[type].upright);
-    const baseAngle = enemy.facePlayer && !isVerticalScroll()
+    // Level-1 darts wear nose-down portrait art. Aiming that nose at the player,
+    // or leaving it at rest, points the flame up while the hull slides sideways.
+    const dartOnSide = type === 'dart' && !isVerticalScroll();
+    let baseAngle = enemy.facePlayer && !isVerticalScroll() && !dartOnSide
         ? (enemy.faceAngle || 0)
         : (upright || !isVerticalScroll() ? 0 : 90);
+    if (dartOnSide && enemy.body) {
+        const travel = window.NovaWingEnemyMath.noseAngleForVelocity(
+            enemy.body.velocity.x, enemy.body.velocity.y, true);
+        if (travel != null) baseAngle = travel;
+    }
     const dt = Math.min(Math.max(frameDelta, 0), 100) / 1000;
     const phase = time * 0.006 + enemy.enemyAnimationPhase;
     const lateral = enemy.body ? (upright || isVerticalScroll() ? enemy.body.velocity.x : -enemy.body.velocity.y) : 0;
@@ -10324,6 +10556,22 @@ function togglePause(scene) {
     setPaused(scene || getActiveScene(), !gamePaused);
 }
 
+// Sprite sheets advance in preUpdate, which keeps running while scene.update
+// is frozen. Pause and resume them with the rest of the sim.
+function setSpriteAnimsPaused(scene, paused) {
+    const list = scene && scene.children && scene.children.list;
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+        const node = list[i];
+        if (!node || node.type !== 'Sprite' || !node.anims) continue;
+        if (paused) {
+            if (node.anims.isPlaying) node.anims.pause();
+        } else if (node.active && node.anims.isPaused) {
+            node.anims.resume();
+        }
+    }
+}
+
 function setPaused(scene, paused, options = {}) {
     if (!scene) return;
     const wantPaused = Boolean(paused);
@@ -10342,6 +10590,7 @@ function setPaused(scene, paused, options = {}) {
         if (scene.tweens && scene.tweens.pauseAll) scene.tweens.pauseAll();
         if (scene.time) scene.time.paused = true;
         if (touchControls && touchControls.container) touchControls.container.setVisible(false);
+        setSpriteAnimsPaused(scene, true);
         showPauseOverlay(scene);
         return;
     }
@@ -10349,6 +10598,7 @@ function setPaused(scene, paused, options = {}) {
     gamePaused = false;
     if (musicDirector) musicDirector.setPaused(false);
     pauseRestartArmed = false;
+    setSpriteAnimsPaused(scene, false);
     hidePauseOverlay();
     if (scene.time) scene.time.paused = false;
     if (scene.tweens && scene.tweens.resumeAll) scene.tweens.resumeAll();
@@ -11725,6 +11975,8 @@ function activateSprite(sprite, x, y) {
 
 function releaseSprite(sprite) {
     if (!sprite) return;
+    if (sprite.terrainLighting) sprite.terrainLighting.destroy();
+    sprite.terrainLighting = null;
 
     sprite.clearTint();
     sprite.setAlpha(1);
@@ -11788,6 +12040,9 @@ function releasePowerup(scene, powerup) {
 
 function resetPooledEnemyState(sprite) {
     if (!sprite) return;
+    if (sprite.damageVisual) sprite.damageVisual.destroy();
+    sprite.damageVisual = null;
+    sprite.spawnHealth = null;
     if (sprite.anims && sprite.anims.isPlaying) sprite.anims.stop();
     if (sprite.enemyAnimationFx) sprite.enemyAnimationFx.destroy();
     sprite.enemyAnimationFx = null;
@@ -11978,8 +12233,6 @@ function createAtmosphereTextures(scene, theme = 'space') {
                 if (theme === 'canyon') {
                     // Dust hangs above and below the flight corridor.
                     ribbon = 0.3 + 0.7 * Math.abs(y - 180) / 180;
-                } else if (theme === 'canopy') {
-                    ribbon = 0.12 + 0.88 * (y / 360);
                 } else if (theme === 'singularity') {
                     const dx = x - 315, dy = (y - 115) * 1.25;
                     const radius = Math.hypot(dx, dy);
@@ -11990,13 +12243,29 @@ function createAtmosphereTextures(scene, theme = 'space') {
                 const violet = (Math.sin(x / 135 + y / 180) + 1) * 0.5;
                 const dust = noise(x / 48 + 20, y / 48) * 0.45 + 0.55;
                 const i = (y * 480 + x) * 4;
+                if (theme === 'canopy') {
+                    // Deep teal in the flight lane so cyan lances and magenta
+                    // rounds separate from the sky. Warm haze sits on the
+                    // jungle borders. The sun stays dimmer than a shot core.
+                    const v = y / 359;
+                    const lane = Math.exp(-(((v - 0.46) / 0.34) ** 2));
+                    const edge = 1 - lane;
+                    // Soft clouds stay well under a shot core so the lane never
+                    // climbs back to the old washed-out sky.
+                    const wisp = Math.max(0, n - 0.36) ** 1.4 * (0.55 + 0.45 * edge);
+                    const shaft = Math.exp(-(((x - 390) / 150) ** 2)) * Math.exp(-(((y - 48) / 100) ** 2));
+                    pixels.data[i] = Math.min(255, 18 + lane * 8 + edge * 48 + wisp * 48 + shaft * 62);
+                    pixels.data[i + 1] = Math.min(255, 58 + lane * 10 + edge * 62 + wisp * 54 + shaft * 42);
+                    pixels.data[i + 2] = Math.min(255, 108 + lane * 6 + edge * 18 + wisp * 32 + shaft * 10);
+                    pixels.data[i + 3] = 255;
+                    continue;
+                }
                 const palettes = theme === 'canyon'
-                    ? [100, 56, 25] : (theme === 'canopy'
-                        ? [70 + 50 * (y / 360), 150, 210 - 70 * (y / 360)] : (theme === 'singularity'
-                            ? [78 + 20 * violet, 26, 125] : [24 + 28 * violet, 55 - 24 * violet, 100]));
-                pixels.data[i] = (theme === 'canyon' ? 12 : (theme === 'canopy' ? 70 : 4)) + cloud * palettes[0] * dust * (theme === 'canopy' ? 0.45 : 1);
-                pixels.data[i + 1] = (theme === 'canopy' ? 165 : 7) + cloud * palettes[1] * dust * (theme === 'canopy' ? 0.35 : 1);
-                pixels.data[i + 2] = (theme === 'canyon' ? 10 : (theme === 'canopy' ? 215 : 17)) + cloud * palettes[2] * dust * (theme === 'canopy' ? 0.25 : 1);
+                    ? [100, 56, 25] : (theme === 'singularity'
+                        ? [78 + 20 * violet, 26, 125] : [24 + 28 * violet, 55 - 24 * violet, 100]);
+                pixels.data[i] = (theme === 'canyon' ? 12 : 4) + cloud * palettes[0] * dust;
+                pixels.data[i + 1] = 7 + cloud * palettes[1] * dust;
+                pixels.data[i + 2] = (theme === 'canyon' ? 10 : 17) + cloud * palettes[2] * dust;
                 pixels.data[i + 3] = 255;
             }
         }
@@ -12132,7 +12401,8 @@ function drawBackgroundLayers(scene, frameDelta, time) {
     const boostMul = Phaser.Math.Linear(1, 1.85, boostIntensity);
 
     // Expansion environments have moving distant wreckage, separate from solid terrain.
-    if (currentLevel >= 4) {
+    // Canopy Run is a daylight jungle: hull scraps read as gray stamps on the sky.
+    if (currentLevel >= 4 && getBackgroundTheme(currentLevel) !== 'canopy') {
         if (!scene.environmentProps || scene.environmentPropsLevel !== currentLevel) {
             (scene.environmentProps || []).forEach(prop => prop.destroy());
             scene.environmentPropsLevel = currentLevel;
@@ -12945,7 +13215,7 @@ function showFloatingText(scene, x, y, message, color, options = {}) {
         y: y - risePx,
         alpha: 0,
         scale: 1.12,
-        duration: 900,
+        duration: Number.isFinite(options.duration) ? options.duration : 900,
         ease: 'Sine.easeOut',
         onComplete: () => text.destroy()
     });
@@ -13513,6 +13783,81 @@ function shareScoreResult(entry, statusText, holder) {
     statusText.setText('Score ready to copy');
 }
 
+function createWeaponImpact(scene, x, y, kind, direction) {
+    const heavy = kind === 'heavy';
+    const laser = kind === 'laser';
+    const spread = kind === 'spread';
+    const count = fxQualityTier === 'low' ? 3 : spread ? 4 : heavy ? 9 : 6;
+    const emitter = segmentScope.own(scene.add.particles(x, y, heavy ? 'spark' : 'sparkBlue', {
+        lifespan: { min: 70, max: heavy ? 240 : 160 },
+        speed: { min: heavy ? 100 : 45, max: heavy ? 220 : 125 },
+        angle: { min: direction - (spread ? 35 : 16), max: direction + (spread ? 35 : 16) },
+        scale: { start: spread ? 0.5 : heavy ? 1.1 : 0.75, end: 0 },
+        alpha: { start: 0.95, end: 0 },
+        blendMode: 'ADD', emitting: false
+    }).setDepth(4));
+    emitter.explode(count, x, y);
+    segmentScope.delay(scene, 260, () => emitter.destroy());
+    if (!heavy && !laser) return;
+    const flare = segmentScope.own(scene.add.graphics().setPosition(x, y).setDepth(5));
+    flare.setAngle(direction);
+    flare.lineStyle(heavy ? 3 : 2, heavy ? 0xffd38a : 0xa4ffff, 0.9);
+    if (laser) {
+        flare.lineBetween(-5, 0, 5, 0);
+        flare.lineBetween(0, -15, 0, 15);
+    } else {
+        flare.strokeEllipse(0, 0, 9, 20);
+        flare.lineBetween(-8, 0, 12, 0);
+    }
+    segmentScope.tween(scene, { targets: flare, scaleX: 1.6, scaleY: 1.3,
+        alpha: 0, duration: laser ? 100 : 140, onComplete: () => flare.destroy() });
+}
+
+function showEnemyArmorDamage(scene, enemy) {
+    if (enemy.damageVisual || enemy.health > enemy.spawnHealth * 0.5) return;
+    if (!['splitter', 'mineDropper', 'orbiter'].includes(enemy.enemyType)) return;
+    const fx = scene.add.graphics().setDepth(enemy.depth + 0.02);
+    enemy.damageVisual = fx;
+    fx.setPosition(enemy.x, enemy.y).setRotation(enemy.rotation);
+    const w = enemy.displayWidth, h = enemy.displayHeight;
+    // Dark scoring behind a fine hot seam stays legible on bright armor.
+    for (const [thickness, color] of [[4, 0x25191b], [1, 0xffb572]]) {
+        fx.lineStyle(thickness, color, 0.9);
+        fx.beginPath();
+        fx.moveTo(-w * 0.16, -h * 0.18);
+        fx.lineTo(w * 0.03, -h * 0.04);
+        fx.lineTo(-w * 0.04, h * 0.07);
+        fx.lineTo(w * 0.13, h * 0.19);
+        fx.strokePath();
+    }
+    fx.fillStyle(0xff9933, 0.6);
+    fx.fillCircle(w * 0.22, 0, 3);
+}
+
+function createEnemyBreakup(scene, enemy) {
+    // Copy the art before releasing the pooled actor. Wreckage has no body,
+    // cannot shoot or pay out again, and never captures a reused enemy.
+    if (fxQualityTier === 'low') return;
+    const x = enemy.x, y = enemy.y;
+    const w = enemy.width, h = enemy.height;
+    for (const sign of [-1, 1]) {
+        const piece = segmentScope.own(scene.add.image(x, y, enemy.texture.key, enemy.frame.name));
+        piece.setScale(enemy.scaleX, enemy.scaleY).setRotation(enemy.rotation);
+        piece.setFlip(enemy.flipX, enemy.flipY).setDepth(3).setTint(0x9a8c87);
+        piece.setCrop(0, sign < 0 ? 0 : h / 2, w, h / 2);
+        segmentScope.tween(scene, { targets: piece,
+            x: x - 25, y: y + sign * 25, angle: enemy.angle + sign * 20,
+            alpha: 0, duration: 440, ease: 'Quad.easeOut', onComplete: () => piece.destroy() });
+    }
+    // Two small engine/armor ruptures, rather than another screen-sized flash.
+    for (const [delay, offset] of [[60, -10], [120, 12]]) {
+        segmentScope.delay(scene, delay, () => {
+            createExplosion(scene, x - delay * 0.04, y + offset, 6,
+                { palette: 'orange', flash: false, direction: 180, spread: 70 });
+        });
+    }
+}
+
 function createExplosion(scene, x, y, quantity, options = {}) {
     // Budget devices (Fire / A11 class): fewer particles per blast.
     if (fxQualityTier === 'low') {
@@ -13551,6 +13896,19 @@ function createExplosion(scene, x, y, quantity, options = {}) {
             ease: 'Quad.easeOut',
             onComplete: () => core.destroy()
         });
+        // A short dark edge keeps the burst from becoming a white smear that
+        // hides the next round, and it shows up on a bright sky.
+        const ink = scene.add.circle(x, y, 5, 0x000000, 0);
+        ink.setStrokeStyle(2, 0x041018, 0.75);
+        ink.setDepth(4);
+        scene.tweens.add({
+            targets: ink,
+            scale: Math.min(2.2, 1.05 + quantity * 0.025),
+            alpha: 0,
+            duration: 150,
+            ease: 'Quad.easeOut',
+            onComplete: () => ink.destroy()
+        });
     }
 
     if (ring) {
@@ -13568,9 +13926,10 @@ function createExplosion(scene, x, y, quantity, options = {}) {
         });
     }
 
-    const particles = scene.add.particles(textureKey);
-    particles.setDepth(4);
-    const emitter = particles.createEmitter({
+    // Phaser 4: add.particles returns the emitter directly (the pre-3.60
+    // ParticleEmitterManager + createEmitter split is gone). emitting: false
+    // keeps it a one-shot burst; explode() fires regardless of that flag.
+    const emitter = scene.add.particles(x, y, textureKey, {
         lifespan: { min: 220, max: 620 },
         speed: { min: 60, max: 40 + quantity * 6 },
         angle: particleAngle,
@@ -13578,17 +13937,16 @@ function createExplosion(scene, x, y, quantity, options = {}) {
         alpha: { start: 1, end: 0 },
         blendMode: 'ADD',
         gravityY: 40,
-        quantity: 0
+        emitting: false
     });
+    emitter.setDepth(4);
 
     emitter.explode(quantity, x, y);
 
     // A handful of larger fragments gives sturdy targets extra weight while
     // keeping the burst bounded and self-cleaning.
     if (options.debris && fxQualityTier !== 'low') {
-        const debris = scene.add.particles(textureKey);
-        debris.setDepth(4);
-        const debrisEmitter = debris.createEmitter({
+        const debrisEmitter = scene.add.particles(x, y, textureKey, {
             lifespan: { min: 360, max: 620 },
             speed: { min: 90, max: 175 },
             angle: hasDirection
@@ -13599,30 +13957,31 @@ function createExplosion(scene, x, y, quantity, options = {}) {
             alpha: { start: 0.95, end: 0 },
             blendMode: 'ADD',
             gravityY: 110,
-            quantity: 0
+            emitting: false
         });
+        debrisEmitter.setDepth(4);
         debrisEmitter.explode(mobilePerfMode ? 3 : 5, x, y);
-        scene.time.delayedCall(700, () => debris.destroy());
+        scene.time.delayedCall(700, () => debrisEmitter.destroy());
     }
 
     // Secondary ember burst
     if (quantity >= 20) {
-        const embers = scene.add.particles('spark');
-        embers.setDepth(4);
-        const emberEmitter = embers.createEmitter({
+        const emberEmitter = scene.add.particles(x, y, 'spark', {
             lifespan: { min: 300, max: 700 },
             speed: { min: 30, max: 120 },
             angle: { min: 0, max: 360 },
             scale: { start: 0.7, end: 0 },
             alpha: { start: 0.8, end: 0 },
             blendMode: 'ADD',
-            gravityY: 90
+            gravityY: 90,
+            emitting: false
         });
+        emberEmitter.setDepth(4);
         emberEmitter.explode(Math.floor(quantity * 0.35), x, y);
-        scene.time.delayedCall(750, () => embers.destroy());
+        scene.time.delayedCall(750, () => emberEmitter.destroy());
     }
 
-    scene.time.delayedCall(700, () => particles.destroy());
+    scene.time.delayedCall(700, () => emitter.destroy());
 }
 
 function shakeCombatCamera(scene, duration, intensity) {
@@ -13632,18 +13991,23 @@ function shakeCombatCamera(scene, duration, intensity) {
 }
 
 
+// Walk out and back so a sequence that does not close on itself still loops.
+function pingPongKeys(keys) {
+    if (!keys || keys.length < 3) return keys || [];
+    return keys.concat(keys.slice(1, -1).reverse());
+}
+
 function createPlayerAnimations(scene) {
     const assets = window.NovaWingAssets || {};
-    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.flight, [
-        'player-flight-0',
-        'player-flight-1',
-        'player-flight-4',
-        'player-flight-1'
-    ], 5, -1);
-    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.boost, assets.playerBoostKeys || [
-        'player-action-boost',
-        'player-flight-3'
-    ], 12, -1);
+    // Cells 2, 3, 5, and 6 loop the hair over the cockpit. Cruise stays on
+    // the short trail so the pilot and the nose stay readable.
+    const flight = ['player-flight-0', 'player-flight-1', 'player-flight-4', 'player-flight-1'];
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.flight, flight, 5, -1);
+    const boost = (assets.playerBoostKeys || ['player-action-boost', 'player-flight-3']).slice();
+    // The last boost cell shrinks the whole ship. Leave it out of the loop.
+    if (boost[boost.length - 1] === 'player-boost-4') boost.pop();
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.boost,
+        boost.length >= 3 ? pingPongKeys(boost) : boost, 12, -1);
     createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.hit, [
         'player-action-spin',
         'player-action-inverted'
@@ -13661,15 +14025,21 @@ function createPlayerAnimations(scene) {
         'player-action-inverted',
         'player-action-spin'
     ], 4, -1);
-    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.vertical, assets.playerVerticalKeys || [
-        'playerVertical'
-    ], 8, -1);
+    const vertical = assets.playerVerticalKeys || ['playerVertical'];
+    createPlayerAnimation(scene, PLAYER_ANIMATION_KEYS.vertical,
+        vertical.length >= 3 ? pingPongKeys(vertical) : vertical, 10, -1);
 }
 
 function createEnemyAnimations(scene) {
     const assets = window.NovaWingAssets || {};
-    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.regular, assets.enemyFlightKeys || ['enemy'], 8, -1);
-    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.interceptor, assets.enemy2FlightKeys || ['enemy2'], 8, -1);
+    const enemy = (assets.enemyFlightKeys || ['enemy']).slice();
+    // The last cell's exhaust is a shattered streak, not the next thrust pose.
+    if (enemy[enemy.length - 1] === 'enemy-flight-4') enemy.pop();
+    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.regular,
+        enemy.length >= 3 ? pingPongKeys(enemy) : enemy, 10, -1);
+    const enemy2 = assets.enemy2FlightKeys || ['enemy2'];
+    createPlayerAnimation(scene, ENEMY_ANIMATION_KEYS.interceptor,
+        enemy2.length >= 3 ? pingPongKeys(enemy2) : enemy2, 10, -1);
 }
 
 function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
@@ -13687,6 +14057,89 @@ function createPlayerAnimation(scene, key, textureKeys, frameRate, repeat) {
         frameRate,
         repeat
     });
+}
+
+// Cosmetic response only: never change the Arcade body, velocity, or shot vector.
+function updatePlayerFlightVisuals(ship, time, frameDelta) {
+    if (!ship) return;
+    if (!ship.active || !ship.visible) {
+        if (ship.flightVisual) ship.flightVisual.fx.clear();
+        return;
+    }
+    if (!ship.flightVisual) {
+        const fx = ship.scene.add.graphics();
+        ship.flightVisual = { fx, bank: 0, x: 0, y: 0, jetX: 0, jetY: 0, vertical: null };
+        ship.once('destroy', () => fx.destroy());
+    }
+    const state = ship.flightVisual;
+    const vertical = combatOrientation === 'up';
+    const dt = Math.min(Math.max(frameDelta, 0), 100) / 1000;
+    const speed = Math.max(1, playerMoveSpeed(0).cruise);
+    const x = Phaser.Math.Clamp(ship.body.velocity.x / speed, -1, 1);
+    const y = Phaser.Math.Clamp(ship.body.velocity.y / speed, -1, 1);
+    if (state.vertical !== vertical) {
+        state.bank = state.jetX = state.jetY = 0;
+        state.x = x;
+        state.y = y;
+        state.vertical = vertical;
+    }
+    const target = (vertical ? x : y) * 8;
+    state.bank += (target - state.bank) * (1 - Math.exp(-14 * dt));
+    ship.setAngle(state.bank);
+    // A change in velocity fires a short opposing jet; release produces braking.
+    state.jetX = Phaser.Math.Clamp(state.jetX * Math.exp(-18 * dt) + x - state.x, -1, 1);
+    state.jetY = Phaser.Math.Clamp(state.jetY * Math.exp(-18 * dt) + y - state.y, -1, 1);
+    state.x = x;
+    state.y = y;
+    const fx = state.fx;
+    fx.clear();
+    fx.setPosition(ship.x, ship.y).setDepth(ship.depth + 0.01).setRotation(ship.rotation);
+    const halfW = ship.displayWidth * 0.32;
+    const halfH = ship.displayHeight * 0.27;
+    const color = ship === playerTwo ? 0xffa6e7 : 0x65dfff;
+    const jet = (amount, horizontal) => {
+        if (Math.abs(amount) < 0.045) return;
+        const sign = -Math.sign(amount);
+        const length = 4 + Math.abs(amount) * 15;
+        const px = horizontal ? sign * halfW : -halfW * 0.15;
+        // Side-view art includes the pilot above the hull: mount jets on the
+        // fuselage rather than at the transparent bounds of the whole sprite.
+        const hullY = vertical ? 0 : ship.displayHeight * 0.15;
+        const nozzleY = vertical ? halfH : ship.displayHeight * 0.065;
+        const py = hullY + (horizontal ? nozzleY * 0.15 : sign * nozzleY);
+        fx.fillStyle(color, 0.55 * Math.min(1, Math.abs(amount) * 3));
+        if (horizontal) fx.fillTriangle(px, py - 3, px, py + 3, px + sign * length, py);
+        else fx.fillTriangle(px - 3, py, px + 3, py, px, py + sign * length);
+        fx.fillStyle(0xe6fbff, 0.85 * Math.min(1, Math.abs(amount) * 3));
+        fx.fillCircle(px, py, 1.6);
+    };
+    jet(state.jetX, true);
+    jet(state.jetY, false);
+}
+
+// Authored blocks keep a short bevel. Canyon columns skip it: the bevel traced
+// every slice and the corridor read as a stack of bricks.
+function createTerrainLighting(scene, wall, width, height, options = {}) {
+    if (wall.terrainLighting) wall.terrainLighting.destroy();
+    wall.terrainLighting = null;
+    // Path columns get their edge from the sliced rock. A bevel here drew a
+    // rectangle around every column and made the canyon read as bricks.
+    if (!scene || !scene.add || options.column) return;
+    const fx = scene.add.graphics().setDepth(wall.depth + 0.01).setPosition(wall.x, wall.y);
+    wall.terrainLighting = fx;
+    const x = -width / 2;
+    const y = -height / 2;
+    const bevel = Math.min(5, width * 0.08, height * 0.08);
+    const light = wall.isDangerWall ? 0xffb0a0 : 0xb6dbe8;
+    fx.fillStyle(0x020714, 0.32);
+    fx.fillRect(x, y + height - bevel, width, bevel);
+    fx.fillRect(x + width - bevel, y + bevel, bevel, height - bevel * 2);
+    fx.fillStyle(light, 0.16);
+    fx.fillRect(x, y, width, bevel);
+    fx.fillRect(x, y + bevel, bevel, height - bevel * 2);
+    fx.lineStyle(1, light, 0.4);
+    fx.lineBetween(x + 1, y + 1, x + width - 1, y + 1);
+    fx.lineBetween(x + 1, y + 1, x + 1, y + height - 1);
 }
 
 function updatePlayerAnimation(scene, time) {

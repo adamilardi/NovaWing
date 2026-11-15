@@ -110,6 +110,7 @@ const BAKED_SPRITE_ASSETS = {
     bossTropical: { path: 'assets/boss-tropical.png', sourceKey: 'bossTropicalSource', hasAlpha: true },
     plantSeed: { path: 'assets/plant-seed.png', sourceKey: 'plantSeedSource', hasAlpha: true },
     plantTree: { path: 'assets/plant-tree.png', sourceKey: 'plantTreeSource', hasAlpha: true,
+        knockout: 'navy',
         displayWidth: 86, body: { w: 0.42, h: 0.78, ox: 0.29, oy: 0.18 } },
     bossShip: { path: 'assets/boss-ship.png', sourceKey: 'bossShipSource' },
     // L3 vertical final boss (nose down, thrusters up) — PR4b Imagine art.
@@ -525,7 +526,7 @@ function install(scene) {
         if (!sprite.sourceKey) return;
         if (sprite.atlas) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop, { keyGray: false });
         else if (key === 'wall') installWallTexture(scene, key, sprite.sourceKey);
-        else if (sprite.hasAlpha || !sprite.crop) installImageTexture(scene, key, sprite.sourceKey);
+        else if (sprite.hasAlpha || !sprite.crop) installImageTexture(scene, key, sprite.sourceKey, sprite);
         else if (sprite.crop) createTransparentTexture(scene, key, sprite.sourceKey, sprite.crop);
     });
     SPRITE_FRAMES.forEach(frame => {
@@ -631,7 +632,7 @@ function installWallTexture(scene, key, sourceKey) {
     });
 }
 
-function installImageTexture(scene, key, sourceKey) {
+function installImageTexture(scene, key, sourceKey, options = {}) {
     // Phaser's texture manager survives scene restarts. Alpha images are already
     // ready for upload; keep the installed texture and avoid a canvas copy.
     if (!scene.textures.exists(sourceKey)) return false;
@@ -641,12 +642,44 @@ function installImageTexture(scene, key, sourceKey) {
     if (!image || !image.width) return false;
 
     if (scene.textures.exists(key)) {
-        // Replace procedural fallbacks on first load, but retain this asset later.
-        if (scene.textures.get(key).getSourceImage() === image) return true;
+        const existing = scene.textures.get(key);
+        // A keyed sprite is a canvas copy, so identity with the source is not "done".
+        if (!options.knockout && existing.getSourceImage() === image) return true;
+        if (options.knockout && existing.novaKnockout === options.knockout) return true;
         scene.textures.remove(key);
     }
 
+    if (options.knockout === 'navy') {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(image, 0, 0);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        knockoutNavyMatte(imageData.data);
+        context.putImageData(imageData, 0, 0);
+        const texture = scene.textures.addCanvas(key, canvas);
+        if (texture) texture.novaKnockout = 'navy';
+        if (texture && texture.refresh) texture.refresh();
+        return Boolean(texture);
+    }
+
     return Boolean(scene.textures.addImage(key, image));
+}
+
+// The palm was painted on a semi-transparent purple-navy rectangle. Foliage is
+// green-forward and the trunk is red-forward, so a blue-led pixel is the matte.
+function knockoutNavyMatte(pixels) {
+    for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const a = pixels[i + 3];
+        if (a < 8) continue;
+        const field = b > r + 10 && b > g + 6 && r < 72 && g < 84 && b < 120;
+        const fringe = a < 220 && b > r + 8 && b + 6 >= g && r < 48 && g < 90 && b < 100;
+        if (field || fringe) pixels[i + 3] = 0;
+    }
 }
 
 
@@ -763,7 +796,8 @@ const api = {
     preload,
     install,
     sprite,
-    files
+    files,
+    knockoutNavyMatte
 };
 if (typeof module === 'object' && module.exports) module.exports = api;
 else root.NovaWingAssets = api;

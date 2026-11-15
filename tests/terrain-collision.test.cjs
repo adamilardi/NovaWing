@@ -3,10 +3,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('game.js', 'utf8');
-const start = source.indexOf('function resolvePlayerAgainstWall(');
-const end = source.indexOf('\nfunction ', start + 1);
+function sliceFunction(name) {
+    const start = source.indexOf('function ' + name + '(');
+    const end = source.indexOf('\nfunction ', start + 1);
+    return source.slice(start, end < 0 ? undefined : end);
+}
 const context = vm.createContext({ Math, createExplosion() {}, damagePlayer() {}, player: null });
-vm.runInContext(source.slice(start, end), context);
+vm.runInContext(sliceFunction('commitShipBody') + '\n' + sliceFunction('resolvePlayerAgainstWall'), context);
 function ship(x, y) {
     const s = { active: true, x, y, setVelocityX() {}, setVelocityY() {} };
     s.body = { halfWidth: 10, halfHeight: 10, center: { x, y }, velocity: { x: 0, y: 0 },

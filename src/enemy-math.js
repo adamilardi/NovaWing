@@ -24,6 +24,15 @@
         return normalizeAngleDegrees(deg);
     }
 
+    // Nose-down portrait art (flame at the top of the texture) flying on a
+    // side-view level. Returns the Phaser angle that puts the nose on the
+    // velocity, or null when the ship is barely moving. Shots do not use this.
+    function noseAngleForVelocity(vx, vy, upright) {
+        const speed = Math.hypot(vx, vy);
+        if (!(speed > 36)) return null;
+        return faceAngleToward(0, 0, vx, vy, Boolean(upright));
+    }
+
     function turnAngleToward(current, target, maxStep) {
         const delta = normalizeAngleDegrees(target - current);
         if (delta > maxStep) return current + maxStep;
@@ -188,7 +197,7 @@
         };
     }
 
-    const api = { normalizeAngleDegrees, faceAngleToward, turnAngleToward, isVerticalScrollMode, nearestShip, pursuitLane, fireVector };
+    const api = { normalizeAngleDegrees, faceAngleToward, noseAngleForVelocity, turnAngleToward, isVerticalScrollMode, nearestShip, pursuitLane, fireVector };
     if (typeof module === 'object' && module.exports) module.exports = api;
     else root.NovaWingEnemyMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

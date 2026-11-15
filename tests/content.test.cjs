@@ -185,3 +185,18 @@ test('build preserves authored bytes, packages registered modules/assets and omi
         await assert.rejects(fs.access(path.join(output, 'assets/boss-concept-a.jpg')));
     } finally { await fs.rm(output, { recursive: true, force: true }); }
 });
+
+test('the palm obstacle drops its baked navy rectangle and keeps the tree', () => {
+    assert.equal(Assets.sprites.plantTree.knockout, 'navy');
+    const pixels = Uint8ClampedArray.from([
+        26, 20, 53, 199,
+        40, 140, 48, 255,
+        120, 64, 32, 255,
+        18, 36, 52, 160
+    ]);
+    Assets.knockoutNavyMatte(pixels);
+    assert.equal(pixels[3], 0, 'navy field must clear');
+    assert.equal(pixels[7], 255, 'leaf must stay');
+    assert.equal(pixels[11], 255, 'trunk must stay');
+    assert.equal(pixels[15], 0, 'fringe must clear');
+});

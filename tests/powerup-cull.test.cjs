@@ -28,9 +28,11 @@ vm.runInContext([
 ].join('\n'), context);
 
 test('powerup sweep keeps gate-row drops alive', () => {
-    const loop = source.match(/for \(let i = 0, list = powerups\.children\.entries[\s\S]{0,400}?isOffscreen\(p, (\d+)\)/);
+    const loop = source.match(/for \(const p of powerups\.children\) \{[\s\S]{0,500}?isOffscreen\(p, (\d+)\)/);
     assert.ok(loop, 'powerup sweep must call isOffscreen with an explicit pad');
     assert.ok(Number(loop[1]) >= 90, `sweep pad ${loop[1]} culls x=910 spawns`);
+    assert.equal(source.includes('children.entries'), false,
+        'group sweeps must walk the member Set; Set.entries is a method and the indexed walk never ran');
 });
 
 test('offscreen bounds keep right-side spawns, drop left-side exits', () => {
