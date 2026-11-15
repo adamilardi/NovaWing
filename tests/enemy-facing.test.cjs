@@ -37,6 +37,19 @@ test('upright nose math keeps nose-down rest pose', () => {
     close(context.faceAngleToward(400, 300, 650, 300, true), -90);
 });
 
+test('side-flying dart nose follows travel instead of pointing up', () => {
+    // Nose-down art: 90 aims left, -90 aims right, 0 aims down (flame up).
+    close(EnemyMath.noseAngleForVelocity(-130, 0, true), 90);
+    close(EnemyMath.noseAngleForVelocity(165, 20, true), -90, 8);
+    close(EnemyMath.noseAngleForVelocity(0, 200, true), 0);
+    assert.equal(EnemyMath.noseAngleForVelocity(10, 0, true), null);
+    const source = fs.readFileSync('game.js', 'utf8');
+    assert.ok(source.includes("type === 'dart' && !isVerticalScroll()"),
+        'horizontal darts must take the travel heading');
+    assert.ok(source.includes('noseAngleForVelocity'),
+        'horizontal darts must point the nose along velocity');
+});
+
 test('turning takes the shortest arc and caps the step', () => {
     close(context.turnAngleToward(170, -170, 30), 190); // +20 across the seam
     close(context.turnAngleToward(-170, 170, 30), -190);

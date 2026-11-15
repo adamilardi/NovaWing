@@ -55,11 +55,11 @@ function probePlaywrightCache(shellFirst) {
     const cache = path.join(os.homedir(), '.cache', 'ms-playwright');
     const full = [
         ['chrome-linux', 'chrome'],
-        ['chrome-linux64', 'chrome']
+        ['chrome-linux64', 'chrome'],
     ];
     const shell = [
         ['chrome-linux', 'headless_shell'],
-        ['chrome-headless-shell-linux64', 'chrome-headless-shell']
+        ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
     ];
     // Shell-first callers want the lighter binary: faster startup and less
     // memory per worker, ideal for high-parallelism RL recording. Each
@@ -112,8 +112,8 @@ export function defaultLaunchOptions(headless) {
             '--ignore-gpu-blocklist',
             '--no-sandbox',
             '--mute-audio',
-            '--autoplay-policy=no-user-gesture-required'
-        ]
+            '--autoplay-policy=no-user-gesture-required',
+        ],
     };
     const chrome = resolveChromePath();
     if (chrome) opts.executablePath = chrome;
@@ -179,11 +179,16 @@ function httpGet(url) {
     return new Promise((resolve, reject) => {
         const req = http.get(url, (res) => {
             let body = '';
-            res.on('data', (chunk) => { body += chunk; });
+            res.on('data', (chunk) => {
+                body += chunk;
+            });
             res.on('end', () => resolve({ status: res.statusCode, body }));
         });
         req.on('error', reject);
-        req.setTimeout(1000, () => { req.destroy(); reject(new Error('timeout')); });
+        req.setTimeout(1000, () => {
+            req.destroy();
+            reject(new Error('timeout'));
+        });
     });
 }
 
@@ -199,10 +204,16 @@ function killToken(token) {
             resolve();
             return;
         }
-        const child = spawn(WIN_POWERSHELL, ['-NoProfile', '-Command',
-            `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${token}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
+        const child = spawn(WIN_POWERSHELL, [
+            '-NoProfile',
+            '-Command',
+            `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${token}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+        ]);
         const timer = setTimeout(() => resolve(), 8000);
-        const done = () => { clearTimeout(timer); resolve(); };
+        const done = () => {
+            clearTimeout(timer);
+            resolve();
+        };
         child.on('exit', done);
         child.on('error', done);
     });
@@ -210,7 +221,11 @@ function killToken(token) {
 
 async function stopWindowsChrome(token, children = []) {
     for (const child of children) {
-        try { child.kill(); } catch { /* already gone */ }
+        try {
+            child.kill();
+        } catch {
+            /* already gone */
+        }
     }
     await killToken(token);
     try {
@@ -227,8 +242,16 @@ async function ensureRelay() {
         fs.mkdirSync('/mnt/c/Users/Public', { recursive: true });
         fs.writeFileSync(cs, RELAY_CS);
         await new Promise((resolve, reject) => {
-            const child = spawn(WIN_CSC, ['/nologo', '/out:C:\\Users\\Public\\novawing-cdp-relay.exe', 'C:\\Users\\Public\\novawing-cdp-relay.cs'], { stdio: 'ignore' });
-            child.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`csc exited ${code}`)));
+            const child = spawn(
+                WIN_CSC,
+                [
+                    '/nologo',
+                    '/out:C:\\Users\\Public\\novawing-cdp-relay.exe',
+                    'C:\\Users\\Public\\novawing-cdp-relay.cs',
+                ],
+                { stdio: 'ignore' }
+            );
+            child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`csc exited ${code}`))));
             child.on('error', reject);
         });
     }
@@ -257,8 +280,13 @@ function isWSL() {
 }
 
 function linuxGpuFacts() {
-    let dxg = false, dri = false;
-    try { dxg = fs.existsSync('/dev/dxg'); } catch { /* no GPU device */ }
+    let dxg = false,
+        dri = false;
+    try {
+        dxg = fs.existsSync('/dev/dxg');
+    } catch {
+        /* no GPU device */
+    }
     try {
         dri = fs.readdirSync('/dev/dri').some((f) => f.startsWith('card') || f.startsWith('render'));
     } catch {
@@ -273,13 +301,12 @@ function resolveChromePaths() {
     }
     // One pick per binary class (shell-first vs full-first ordering), so a
     // software-only shell can fall through to the full build for the GPU try.
-    const paths = [probePlaywrightCache(true), probePlaywrightCache(false)]
-        .filter((p) => p && fs.existsSync(p));
+    const paths = [probePlaywrightCache(true), probePlaywrightCache(false)].filter((p) => p && fs.existsSync(p));
     return [...new Set(paths)];
 }
 
 async function probeHardwareRenderer(browser) {
-    const context = browser.contexts()[0] || await browser.newContext();
+    const context = browser.contexts()[0] || (await browser.newContext());
     const page = await context.newPage();
     try {
         return await page.evaluate(() => {
@@ -309,13 +336,23 @@ async function tryLinuxGPU(chromium, headless, slowMo = 0) {
     for (const exe of resolveChromePaths()) {
         let browser = null;
         try {
-            browser = await chromium.launch({ headless, slowMo, executablePath: exe,
-                args: ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist',
-                    '--enable-gpu', '--no-sandbox', '--mute-audio',
-                    '--autoplay-policy=no-user-gesture-required'],
+            browser = await chromium.launch({
+                headless,
+                slowMo,
+                executablePath: exe,
+                args: [
+                    '--use-gl=angle',
+                    '--use-angle=gl-egl',
+                    '--ignore-gpu-blocklist',
+                    '--enable-gpu',
+                    '--no-sandbox',
+                    '--mute-audio',
+                    '--autoplay-policy=no-user-gesture-required',
+                ],
                 ignoreDefaultArgs: ['--disable-gpu'],
                 env: { ...process.env, ...gpuEnv },
-                timeout: 60000 });
+                timeout: 60000,
+            });
             const renderer = await probeHardwareRenderer(browser);
             if (!isSoftwareRenderer(renderer)) {
                 console.log(`[browser] Linux GPU: ${renderer} (${path.basename(exe)})`);
@@ -369,7 +406,7 @@ async function tryWindowsChrome(chromium, headless, slowMo = 0) {
         '--autoplay-policy=no-user-gesture-required',
         `--remote-debugging-port=${chromePort}`,
         `--user-data-dir=${profile}`,
-        'about:blank'
+        'about:blank',
     ];
     if (headless) args.unshift('--headless=new');
     const chromeChild = run(chromePath, args);
@@ -399,7 +436,11 @@ async function tryWindowsChrome(chromium, headless, slowMo = 0) {
         const browser = await chromium.connectOverCDP(endpoint, { slowMo });
         const close = browser.close.bind(browser);
         browser.close = async () => {
-            try { await close(); } catch { /* already disconnected */ }
+            try {
+                await close();
+            } catch {
+                /* already disconnected */
+            }
             await stopWindowsChrome(token, children);
         };
         return browser;
@@ -434,7 +475,9 @@ export async function launchBrowser(chromium, headless, { slowMo = 0, recordVide
                 }
                 console.log(`[browser] Windows GPU rejected: ${renderer || 'no renderer'}`);
             } catch (error) {
-                console.log(`[browser] Windows GPU probe failed: ${String((error && error.message) || error).slice(0, 120)}`);
+                console.log(
+                    `[browser] Windows GPU probe failed: ${String((error && error.message) || error).slice(0, 120)}`
+                );
             }
             await windows.close();
         }
@@ -451,7 +494,7 @@ export async function launchBrowser(chromium, headless, { slowMo = 0, recordVide
  */
 export async function routeVendorPhaser(page) {
     if (!fs.existsSync(VENDOR_PHASER)) return false;
-    await page.route('https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js', async (route) => {
+    await page.route('https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js', async (route) => {
         await route.fulfill({ path: VENDOR_PHASER, contentType: 'application/javascript' });
     });
     return true;

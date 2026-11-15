@@ -26,6 +26,8 @@ import { caseContent, casePerformance } from './verify-content-cases.mjs';
 import { casePolish, caseCampaignRanking } from './verify-polish.mjs';
 import { caseCombatPolish } from './verify-combat-polish.mjs';
 import { caseGraphicsPolish } from './verify-graphics-polish.mjs';
+import { caseFlightPolish } from './verify-flight-polish.mjs';
+import { casePacingRoutes } from './verify-pacing-routes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -1441,6 +1443,8 @@ const CASES = {
     'campaign-ranking': caseCampaignRanking,
     'combat-polish': caseCombatPolish,
     'graphics-polish': caseGraphicsPolish,
+    'flight-polish': caseFlightPolish,
+    'pacing-routes': casePacingRoutes,
     content: caseContent,
     performance: casePerformance,
     validation: caseValidation,
@@ -1474,7 +1478,7 @@ function selectedCases() {
         return [
             'boot', 'desktop-move', 'controller', 'pause', 'difficulty', 'continues',
             'content', 'performance', 'polish', 'campaign-ranking', 'combat-polish',
-            'graphics-polish', 'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
+            'graphics-polish', 'flight-polish', 'pacing-routes', 'l1-bot', 'l2-bot', 'l3-bot', 'rl-policy'
         ];
     }
     return [

@@ -27,7 +27,7 @@ Do not re-spend effort here.
 - Mobile touch dock, FX quality auto-downgrade, audio mute persistence.
 - Distinct procedural scores for open space, canyon waves/boss, L3 intro,
   vertical gauntlet, and final boss; transition stays stinger-only.
-- Phaser 3.55.2 on jsDelivr with SRI. Leaderboard Slice A locks stats at
+- Phaser 4.2.1 on jsDelivr with SRI. Leaderboard Slice A locks stats at
   complete. Ranked mode is Hotshot.
 
 The verify harness is a crash/boot gate, not a ship gate. It does **not**
@@ -60,15 +60,15 @@ the polish backlog.
 
 ### 2. Campaign feel
 
-| Beat | Why it matters | What to change |
-| --- | --- | --- |
-| L3 first 20s after REALITY SHEAR | Finale teaches vertical fire by punishment | Soft opener: slower risers, no mines, one clear “fire up” cue |
-| Black-hole preview | Late gauntlet can read as a soft death | Foreshadow; keep swallow as a real death class |
-| L3 length | Target ~3.5–4.5 min skilled clear | Cut gauntlet density if playtests show fatigue |
-| L2 path rewards | Canyon routes exist; choice barely pays | One exclusive pickup on an alt band; tiny score for visiting 2+ paths |
-| Hit-stop | Big kills still feel flat | 2–4 frames on splitter break, boss phase, bomb |
-| Flip cinematic | `REALITY SHEAR` is a floating label | Stinger, unique music color, slightly longer hold |
-| Between-level glue | Mid-run clears still need more identity | 1–2 line lore card and a distinct stinger per stage; campaign win now has its own hold and fanfare |
+| Beat                             | Why it matters                             | What to change                                                                                     |
+| -------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| L3 first 20s after REALITY SHEAR | Finale teaches vertical fire by punishment | Soft opener: slower risers, no mines, one clear “fire up” cue                                      |
+| Black-hole preview               | Late gauntlet can read as a soft death     | Foreshadow; keep swallow as a real death class                                                     |
+| L3 length                        | Target ~3.5–4.5 min skilled clear          | Cut gauntlet density if playtests show fatigue                                                     |
+| L2 path rewards                  | Canyon routes exist; choice barely pays    | One exclusive pickup on an alt band; tiny score for visiting 2+ paths                              |
+| Hit-stop                         | Big kills still feel flat                  | 2–4 frames on splitter break, boss phase, bomb                                                     |
+| Flip cinematic                   | `REALITY SHEAR` is a floating label        | Stinger, unique music color, slightly longer hold                                                  |
+| Between-level glue               | Mid-run clears still need more identity    | 1–2 line lore card and a distinct stinger per stage; campaign win now has its own hold and fanfare |
 
 Skip combo/graze until those land. They retune scoring and the leaderboard.
 Do not add them in the same pass as L3 pacing.
@@ -81,7 +81,7 @@ the canvas.
 - Favicon, `<meta name="description">`, Open Graph tags.
 - Loading bar during preload. Failed boot now shows a retryable error message.
 - Vendor Phaser into `dist/` (or keep the CDN pin with a local fallback).
-  SRI is already on 3.55.2; remaining risk is availability.
+  SRI is already on 4.2.1; remaining risk is availability.
 - Automate `?v=` cache busting for changed scripts. `GAME_VERSION` is the
   leaderboard schema version and should only change when score compatibility changes.
 - Recorded music remains an optional upgrade. Stage and encounter identity

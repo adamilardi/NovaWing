@@ -19,7 +19,7 @@ Status: `done` · `todo` · `later`
 - Difficulty: Space Cadet / Hotshot / Supernova (storage IDs `easy` /
   `normal` / `hard`). Ranked = Hotshot
 - Leaderboard Slice A — lock score/kills/accuracy at run complete
-- Phaser 3.55.2 CDN pin **with SRI** (availability fallback still open)
+- Phaser 4.2.1 CDN pin **with SRI** (availability fallback still open)
 - I-frame ram exploit closed; CORS same-origin; run rate-limit and body-size
   guards; atomic D1 leaderboard write
 - `npm start`, `npm run check` in GitHub Actions, `npm run verify` Playwright
@@ -49,14 +49,14 @@ Not a v1 gate unless a bug forces it.
 `game.js` is ~10.6k lines. Prefer the existing IIFE + `window.NovaWing*`
 pattern (`levels.js`, `audio.js`) so build stays copy-into-`dist/`.
 
-| Order | Module | Notes |
-| --- | --- | --- |
-| 1 | `audio.js` | **done** |
-| 2 | `net.js` | run token, leaderboard fetch/submit |
-| 3 | `black-hole.js` | forces, hazard rings, visuals |
-| 4 | `boss.js` | fight, volleys, drones, lasers, escape |
-| 5 | `segments.js` | L3 advance/enter handlers |
-| 6 | `waves.js` | pattern registry + spawners |
+| Order | Module          | Notes                                  |
+| ----- | --------------- | -------------------------------------- |
+| 1     | `audio.js`      | **done**                               |
+| 2     | `net.js`        | run token, leaderboard fetch/submit    |
+| 3     | `black-hole.js` | forces, hazard rings, visuals          |
+| 4     | `boss.js`       | fight, volleys, drones, lasers, escape |
+| 5     | `segments.js`   | L3 advance/enter handlers              |
+| 6     | `waves.js`      | pattern registry + spawners            |
 
 One module per change when possible. Do not freeze campaign length; keep
 `getTotalLevels()` live. Defer a bundler until script-tag order hurts.

@@ -780,6 +780,7 @@
             for (let t = startMs; t < startMs + durationMs; t += stepMs) {
                 events.push({
                     progressMs: t,
+                    ...(t === startMs && stretch.routeHint ? { routeHint: stretch.routeHint } : {}),
                     openBands: openBands.map(function (band) {
                         return [band[0], band[1]];
                     })
@@ -833,6 +834,10 @@
         wavePatternSchedule: [
             { untilMs: 7000, keys: ['vFormation', 'diagonal'] },
             { untilMs: 14000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise', 'asteroidWall', 'minefield'] },
+            { untilMs: 28000, keys: ['diagonal', 'vFormation', 'chaser', 'asteroidWall', 'swarm', 'minefield', 'sandwich', 'skyDive', 'floorRise', 'oppositeInterceptors'] },
+            { untilMs: 34000, keys: ['vFormation', 'diagonal'] },
+            { untilMs: 54000, keys: ['diagonal', 'vFormation', 'chaser', 'asteroidWall', 'swarm', 'minefield', 'sandwich', 'skyDive', 'floorRise', 'oppositeInterceptors'] },
+            { untilMs: 60000, keys: ['vFormation', 'diagonal'] },
             { keys: ['diagonal', 'vFormation', 'chaser', 'asteroidWall', 'swarm', 'minefield', 'sandwich', 'skyDive', 'floorRise', 'oppositeInterceptors'] }
         ],
         // Open space: learn the shot, cruise, then a short press into the boss.
@@ -848,8 +853,13 @@
                 hard: { typedFireChance: 0.88, enemyFireChance: 0.48, interceptorChance: 0.26,
                     enemyCadenceScale: 0.92, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500,
                     enemyShotSpeedScale: 1.04 } },
-            { id: 'cruise', untilMs: 42000 },
-            { id: 'press', untilMs: 60000,
+            { id: 'cruise', untilMs: 28000 },
+            { id: 'recover', untilMs: 34000,
+                easy: { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4400, enemyFireChance: 0.1, typedFireChance: 0.25, interceptorChance: 0 },
+                normal: { waveIntervalMinMs: 3300, waveIntervalMaxMs: 3900, enemyFireChance: 0.14, typedFireChance: 0.3, interceptorChance: 0 },
+                hard: { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3100, enemyCadenceScale: 1.1 } },
+            { id: 'rebuild', untilMs: 42000 },
+            { id: 'press', untilMs: 54000,
                 easy: { typedFireChance: 0.58, enemyFireChance: 0.2, interceptorChance: 0.09,
                     enemyCadenceScale: 1.25, waveIntervalMinMs: 1800, waveIntervalMaxMs: 2400,
                     enemyShotSpeedScale: 0.8 },
@@ -857,7 +867,11 @@
                     enemyCadenceScale: 0.94, waveIntervalMinMs: 1550, waveIntervalMaxMs: 2050,
                     enemyShotSpeedScale: 1.02 },
                 hard: { enemyCadenceScale: 0.74, waveIntervalMinMs: 1450, waveIntervalMaxMs: 1950,
-                    enemyShotSpeedScale: 1.14 } }
+                    enemyShotSpeedScale: 1.14 } },
+            { id: 'bossApproach', untilMs: 60000,
+                easy: { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4400, typedFireChance: 0.25, interceptorChance: 0 },
+                normal: { waveIntervalMinMs: 3300, waveIntervalMaxMs: 3900, typedFireChance: 0.3, interceptorChance: 0.04 },
+                hard: { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3100, enemyCadenceScale: 1.1 } }
         ],
         hasPathWalls: false,
         powerups: [
@@ -925,7 +939,10 @@
         wavePatternSchedule: [
             { untilMs: 9000, keys: ['vFormation', 'diagonal'] },
             { untilMs: 18000, keys: ['vFormation', 'diagonal', 'swarm', 'skyDive', 'floorRise'] },
-            { untilMs: 48000, keys: ['diagonal', 'vFormation', 'swarm', 'skyDive', 'floorRise'] },
+            { untilMs: 29700, keys: ['diagonal', 'vFormation', 'swarm', 'skyDive', 'floorRise'] },
+            { untilMs: 33800, keys: ['vFormation', 'diagonal'] },
+            { untilMs: 48200, keys: ['diagonal', 'vFormation', 'swarm', 'skyDive', 'floorRise'] },
+            { untilMs: 55000, keys: ['vFormation', 'diagonal'] },
             { keys: ['diagonal', 'oppositeInterceptors', 'chaser', 'vFormation', 'pincer', 'swarm', 'sandwich', 'skyDive', 'floorRise', 'splitterPair', 'splitterAmbush'] }
         ],
         // The walls are the puzzle. Fire eases in the squeezes, presses
@@ -939,12 +956,26 @@
                     enemyShotSpeedScale: 0.92 },
                 hard: { typedFireChance: 0.85, enemyFireChance: 0.48, interceptorChance: 0.28,
                     enemyCadenceScale: 0.95, waveIntervalMinMs: 2000, waveIntervalMaxMs: 2700 } },
-            { id: 'lanes', untilMs: 48000,
+            { id: 'lanes', untilMs: 29700,
                 easy: { typedFireChance: 0.5, enemyFireChance: 0.2, interceptorChance: 0.1,
                     enemyCadenceScale: 1.3, waveIntervalMinMs: 2100, waveIntervalMaxMs: 2800 },
                 normal: { typedFireChance: 0.58, enemyFireChance: 0.32, interceptorChance: 0.16,
                     enemyCadenceScale: 1.08, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500 },
                 hard: { enemyCadenceScale: 0.82, waveIntervalMinMs: 1600, waveIntervalMaxMs: 2200 } },
+            { id: 'midRecovery', untilMs: 33800,
+                easy: { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4400, typedFireChance: 0.25, interceptorChance: 0 },
+                normal: { waveIntervalMinMs: 3300, waveIntervalMaxMs: 3900, typedFireChance: 0.3, interceptorChance: 0.04 },
+                hard: { waveIntervalMinMs: 2500, waveIntervalMaxMs: 3100, enemyCadenceScale: 1.1 } },
+            { id: 'lowerLanes', untilMs: 48200,
+                easy: { typedFireChance: 0.5, enemyFireChance: 0.2, interceptorChance: 0.1,
+                    enemyCadenceScale: 1.3, waveIntervalMinMs: 2100, waveIntervalMaxMs: 2800 },
+                normal: { typedFireChance: 0.58, enemyFireChance: 0.32, interceptorChance: 0.16,
+                    enemyCadenceScale: 1.08, waveIntervalMinMs: 1900, waveIntervalMaxMs: 2500 },
+                hard: { enemyCadenceScale: 0.82, waveIntervalMinMs: 1600, waveIntervalMaxMs: 2200 } },
+            { id: 'routeChoice', untilMs: 55000,
+                easy: { waveIntervalMinMs: 3800, waveIntervalMaxMs: 4400, typedFireChance: 0.2, interceptorChance: 0 },
+                normal: { waveIntervalMinMs: 3300, waveIntervalMaxMs: 3900, typedFireChance: 0.28, interceptorChance: 0.04 },
+                hard: { waveIntervalMinMs: 2600, waveIntervalMaxMs: 3200, enemyCadenceScale: 1.1 } },
             { id: 'press', untilMs: 70000,
                 easy: { typedFireChance: 0.54, enemyFireChance: 0.24, interceptorChance: 0.12,
                     enemyCadenceScale: 1.16, enemyShotSpeedScale: 0.82,
@@ -969,8 +1000,9 @@
             { progressMs: 32000, type: 'repair', y: canyon.center('mid') },
             { progressMs: 42000, type: 'weapon', y: canyon.center('top') },
             { progressMs: 42000, type: 'bomb', y: canyon.center('bot') },
-            { progressMs: 55000, type: 'boost', y: canyon.center('top') },
-            { progressMs: 55000, type: 'shield', y: canyon.center('mid') },
+            // Match wall speed so each reward stays inside its chosen branch.
+            { progressMs: 55000, type: 'weapon', y: 275, terrainSpeed: true },
+            { progressMs: 55000, type: 'shield', y: canyon.center('mid'), terrainSpeed: true },
             { progressMs: 68000, type: 'weapon', y: canyon.center('bot') },
             { progressMs: 78000, type: 'repair', y: canyon.center('mid') }
         ],
@@ -990,8 +1022,9 @@
             { startMs: 38000, durationMs: 3800, openBands: canyon.bands('mid', 'bot'), stepMs: 680 },
             { startMs: 41800, durationMs: 6400, openBands: canyon.bands('bot'), stepMs: 660 },
             // 48–62s: full multi-path choice — three lanes, camera follows your pick.
-            { startMs: 48200, durationMs: 3800, openBands: fullShaft, stepMs: 680 },
-            { startMs: 52000, durationMs: 9200, openBands: canyon.bands('top', 'mid', 'bot'), stepMs: 660 },
+            { startMs: 48200, durationMs: 3800, openBands: fullShaft, stepMs: 680,
+                routeHint: 'UPPER PASS: WEAPON  /  WIDE MIDDLE: SHIELD' },
+            { startMs: 52000, durationMs: 9200, openBands: [[180, 370], CANYON_PATHS.mid, CANYON_PATHS.bot], stepMs: 660 },
             // 62–78s: emphasize routes without ever sealing the player in.
             // Mid stays open as a highway so vertical travel is optional, not mandatory death.
             { startMs: 61200, durationMs: 2600, openBands: fullShaft, stepMs: 680 },

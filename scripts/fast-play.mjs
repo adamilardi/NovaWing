@@ -1,11 +1,10 @@
 /**
  * Headless playtest stepper.
  *
- * Phaser 3.55's loop.step() ignores timestamps and reads performance.now().
- * A tight loop of step() therefore advances only as much sim as the CPU spent,
- * which is the same speed as the 8× clock on a 60 fps animation frame.
- * Patching performance.now() makes every step a fixed 16 ms frame. Drawing is
- * skipped so software WebGL is not on that path.
+ * Phaser 4's loop.step(time) advances the sim to the given timestamp, so each
+ * call passes an explicit virtual timestamp 16 ms past the last. Patching
+ * performance.now() keeps resetDelta and any other clock readers on that same
+ * virtual timeline. Drawing is skipped so software WebGL is not on that path.
  *
  * FAST_PLAY=0 keeps the animation-frame clock. RECORD_VIDEO=1 and headed
  * runs keep drawing so a captured or watched session still has frames.
@@ -43,7 +42,11 @@ export function installFastPlayInPage({ draw = false } = {}) {
     game.loop.smoothStep = false;
     // Freeze the FX tier. actualFps is derived from these virtual timestamps,
     // but a short burst must not flip the low-FX path.
-    try { fxQualityCheckAt = 1e15; } catch (error) { /* not in this realm */ }
+    try {
+        fxQualityCheckAt = 1e15;
+    } catch (error) {
+        /* not in this realm */
+    }
     const perf = performance;
     let virtual = perf.now();
     const fixedNow = () => virtual;
@@ -51,7 +54,7 @@ export function installFastPlayInPage({ draw = false } = {}) {
     game.loop.resetDelta();
     function step() {
         virtual += stepMs;
-        game.loop.step();
+        game.loop.step(virtual);
     }
     window.__novawingFastPlay = { stepMs, step, savedRender, draw: Boolean(draw) };
     return true;
@@ -62,12 +65,7 @@ export function installFastPlayInPage({ draw = false } = {}) {
  * Helpers live inside this function: Playwright serializes only this source.
  * Returns the terminal snapshot plus optional coverage collected at decisions.
  */
-export async function burstFastPlayInPage({
-    maxSteps = 120,
-    decideEvery = 1,
-    mode = 'pilot',
-    collect = false
-} = {}) {
+export async function burstFastPlayInPage({ maxSteps = 120, decideEvery = 1, mode = 'pilot', collect = false } = {}) {
     function emptySeen() {
         return {
             segments: [],
@@ -82,7 +80,7 @@ export async function burstFastPlayInPage({
             maxPowerups: 0,
             sawTelegraphs: false,
             sawBoss: false,
-            bossFired: false
+            bossFired: false,
         };
     }
 
@@ -101,8 +99,8 @@ export async function burstFastPlayInPage({
             if (enemy.canShoot && !seen.armedTypes.includes(enemy.type)) seen.armedTypes.push(enemy.type);
             if (bullets > 0 && !seen.firedTypes.includes(enemy.type)) seen.firedTypes.push(enemy.type);
         }
-        const telegraphs = snap.combatHazards && snap.combatHazards.telegraphs
-            ? snap.combatHazards.telegraphs.length : 0;
+        const telegraphs =
+            snap.combatHazards && snap.combatHazards.telegraphs ? snap.combatHazards.telegraphs.length : 0;
         if (telegraphs > 0) seen.sawTelegraphs = true;
         if (snap.boss) {
             seen.sawBoss = true;
@@ -121,7 +119,7 @@ export async function burstFastPlayInPage({
             progress: dur > 0 ? (snap.levelProgressMs || 0) / dur : 0,
             lives: snap.lives,
             segment: snap.segment,
-            phase: snap.phase
+            phase: snap.phase,
         };
     }
 
@@ -134,7 +132,7 @@ export async function burstFastPlayInPage({
             await clock.runFor(1);
             return;
         }
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     function lastDecisionSnap() {
@@ -241,7 +239,7 @@ export async function burstFastPlayInPage({
         seen,
         samples,
         note: window.__novawingPilotLastNote || '',
-        outcome: window.__novawingPilotOutcome || window.__novawingPolicyOutcome || null
+        outcome: window.__novawingPilotOutcome || window.__novawingPolicyOutcome || null,
     };
 }
 

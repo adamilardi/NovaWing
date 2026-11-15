@@ -155,9 +155,9 @@ test('campaign beats change the live bag and the game applies them', () => {
     assert.ok(teach.typedFireChance < cruise.typedFireChance, 'L1 teach arms fewer guns than the cruise');
     assert.ok(teach.waveIntervalMinMs > cruise.waveIntervalMinMs);
 
-    const lanes = l2.wavePatternSchedule[2];
-    assert.equal(lanes.untilMs, 48000);
-    for (const key of lanes.keys) {
+    const lanes = l2.wavePatternSchedule.filter(step => step.untilMs <= 48200);
+    assert.equal(lanes.at(-1).untilMs, 48200);
+    for (const key of lanes.flatMap(step => step.keys)) {
         assert.ok(!['chaser', 'oppositeInterceptors', 'pincer', 'sandwich', 'splitterPair', 'splitterAmbush'].includes(key),
             'narrow canyon lanes do not spawn ' + key);
     }
@@ -184,7 +184,7 @@ test('L1/L2 openers teach flybys before trackers (played 2026-11-07)', () => {
         assert.ok(Array.isArray(schedule) && schedule.length >= 2, `L${id} has a teach schedule`);
         const [first, ...rest] = schedule;
         assert.ok(first.untilMs >= 6000, `L${id} teaches past the first pod (untilMs ${first.untilMs})`);
-        for (const step of [first, ...rest.slice(0, -1)]) {
+        for (const step of schedule.filter(step => step.untilMs <= (id === 1 ? 14000 : 48200))) {
             for (const key of step.keys) {
                 assert.ok(!TRACKERS.has(key), `L${id} teach step spawns no ${key}`);
             }
