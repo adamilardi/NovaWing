@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NovaWing 2 · Engine comparison</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #080f1f; color: #eff6ff; }
+      * { box-sizing: border-box; }
+      body { max-width: 1120px; margin: 0 auto; padding: clamp(24px, 5vw, 72px); }
+      h1 { font-size: clamp(2.4rem, 6vw, 5rem); line-height: 1; letter-spacing: -.055em; margin: .3em 0; }
+      h2 { margin: 0 0 .4em; font-size: 1.6rem; }
+      p { color: #b9cbe5; max-width: 68ch; }
+      .eyebrow { color: #64e6e0; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; font-size: .76rem; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 20px; margin: 44px 0; }
+      article { min-height: 310px; padding: 28px; border: 1px solid #35516b; border-radius: 20px; background: linear-gradient(145deg, #132640, #0d192d); display: flex; flex-direction: column; }
+      article:nth-child(2) { background: linear-gradient(145deg, #26213e, #0d192d); }
+      .engine { color: #64e6e0; font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      article:nth-child(2) .engine { color: #c7a7ff; }
+      article p { margin-bottom: auto; }
+      a.play { display: inline-block; align-self: flex-start; margin-top: 28px; padding: 12px 20px; border-radius: 9px; background: #64e6e0; color: #081122; font-weight: 800; text-decoration: none; }
+      article:nth-child(2) a.play { background: #c7a7ff; }
+      a.play:hover, a.play:focus-visible { filter: brightness(1.15); outline: 2px solid white; outline-offset: 3px; }
+      .note { border-top: 1px solid #35516b; padding-top: 22px; font-size: .92rem; }
+      code { color: #b5f7f1; }
+    </style>
+  </head>
+  <body>
+    <div class="eyebrow">Prototype comparison · Level 1 inspired</div>
+    <h1>Two engines.<br />One first encounter.</h1>
+    <p>Play the same short NovaWing 2 concept in Babylon.js and Godot. These are separate experiments in browser 3D, with placeholder geometry and a timed wave to boss flow.</p>
+    <main class="grid">
+      <article>
+        <div class="engine">Babylon.js · JavaScript</div>
+        <h2>Play Babylon</h2>
+        <p>A browser-native implementation using local Babylon packages, rendered on your device.</p>
+        <a class="play" href="./babylon/dist/">Launch prototype ↗</a>
+      </article>
+      <article>
+        <div class="engine">Godot · Web export</div>
+        <h2>Play Godot</h2>
+        <p>A Godot 4 project exported to WebAssembly with the Compatibility renderer.</p>
+        <a class="play" href="./godot/web/">Launch prototype ↗</a>
+      </article>
+    </main>
+    <p class="note">Keyboard: WASD or arrows to move, Space to fire. See each game for its full control list. Build both exports before using these links; instructions and validation results are in <code>README.md</code>.</p>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#080d21" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23091428'/%3E%3Cpath d='M8 32 52 15 42 32 52 49Z' fill='%2368e8ff'/%3E%3C/svg%3E" />
+    <title>NovaWing 2 — Babylon Flight Lab</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="renderCanvas" aria-label="NovaWing 2 game view"></canvas>
+      <div class="vignette"></div>
+      <header class="hud">
+        <div class="brand"><span class="brand-mark">N<span>◆</span>W</span><div><strong>NOVAWING <em>2</em></strong><small>BABYLON FLIGHT LAB · LEVEL 01</small></div></div>
+        <div class="hud-center"><span id="phase">OPEN SPACE</span><div class="progress-track"><div id="progress-fill"></div></div><span id="time">01:00</span></div>
+        <div class="stats"><div><small>SCORE</small><strong id="score">000000</strong></div><div><small>HULL</small><strong id="health">◆ ◆ ◆</strong></div></div>
+      </header>
+      <div id="boss-hud" class="boss-hud" hidden><span>THE DREADNAUGHT</span><div class="boss-track"><div id="boss-fill"></div></div><span id="boss-health">100%</span></div>
+      <div class="side-label"><span>SECTOR 01</span><span>✦</span><span>OPEN SPACE</span></div>
+      <div id="notice" class="notice"></div>
+      <div id="banner" class="banner"><div class="eyebrow">MISSION 01 · OPEN SPACE</div><h1>BREAK THROUGH<br><span>THE VOID</span></h1><p>Survive the waves. Bring down the dreadnaught.</p><button id="start" class="primary">LAUNCH MISSION <span>↗</span></button><div class="controls-copy">WASD / ARROWS · MOVE &nbsp; SPACE · FIRE &nbsp; SHIFT · BOOST<br>P · PAUSE &nbsp; R · RESTART</div></div>
+      <footer class="footer"><span>2.5D FLIGHT PLANE <b>●</b> <span id="renderer">INITIALIZING GPU</span></span><span id="autofire-copy">AUTO FIRE: OFF</span></footer>
+      <div class="touch-controls" id="touch-controls"><div id="stick" class="stick"><div id="stick-knob"></div></div><div class="touch-actions"><button id="touch-pause" aria-label="Pause">Ⅱ</button><button id="touch-boost">BOOST</button><button id="touch-fire">FIRE</button></div></div>
+      <button id="auto-toggle" class="auto-toggle" aria-label="Toggle auto fire">AUTO FIRE <span>OFF</span></button>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
