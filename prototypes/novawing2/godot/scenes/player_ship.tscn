@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="1_wbtlb"]
+[ext_resource type="PackedScene" path="res://assets/models/player.glb" id="2_ye4q7"]
+
+[node name="PlayerShip" type="Node3D"]
+script = ExtResource("1_wbtlb")
+hit_radius = 0.38
+max_health = 3.0
+
+[node name="Model" type="Node3D" parent="." instance=ExtResource("2_ye4q7")]

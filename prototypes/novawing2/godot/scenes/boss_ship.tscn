@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="1_h1xku"]
+[ext_resource type="PackedScene" path="res://assets/models/boss.glb" id="2_n7jue"]
+
+[node name="BossShip" type="Node3D"]
+script = ExtResource("1_h1xku")
+hit_radius = 1.27
+max_health = 100.0
+score_value = 1500
+
+[node name="Model" type="Node3D" parent="." instance=ExtResource("2_n7jue")]
+transform = Transform3D(0.84, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)

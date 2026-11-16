@@ -1,0 +1,75 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="1_edpui"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fawvi"]
+albedo_color = Color(0.78, 0.28, 0.55, 1)
+metallic = 0.18
+roughness = 0.48
+
+[sub_resource type="SphereMesh" id="SphereMesh_pdq07"]
+radius = 0.42
+height = 0.84
+radial_segments = 8
+rings = 4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cq7qj"]
+albedo_color = Color(1, 0.46, 0.65, 1)
+metallic = 0.18
+roughness = 0.48
+
+[sub_resource type="BoxMesh" id="BoxMesh_cw4un"]
+size = Vector3(0.78, 0.1, 0.13)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pqr3d"]
+albedo_color = Color(1, 0.46, 0.65, 1)
+metallic = 0.18
+roughness = 0.48
+
+[sub_resource type="BoxMesh" id="BoxMesh_rgwsm"]
+size = Vector3(0.78, 0.1, 0.13)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wu58d"]
+albedo_color = Color(1, 0.46, 0.65, 1)
+metallic = 0.18
+roughness = 0.48
+
+[sub_resource type="BoxMesh" id="BoxMesh_1dqia"]
+size = Vector3(0.78, 0.1, 0.13)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ouduk"]
+albedo_color = Color(1, 0.46, 0.65, 1)
+metallic = 0.18
+roughness = 0.48
+
+[sub_resource type="BoxMesh" id="BoxMesh_arl64"]
+size = Vector3(0.78, 0.1, 0.13)
+
+[node name="EnemyMine" type="Node3D"]
+script = ExtResource("1_edpui")
+hit_radius = 0.5
+max_health = 2.0
+approach_speed = 2.2
+
+[node name="Core" type="MeshInstance3D" parent="."]
+material_override = SubResource("StandardMaterial3D_fawvi")
+mesh = SubResource("SphereMesh_pdq07")
+
+[node name="Spine0" type="MeshInstance3D" parent="."]
+material_override = SubResource("StandardMaterial3D_cq7qj")
+mesh = SubResource("BoxMesh_cw4un")
+
+[node name="Spine1" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, -0.707107, 0, 0.707107, 0.707107, 0, 0, 0, 1, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_pqr3d")
+mesh = SubResource("BoxMesh_rgwsm")
+
+[node name="Spine2" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0, 0, 1, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_wu58d")
+mesh = SubResource("BoxMesh_1dqia")
+
+[node name="Spine3" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, -0.707107, 0, 0.707107, -0.707107, 0, 0, 0, 1, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_ouduk")
+mesh = SubResource("BoxMesh_arl64")
