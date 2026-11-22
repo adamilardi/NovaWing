@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="1_cevnf"]
+[ext_resource type="PackedScene" path="res://assets/models/swarm.glb" id="2_jx3qf"]
+
+[node name="EnemySwarm" type="Node3D"]
+transform = Transform3D(0.68, 0, 0, 0, 0.68, 0, 0, 0, 0.68, 0, 0, 0)
+script = ExtResource("1_cevnf")
+approach_speed = 4.1
+
+[node name="Model" type="Node3D" parent="." instance=ExtResource("2_jx3qf")]

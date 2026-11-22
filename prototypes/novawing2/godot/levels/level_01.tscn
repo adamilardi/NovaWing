@@ -1,0 +1,521 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="1_jy02f"]
+[ext_resource type="Resource" path="res://levels/level_01.tres" id="2_5dxk1"]
+[ext_resource type="PackedScene" path="res://scenes/star.tscn" id="3_kjd3d"]
+[ext_resource type="PackedScene" path="res://scenes/backdrop_asteroid.tscn" id="4_qdeet"]
+[ext_resource type="PackedScene" path="res://scenes/player_ship.tscn" id="5_y72ps"]
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="6_xw3ee"]
+[ext_resource type="Script" path="res://levels/pickup_marker.gd" id="7_l0eo6"]
+[ext_resource type="PackedScene" path="res://scenes/enemy_scout.tscn" id="8_d3o6j"]
+[ext_resource type="PackedScene" path="res://scenes/boss_ship.tscn" id="9_pdl2l"]
+
+[ext_resource type="Texture2D" path="res://assets/scrapyard.webp" id="10_yard"]
+
+[sub_resource type="Environment" id="Environment_2t17w"]
+background_mode = 1
+background_color = Color(0.008, 0.018, 0.055, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.36, 0.60, 1)
+
+[node name="OpenSpace_Level01" type="Node3D"]
+script = ExtResource("1_jy02f")
+level_config = ExtResource("2_5dxk1")
+
+[node name="FlightCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 28)
+projection = 1
+current = true
+size = 11.2
+
+[node name="SpaceEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_2t17w")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.901178, 0.157205, 0.403937, -0.318437, 0.872362, 0.37092, -0.294069, -0.462894, 0.836213, 0, 0, 0)
+light_color = Color(1, 0.84, 0.68, 1)
+light_energy = 1.6
+
+[node name="EditableSpaceScenery" type="Node3D" parent="."]
+
+[node name="Scrapyard" type="Sprite3D" parent="EditableSpaceScenery"]
+position = Vector3(0, 0, -15)
+texture = ExtResource("10_yard")
+pixel_size = 0.012
+modulate = Color(0.81, 0.79, 0.88, 1)
+transparent = false
+
+[node name="Stars" type="Node3D" parent="EditableSpaceScenery"]
+
+[node name="Star_000" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.07553, 0, 0, 0, 1.07553, 0, 0, 0, 1.07553, -1.88844, -4.2822, -7.08441)
+metadata/scroll_speed = 1.43103
+
+[node name="Star_001" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.665894, 0, 0, 0, 0.665894, 0, 0, 0, 0.665894, -6.02369, 4.2977, -5.96251)
+metadata/scroll_speed = 1.06138
+
+[node name="Star_002" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.686454, 0, 0, 0, 0.686454, 0, 0, 0, 0.686454, 2.30909, -0.32156, -10.3064)
+metadata/scroll_speed = 1.62692
+
+[node name="Star_003" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.31357, 0, 0, 0, 1.31357, 0, 0, 0, 1.31357, 1.19129, -0.0100808, -8.71749)
+metadata/scroll_speed = 2.23258
+
+[node name="Star_004" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.95255, 0, 0, 0, 0.95255, 0, 0, 0, 0.95255, -8.42456, -1.02992, -6.22508)
+metadata/scroll_speed = 1.59819
+
+[node name="Star_005" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.44426, 0, 0, 0, 1.44426, 0, 0, 0, 1.44426, -7.28289, -3.14192, -9.19139)
+metadata/scroll_speed = 1.84512
+
+[node name="Star_006" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.47711, 0, 0, 0, 1.47711, 0, 0, 0, 1.47711, 4.53098, -5.31728, -6.46762)
+metadata/scroll_speed = 0.748346
+
+[node name="Star_007" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.875593, 0, 0, 0, 0.875593, 0, 0, 0, 0.875593, 2.45098, 3.26583, -10.5226)
+metadata/scroll_speed = 2.47788
+
+[node name="Star_008" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.17562, 0, 0, 0, 1.17562, 0, 0, 0, 1.17562, -10.3932, -0.647091, -9.90586)
+metadata/scroll_speed = 0.96925
+
+[node name="Star_009" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.33547, 0, 0, 0, 1.33547, 0, 0, 0, 1.33547, -1.55137, -3.6986, -7.90744)
+metadata/scroll_speed = 0.786313
+
+[node name="Star_010" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.30962, 0, 0, 0, 1.30962, 0, 0, 0, 1.30962, 5.35373, -0.122255, -8.67797)
+metadata/scroll_speed = 1.99488
+
+[node name="Star_011" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.36592, 0, 0, 0, 1.36592, 0, 0, 0, 1.36592, 6.37672, 4.35123, -7.69874)
+metadata/scroll_speed = 1.91629
+
+[node name="Star_012" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.21544, 0, 0, 0, 1.21544, 0, 0, 0, 1.21544, -7.84504, 0.353378, -4.96054)
+metadata/scroll_speed = 1.06847
+
+[node name="Star_013" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.43147, 0, 0, 0, 1.43147, 0, 0, 0, 1.43147, 10.2497, -5.65201, -5.56555)
+metadata/scroll_speed = 1.67868
+
+[node name="Star_014" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.48592, 0, 0, 0, 1.48592, 0, 0, 0, 1.48592, -9.2864, -3.36477, -7.69835)
+metadata/scroll_speed = 2.48227
+
+[node name="Star_015" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.15557, 0, 0, 0, 1.15557, 0, 0, 0, 1.15557, -9.88318, 0.80392, -5.1551)
+metadata/scroll_speed = 1.50541
+
+[node name="Star_016" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.31913, 0, 0, 0, 1.31913, 0, 0, 0, 1.31913, -1.11955, 3.08643, -10.8483)
+metadata/scroll_speed = 2.35284
+
+[node name="Star_017" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.922985, 0, 0, 0, 0.922985, 0, 0, 0, 0.922985, -8.12141, -1.69127, -10.3037)
+metadata/scroll_speed = 1.46711
+
+[node name="Star_018" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.47591, 0, 0, 0, 1.47591, 0, 0, 0, 1.47591, -6.15767, 2.48192, -9.3766)
+metadata/scroll_speed = 2.34007
+
+[node name="Star_019" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.23561, 0, 0, 0, 1.23561, 0, 0, 0, 1.23561, -6.49695, -2.02815, -9.83588)
+metadata/scroll_speed = 2.4238
+
+[node name="Star_020" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.33841, 0, 0, 0, 1.33841, 0, 0, 0, 1.33841, 10.4206, -1.52691, -9.95487)
+metadata/scroll_speed = 2.23235
+
+[node name="Star_021" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.0166, 0, 0, 0, 1.0166, 0, 0, 0, 1.0166, -8.05824, 2.84739, -7.95914)
+metadata/scroll_speed = 2.31133
+
+[node name="Star_022" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.19236, 0, 0, 0, 1.19236, 0, 0, 0, 1.19236, -6.52154, 4.27412, -8.47729)
+metadata/scroll_speed = 1.37367
+
+[node name="Star_023" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.598911, 0, 0, 0, 0.598911, 0, 0, 0, 0.598911, 9.10914, 3.03414, -6.8448)
+metadata/scroll_speed = 0.929656
+
+[node name="Star_024" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.915575, 0, 0, 0, 0.915575, 0, 0, 0, 0.915575, -6.74512, 0.703836, -8.37248)
+metadata/scroll_speed = 0.736
+
+[node name="Star_025" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.40289, 0, 0, 0, 1.40289, 0, 0, 0, 1.40289, -7.67204, -1.93365, -4.64589)
+metadata/scroll_speed = 0.810407
+
+[node name="Star_026" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.44531, 0, 0, 0, 1.44531, 0, 0, 0, 1.44531, -5.72596, 4.85113, -5.91057)
+metadata/scroll_speed = 2.04379
+
+[node name="Star_027" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.3055, 0, 0, 0, 1.3055, 0, 0, 0, 1.3055, -3.47435, 0.918699, -9.84738)
+metadata/scroll_speed = 1.71737
+
+[node name="Star_028" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.4767, 0, 0, 0, 1.4767, 0, 0, 0, 1.4767, 0.963013, 2.80246, -8.22174)
+metadata/scroll_speed = 1.82018
+
+[node name="Star_029" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.44261, 0, 0, 0, 1.44261, 0, 0, 0, 1.44261, 2.38413, -5.04201, -10.9508)
+metadata/scroll_speed = 1.47346
+
+[node name="Star_030" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.829132, 0, 0, 0, 0.829132, 0, 0, 0, 0.829132, 6.81304, -0.42169, -6.76068)
+metadata/scroll_speed = 2.3122
+
+[node name="Star_031" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.22005, 0, 0, 0, 1.22005, 0, 0, 0, 1.22005, 0.301819, 2.31262, -5.31653)
+metadata/scroll_speed = 2.46925
+
+[node name="Star_032" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.20008, 0, 0, 0, 1.20008, 0, 0, 0, 1.20008, -3.46269, 2.7122, -4.33996)
+metadata/scroll_speed = 0.968197
+
+[node name="Star_033" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.15065, 0, 0, 0, 1.15065, 0, 0, 0, 1.15065, 2.91281, -4.67108, -9.82412)
+metadata/scroll_speed = 0.850975
+
+[node name="Star_034" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.29583, 0, 0, 0, 1.29583, 0, 0, 0, 1.29583, -0.65447, -5.16463, -6.92903)
+metadata/scroll_speed = 1.30981
+
+[node name="Star_035" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.579208, 0, 0, 0, 0.579208, 0, 0, 0, 0.579208, 4.30605, -5.46511, -8.76743)
+metadata/scroll_speed = 0.720391
+
+[node name="Star_036" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.44929, 0, 0, 0, 1.44929, 0, 0, 0, 1.44929, -0.799664, -5.81512, -8.89415)
+metadata/scroll_speed = 0.796847
+
+[node name="Star_037" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.878733, 0, 0, 0, 0.878733, 0, 0, 0, 0.878733, -7.74762, 4.77095, -7.22462)
+metadata/scroll_speed = 1.31516
+
+[node name="Star_038" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.4862, 0, 0, 0, 1.4862, 0, 0, 0, 1.4862, -8.26752, -2.77947, -9.00898)
+metadata/scroll_speed = 1.09607
+
+[node name="Star_039" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.850651, 0, 0, 0, 0.850651, 0, 0, 0, 0.850651, 3.99014, -0.49036, -9.56211)
+metadata/scroll_speed = 1.60712
+
+[node name="Star_040" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.05362, 0, 0, 0, 1.05362, 0, 0, 0, 1.05362, -3.54622, -3.23564, -5.33295)
+metadata/scroll_speed = 1.87287
+
+[node name="Star_041" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.64659, 0, 0, 0, 0.64659, 0, 0, 0, 0.64659, 9.9471, -4.87931, -6.0947)
+metadata/scroll_speed = 0.894461
+
+[node name="Star_042" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.573439, 0, 0, 0, 0.573439, 0, 0, 0, 0.573439, 4.71554, -1.49475, -10.6862)
+metadata/scroll_speed = 1.66149
+
+[node name="Star_043" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.27383, 0, 0, 0, 1.27383, 0, 0, 0, 1.27383, -3.19646, 0.393216, -5.54973)
+metadata/scroll_speed = 1.35401
+
+[node name="Star_044" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.707056, 0, 0, 0, 0.707056, 0, 0, 0, 0.707056, -10.1602, -0.360358, -9.78)
+metadata/scroll_speed = 0.601511
+
+[node name="Star_045" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.73767, 0, 0, 0, 0.73767, 0, 0, 0, 0.73767, -1.25997, -2.25977, -8.96117)
+metadata/scroll_speed = 1.04887
+
+[node name="Star_046" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.13974, 0, 0, 0, 1.13974, 0, 0, 0, 1.13974, -6.50627, -0.848743, -5.58726)
+metadata/scroll_speed = 1.98405
+
+[node name="Star_047" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.44392, 0, 0, 0, 1.44392, 0, 0, 0, 1.44392, 9.29966, 5.09168, -4.81528)
+metadata/scroll_speed = 2.44372
+
+[node name="Star_048" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.812878, 0, 0, 0, 0.812878, 0, 0, 0, 0.812878, -0.75943, 3.82963, -5.26744)
+metadata/scroll_speed = 1.7517
+
+[node name="Star_049" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.25706, 0, 0, 0, 1.25706, 0, 0, 0, 1.25706, -9.77356, 4.60057, -7.97214)
+metadata/scroll_speed = 1.84345
+
+[node name="Star_050" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.1037, 0, 0, 0, 1.1037, 0, 0, 0, 1.1037, -0.213326, -3.65605, -10.6607)
+metadata/scroll_speed = 2.26171
+
+[node name="Star_051" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.911799, 0, 0, 0, 0.911799, 0, 0, 0, 0.911799, 6.83252, 4.26017, -5.14784)
+metadata/scroll_speed = 0.819256
+
+[node name="Star_052" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.48669, 0, 0, 0, 1.48669, 0, 0, 0, 1.48669, 8.33347, 1.2099, -9.39223)
+metadata/scroll_speed = 2.48034
+
+[node name="Star_053" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.737294, 0, 0, 0, 0.737294, 0, 0, 0, 0.737294, -5.85446, 0.28729, -10.1313)
+metadata/scroll_speed = 0.881175
+
+[node name="Star_054" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.913993, 0, 0, 0, 0.913993, 0, 0, 0, 0.913993, -8.26655, -0.747091, -7.59949)
+metadata/scroll_speed = 2.47384
+
+[node name="Star_055" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.31655, 0, 0, 0, 1.31655, 0, 0, 0, 1.31655, -10.2724, -0.472216, -6.77725)
+metadata/scroll_speed = 0.541033
+
+[node name="Star_056" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.02675, 0, 0, 0, 1.02675, 0, 0, 0, 1.02675, -3.1922, 1.3959, -7.9375)
+metadata/scroll_speed = 2.00703
+
+[node name="Star_057" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.42038, 0, 0, 0, 1.42038, 0, 0, 0, 1.42038, 1.19582, -2.71786, -8.64896)
+metadata/scroll_speed = 2.32177
+
+[node name="Star_058" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.33048, 0, 0, 0, 1.33048, 0, 0, 0, 1.33048, -5.05834, -0.842753, -5.65886)
+metadata/scroll_speed = 2.15896
+
+[node name="Star_059" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.07463, 0, 0, 0, 1.07463, 0, 0, 0, 1.07463, 8.40029, -3.48736, -7.12913)
+metadata/scroll_speed = 1.69823
+
+[node name="Star_060" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.05749, 0, 0, 0, 1.05749, 0, 0, 0, 1.05749, -5.85859, 0.308513, -4.90304)
+metadata/scroll_speed = 1.03661
+
+[node name="Star_061" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.809423, 0, 0, 0, 0.809423, 0, 0, 0, 0.809423, 9.85383, -2.99624, -8.9065)
+metadata/scroll_speed = 0.51005
+
+[node name="Star_062" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.34467, 0, 0, 0, 1.34467, 0, 0, 0, 1.34467, -7.87416, 1.71839, -10.6244)
+metadata/scroll_speed = 2.35795
+
+[node name="Star_063" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.616229, 0, 0, 0, 0.616229, 0, 0, 0, 0.616229, -4.68387, -1.87194, -9.56827)
+metadata/scroll_speed = 2.23358
+
+[node name="Star_064" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.898768, 0, 0, 0, 0.898768, 0, 0, 0, 0.898768, -7.93462, 2.57884, -5.55406)
+metadata/scroll_speed = 1.08154
+
+[node name="Star_065" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.663318, 0, 0, 0, 0.663318, 0, 0, 0, 0.663318, 9.91451, 3.66844, -5.11755)
+metadata/scroll_speed = 0.685668
+
+[node name="Star_066" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.35291, 0, 0, 0, 1.35291, 0, 0, 0, 1.35291, -1.53013, -3.45614, -8.17637)
+metadata/scroll_speed = 2.28204
+
+[node name="Star_067" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.810521, 0, 0, 0, 0.810521, 0, 0, 0, 0.810521, 8.64165, -3.1691, -7.75031)
+metadata/scroll_speed = 1.98301
+
+[node name="Star_068" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.758304, 0, 0, 0, 0.758304, 0, 0, 0, 0.758304, -1.90485, 2.89468, -4.84056)
+metadata/scroll_speed = 0.861666
+
+[node name="Star_069" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.596975, 0, 0, 0, 0.596975, 0, 0, 0, 0.596975, -2.57036, -3.15094, -6.71283)
+metadata/scroll_speed = 1.69441
+
+[node name="Star_070" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.93631, 0, 0, 0, 0.93631, 0, 0, 0, 0.93631, 1.46492, 0.102961, -4.82084)
+metadata/scroll_speed = 2.34573
+
+[node name="Star_071" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.636806, 0, 0, 0, 0.636806, 0, 0, 0, 0.636806, 1.73873, 2.49335, -9.11854)
+metadata/scroll_speed = 2.03709
+
+[node name="Star_072" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.38621, 0, 0, 0, 1.38621, 0, 0, 0, 1.38621, -9.62234, -0.107373, -7.93318)
+metadata/scroll_speed = 0.782417
+
+[node name="Star_073" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.32335, 0, 0, 0, 1.32335, 0, 0, 0, 1.32335, 8.96281, -4.70795, -4.37383)
+metadata/scroll_speed = 0.83312
+
+[node name="Star_074" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.26146, 0, 0, 0, 1.26146, 0, 0, 0, 1.26146, -0.426922, 2.02834, -10.3451)
+metadata/scroll_speed = 0.578201
+
+[node name="Star_075" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.18322, 0, 0, 0, 1.18322, 0, 0, 0, 1.18322, -2.91891, 3.98939, -6.47658)
+metadata/scroll_speed = 2.28307
+
+[node name="Star_076" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.586607, 0, 0, 0, 0.586607, 0, 0, 0, 0.586607, -2.0252, 2.39616, -6.43435)
+metadata/scroll_speed = 0.775567
+
+[node name="Star_077" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.732483, 0, 0, 0, 0.732483, 0, 0, 0, 0.732483, -2.37128, -2.3215, -5.22738)
+metadata/scroll_speed = 1.04573
+
+[node name="Star_078" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.737585, 0, 0, 0, 0.737585, 0, 0, 0, 0.737585, 5.51385, 2.18132, -6.42032)
+metadata/scroll_speed = 1.61995
+
+[node name="Star_079" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.5824, 0, 0, 0, 0.5824, 0, 0, 0, 0.5824, 3.79679, 1.16421, -5.83608)
+metadata/scroll_speed = 1.43452
+
+[node name="Star_080" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.897846, 0, 0, 0, 0.897846, 0, 0, 0, 0.897846, 3.44018, -3.46771, -9.14458)
+metadata/scroll_speed = 1.81682
+
+[node name="Star_081" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.82055, 0, 0, 0, 0.82055, 0, 0, 0, 0.82055, -2.74698, -0.106928, -4.49717)
+metadata/scroll_speed = 0.854426
+
+[node name="Star_082" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.19438, 0, 0, 0, 1.19438, 0, 0, 0, 1.19438, -3.73053, 1.14458, -8.22902)
+metadata/scroll_speed = 1.71194
+
+[node name="Star_083" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(1.13251, 0, 0, 0, 1.13251, 0, 0, 0, 1.13251, 5.59922, -5.14952, -9.70494)
+metadata/scroll_speed = 2.3773
+
+[node name="Star_084" type="Node3D" parent="EditableSpaceScenery/Stars" groups=["scroll_star"] instance=ExtResource("3_kjd3d")]
+transform = Transform3D(0.775266, 0, 0, 0, 0.775266, 0, 0, 0, 0.775266, 7.24805, -0.889019, -8.15804)
+metadata/scroll_speed = 2.45866
+
+[node name="DistantAsteroids" type="Node3D" parent="EditableSpaceScenery"]
+
+[node name="Asteroid_00" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.19826, 0, 0, 0, 0.19826, 0, 0, 0, 0.19826, -6.29255, -0.664139, -6.60461)
+metadata/scroll_speed = 0.942355
+
+[node name="Asteroid_01" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.627081, 0, 0, 0, 0.627081, 0, 0, 0, 0.627081, 5.64731, 3.74498, -7.76011)
+metadata/scroll_speed = 0.769573
+
+[node name="Asteroid_02" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.194163, 0, 0, 0, 0.194163, 0, 0, 0, 0.194163, 9.20273, -0.739319, -8.80893)
+metadata/scroll_speed = 0.399967
+
+[node name="Asteroid_03" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.329178, 0, 0, 0, 0.329178, 0, 0, 0, 0.329178, 3.49344, -5.25827, -4.69923)
+metadata/scroll_speed = 0.778943
+
+[node name="Asteroid_04" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.605715, 0, 0, 0, 0.605715, 0, 0, 0, 0.605715, -7.8032, 3.93035, -6.86932)
+metadata/scroll_speed = 0.759897
+
+[node name="Asteroid_05" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.627444, 0, 0, 0, 0.627444, 0, 0, 0, 0.627444, -1.52258, 1.3005, -7.11323)
+metadata/scroll_speed = 0.638907
+
+[node name="Asteroid_06" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.353829, 0, 0, 0, 0.353829, 0, 0, 0, 0.353829, 1.28508, 5.42356, -6.9884)
+metadata/scroll_speed = 0.353782
+
+[node name="Asteroid_07" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.196047, 0, 0, 0, 0.196047, 0, 0, 0, 0.196047, 1.58839, 1.56925, -4.96033)
+metadata/scroll_speed = 0.424062
+
+[node name="Asteroid_08" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.648961, 0, 0, 0, 0.648961, 0, 0, 0, 0.648961, 1.39574, 4.07703, -4.99756)
+metadata/scroll_speed = 0.682163
+
+[node name="Asteroid_09" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.21936, 0, 0, 0, 0.21936, 0, 0, 0, 0.21936, 10.9608, 3.72352, -4.80851)
+metadata/scroll_speed = 0.417109
+
+[node name="Asteroid_10" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.484395, 0, 0, 0, 0.484395, 0, 0, 0, 0.484395, -5.41751, -2.73609, -7.90647)
+metadata/scroll_speed = 0.362616
+
+[node name="Asteroid_11" type="Node3D" parent="EditableSpaceScenery/DistantAsteroids" groups=["scroll_decor"] instance=ExtResource("4_qdeet")]
+transform = Transform3D(0.730328, 0, 0, 0, 0.730328, 0, 0, 0, 0.730328, -4.56827, 1.17994, -6.30531)
+metadata/scroll_speed = 0.363913
+
+[node name="PlayerShip" type="Node3D" parent="." instance=ExtResource("5_y72ps")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.4, 0, 1)
+script = ExtResource("6_xw3ee")
+hit_radius = 0.38
+max_health = 3.0
+
+[node name="GameplayMarkers" type="Node3D" parent="."]
+
+[node name="EnemyEntry" type="Marker3D" parent="GameplayMarkers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 0.6)
+
+[node name="BossEntry" type="Marker3D" parent="GameplayMarkers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 0.7)
+
+[node name="PickupBeats" type="Node3D" parent="GameplayMarkers"]
+
+[node name="Pickup_01_WEAPON" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, 1.6, 0.8)
+script = ExtResource("7_l0eo6")
+
+[node name="Pickup_02_BOOST" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, -2, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 10.0
+pickup_kind = "BOOST"
+
+[node name="Pickup_03_WEAPON" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, -0.3, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 16.0
+
+[node name="Pickup_04_SHIELD" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, 2.5, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 22.0
+pickup_kind = "SHIELD"
+
+[node name="Pickup_05_REPAIR" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, -2.4, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 28.0
+pickup_kind = "REPAIR"
+
+[node name="Pickup_06_BOMB" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, 0, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 34.0
+pickup_kind = "BOMB"
+
+[node name="Pickup_07_BOOST" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, 2, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 40.0
+pickup_kind = "BOOST"
+
+[node name="Pickup_08_WEAPON" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, -1.3, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 46.0
+
+[node name="Pickup_09_SHIELD" type="Marker3D" parent="GameplayMarkers/PickupBeats"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.6, 1, 0.8)
+script = ExtResource("7_l0eo6")
+at_second = 52.0
+pickup_kind = "SHIELD"
+
+[node name="EditorPreview_HiddenAtRuntime" type="Node3D" parent="."]
+
+[node name="ExampleScout" type="Node3D" parent="EditorPreview_HiddenAtRuntime" instance=ExtResource("8_d3o6j")]
+transform = Transform3D(0.83, 0, 0, 0, 0.83, 0, 0, 0, 0.83, 3.8, 2.6, 0.6)
+script = ExtResource("6_xw3ee")
+
+[node name="ExampleBoss" type="Node3D" parent="EditorPreview_HiddenAtRuntime" instance=ExtResource("9_pdl2l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.3, 0, 0.7)
+script = ExtResource("6_xw3ee")
+hit_radius = 1.27
+max_health = 100.0
+score_value = 1500
+
+[node name="LiveEnemies" type="Node3D" parent="."]
+
+[node name="LiveBoss" type="Node3D" parent="."]

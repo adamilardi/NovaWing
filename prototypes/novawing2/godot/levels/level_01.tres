@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="NW2LevelConfig" load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://levels/level_config.gd" id="1_p6a7c"]
+[ext_resource type="Script" path="res://levels/wave_beat.gd" id="2_dpay0"]
+
+[sub_resource type="Resource" id="Resource_7h3od"]
+script = ExtResource("2_dpay0")
+until_second = 7.0
+patterns = PackedStringArray("v", "diagonal")
+gap_min = 2.0
+gap_max = 2.7
+
+[sub_resource type="Resource" id="Resource_uktp3"]
+script = ExtResource("2_dpay0")
+until_second = 14.0
+patterns = PackedStringArray("v", "diagonal", "swarm", "sky", "asteroid", "mine")
+gap_min = 2.0
+gap_max = 2.7
+
+[sub_resource type="Resource" id="Resource_0svt7"]
+script = ExtResource("2_dpay0")
+until_second = 28.0
+patterns = PackedStringArray("v", "diagonal", "swarm", "chaser", "asteroid", "mine", "sandwich", "sky")
+gap_min = 1.9
+gap_max = 2.5
+
+[sub_resource type="Resource" id="Resource_5byca"]
+script = ExtResource("2_dpay0")
+until_second = 34.0
+patterns = PackedStringArray("v", "diagonal")
+gap_min = 3.3
+gap_max = 3.9
+
+[sub_resource type="Resource" id="Resource_5730c"]
+script = ExtResource("2_dpay0")
+until_second = 42.0
+patterns = PackedStringArray("v", "diagonal", "swarm", "chaser", "asteroid", "mine", "sandwich", "sky")
+gap_min = 1.9
+gap_max = 2.5
+
+[sub_resource type="Resource" id="Resource_u7125"]
+script = ExtResource("2_dpay0")
+until_second = 54.0
+patterns = PackedStringArray("v", "diagonal", "swarm", "chaser", "asteroid", "mine", "sandwich", "sky")
+gap_min = 1.55
+gap_max = 2.05
+
+[sub_resource type="Resource" id="Resource_h17rb"]
+script = ExtResource("2_dpay0")
+until_second = 60.0
+patterns = PackedStringArray("v", "diagonal")
+gap_min = 3.3
+gap_max = 3.9
+
+[resource]
+script = ExtResource("1_p6a7c")
+wave_seconds = 60.0
+first_wave_delay = 1.5
+wave_beats = Array[ExtResource("2_dpay0")]([SubResource("Resource_7h3od"), SubResource("Resource_uktp3"), SubResource("Resource_0svt7"), SubResource("Resource_5byca"), SubResource("Resource_5730c"), SubResource("Resource_u7125"), SubResource("Resource_h17rb")])

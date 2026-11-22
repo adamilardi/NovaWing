@@ -1,0 +1,6 @@
+.godot/
+web/*
+!web/.gdignore
+
+
+windows/

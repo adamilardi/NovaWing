@@ -1,0 +1,30 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p1s84"]
+shading_mode = 0
+albedo_color = Color(1, 0.84, 0.3, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_pg2rt"]
+radius = 0.33
+height = 0.66
+radial_segments = 8
+rings = 4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7cqbe"]
+shading_mode = 0
+albedo_color = Color(1, 0.84, 0.3, 1)
+
+[sub_resource type="TorusMesh" id="TorusMesh_gyxxy"]
+inner_radius = 0.41
+outer_radius = 0.48
+
+[node name="Pickup" type="Node3D"]
+
+[node name="Core" type="MeshInstance3D" parent="."]
+material_override = SubResource("StandardMaterial3D_p1s84")
+mesh = SubResource("SphereMesh_pg2rt")
+
+[node name="Ring" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_7cqbe")
+mesh = SubResource("TorusMesh_gyxxy")

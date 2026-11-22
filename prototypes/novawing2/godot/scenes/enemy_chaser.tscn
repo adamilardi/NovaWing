@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/actor_profile.gd" id="1_l2vc3"]
+[ext_resource type="PackedScene" path="res://assets/models/chaser.glb" id="2_x7y0m"]
+
+[node name="EnemyChaser" type="Node3D"]
+transform = Transform3D(0.83, 0, 0, 0, 0.83, 0, 0, 0, 0.83, 0, 0, 0)
+script = ExtResource("1_l2vc3")
+max_health = 3.0
+approach_speed = 3.6
+
+[node name="Model" type="Node3D" parent="." instance=ExtResource("2_x7y0m")]
