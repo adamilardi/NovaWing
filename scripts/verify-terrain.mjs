@@ -42,10 +42,16 @@ try {
             }, id);
             const before = await page.evaluate(() => ({
                 segment: levelSegment, vertical: isVerticalScroll(),
-                walls: walls.getChildren().filter(w => w.active).map(w => ({ texture: w.texture.key,
+                walls: walls.getChildren().filter(w => w.active).map(w => {
+                    const crop = w.isCropped && w._crop;
+                    const scaleX = Math.abs(w.scaleX) || 1;
+                    const scaleY = Math.abs(w.scaleY) || 1;
+                    return { texture: w.texture.key,
                     x: w.x, y: w.y, vx: w.body.velocity.x, vy: w.body.velocity.y,
-                    width: w.displayWidth, height: w.displayHeight,
-                    bodyWidth: w.body.width, bodyHeight: w.body.height })),
+                    width: crop ? crop.width * scaleX : w.displayWidth,
+                    height: crop ? crop.height * scaleY : w.displayHeight,
+                    bodyWidth: w.body.width, bodyHeight: w.body.height };
+                }),
                 prop: { x: getActiveScene().environmentProps[0].x, y: getActiveScene().environmentProps[0].y }
             }));
             assert.ok(before.walls.length > 0);

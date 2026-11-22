@@ -128,7 +128,7 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
             nextTerrainEventIndex: 0, levelProgressMs: 0, WALL_SCROLL_SPEED: -128, WALL_TEXTURE_FALLBACK_SIZE: 40,
             currentLevelArt: level.art, getLevelSegmentDef: () => segment, isVerticalScroll: () => vertical,
             activateSprite() {}, updateScrollVelocity(w) { w.vx = w.baseVelocityX; w.vy = w.baseVelocityY; },
-            showFloatingText() {}, spawnEnemy() {}, Math, Number,
+            showFloatingText() {}, spawnEnemy() {}, createTerrainLighting() {}, Math, Number,
             // Same identity path the game uses when no scroll overlay is set.
             scaleUnit: Levels.scaleUnit,
             difficultyNumber(key, fallback) { return fallback; } });
@@ -144,6 +144,8 @@ test('runtime terrain scheduler creates one solid row per due event on the activ
         for (const wall of spawned) {
             assert.ok(vertical ? wall.vx === 0 && wall.vy > 0 : wall.vx < 0 && wall.vy === 0);
             assert.ok(wall.isWall && wall.body.width > 0 && wall.body.height > 0);
+            assert.ok(Math.abs(wall.body.width - wall.crop.w) < 1 && Math.abs(wall.body.height - wall.crop.h) < 1,
+                'wall hitbox matches the cropped block, not the full atlas cell');
             assert.ok(Assets.sprites[wall.key]);
             assert.equal(wall.sx, wall.sy, 'wall art must scale uniformly (cover-crop, never stretch)');
             assert.ok(wall.crop && wall.crop.w > 0 && wall.crop.h > 0);

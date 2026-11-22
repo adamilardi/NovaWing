@@ -1,6 +1,6 @@
 # Phaser 4 migration
 
-NovaWing loads **Phaser 3.55.2** from jsDelivr, with a Subresource Integrity hash, and falls back to `vendor/phaser.min.js` if the CDN fails. It is not an npm dependency.
+**Status: landed on 4.2.1 (2026-11-08).** NovaWing now loads **Phaser 4.2.1** from jsDelivr, with a Subresource Integrity hash, and falls back to `vendor/phaser.min.js` if the CDN fails. It is not an npm dependency. The notes below describe the 3.55.2 → 4.2.1 jump and are kept as a record.
 
 As of 2026-11-08 the latest Phaser 3 release is **3.90.0** and the latest Phaser 4 release is **4.2.1**. This note is the 4.2.1 plan. The 3.90 jump was paused and is not started.
 
@@ -11,9 +11,9 @@ The code edit is small. The cost is a playtest, because `game.js` is large and p
 ## Required edits
 
 1. Point the page at 4.2.1.
-   - `index.html` CDN URL and its `sha384` integrity hash.
-   - Replace `vendor/phaser.min.js` with the same 4.2.1 build. `tests/cdn-fallback.test.cjs` requires the vendored file to contain the version string from the CDN URL.
-   - `scripts/rl/chrome.mjs` intercepts `https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js` and must match the new URL.
+    - `index.html` CDN URL and its `sha384` integrity hash.
+    - Replace `vendor/phaser.min.js` with the same 4.2.1 build. `tests/cdn-fallback.test.cjs` requires the vendored file to contain the version string from the CDN URL.
+    - `scripts/rl/chrome.mjs` intercepts `https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js` and must match the new URL.
 2. Rewrite explosions off the 3.55 particle manager. `createExplosion` in `game.js` does `scene.add.particles(textureKey)` and then `createEmitter`. That manager was removed in 3.60, and Phaser 4 never had it. The same break blocks a move to 3.90. Three emitters live in that one function: the main burst, debris, and embers. Phaser 4 creates the emitter directly:
 
 ```js
@@ -25,7 +25,7 @@ const emitter = scene.add.particles(x, y, textureKey, {
     alpha: { start: 1, end: 0 },
     blendMode: 'ADD',
     gravityY: 40,
-    emitting: false
+    emitting: false,
 });
 emitter.explode(quantity);
 ```

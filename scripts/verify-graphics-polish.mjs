@@ -83,6 +83,10 @@ export async function caseGraphicsPolish(browser, base, evidenceDir) {
                 if (targetY - boss.displayHeight / 2 < 115) throw new Error('boss orbit enters HUD');
             }
         });
+        await page.screenshot({ path: path.join(evidenceDir, 'graphics-coop-boss-hud.png') });
+        await page.setViewportSize({ width: 844, height: 390 });
+        await page.screenshot({ path: path.join(evidenceDir, 'graphics-coop-boss-hud-phone.png') });
+        await page.setViewportSize({ width: 960, height: 720 });
         for (const [level, encounter] of [[2, 'standard'], [3, 'intro'], [3, 'final']]) {
             await page.goto(new URL('/?bot=1&level=' + level, base).href);
             await page.waitForFunction(() => window.__novawingDebug?.getBotSnapshot()?.ready);
