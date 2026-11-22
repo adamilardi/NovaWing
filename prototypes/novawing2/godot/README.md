@@ -57,3 +57,9 @@ The release export and PE architecture/embedded-pack checks passed on Linux. Nat
 The GLB-backed web build passed real browser movement, firing, pause/resume, boss damage, restart, and normal-wave checks with zero page errors, console errors, or warnings. Evidence: `/tmp/novawing2-verify-ftzvYk/results.json` and screenshots in that directory. The boss check uses the explicit short test timer; it does not establish a full campaign victory or hardware GPU performance.
 
 An isolated project copy also verified that editing saved player/enemy/boss positions and the wave resource's duration, delay, and patterns changes runtime behavior, and that restart preserves the edited player position. Native headless play and both release exports passed. Windows executable launch on actual Windows remains untested here.
+
+## Model refresh verification (16 November 2026)
+
+The revised white/magenta player ship with a visible pilot, the four enemy ships, and the biomechanical boss are Blender source assets exported to the same six GLB paths. Godot reimported all six; the imported mesh vertex bounds and muzzle directions match `assets/models/manifest.json`. The saved actor scenes and collision values did not change.
+
+The refreshed web build passed the browser verifier with zero page errors, console errors, or warnings: movement, firing, pause/resume, boss spawn and damage, restart, and normal waves. Evidence is `/tmp/novawing2-verify-RtFzbS/results.json` with normal-wave and boss screenshots in that directory. At the normal camera scale, the pilot, enemy silhouettes, boss maw, cyan player shots, and red hostile shots remain distinguishable. The Windows x64 export and ZIP were rebuilt and the ZIP integrity check passed. Native Windows execution remains untested.

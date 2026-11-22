@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_jy02f"]
 [ext_resource type="Resource" path="res://levels/level_01.tres" id="2_5dxk1"]
@@ -10,11 +10,13 @@
 [ext_resource type="PackedScene" path="res://scenes/enemy_scout.tscn" id="8_d3o6j"]
 [ext_resource type="PackedScene" path="res://scenes/boss_ship.tscn" id="9_pdl2l"]
 
+[ext_resource type="Texture2D" path="res://assets/scrapyard.webp" id="10_yard"]
+
 [sub_resource type="Environment" id="Environment_2t17w"]
 background_mode = 1
 background_color = Color(0.008, 0.018, 0.055, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.32, 0.5, 0.8, 1)
+ambient_light_color = Color(0.55, 0.36, 0.60, 1)
 
 [node name="OpenSpace_Level01" type="Node3D"]
 script = ExtResource("1_jy02f")
@@ -31,9 +33,17 @@ environment = SubResource("Environment_2t17w")
 
 [node name="KeyLight" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.901178, 0.157205, 0.403937, -0.318437, 0.872362, 0.37092, -0.294069, -0.462894, 0.836213, 0, 0, 0)
+light_color = Color(1, 0.84, 0.68, 1)
 light_energy = 1.6
 
 [node name="EditableSpaceScenery" type="Node3D" parent="."]
+
+[node name="Scrapyard" type="Sprite3D" parent="EditableSpaceScenery"]
+position = Vector3(0, 0, -15)
+texture = ExtResource("10_yard")
+pixel_size = 0.012
+modulate = Color(0.81, 0.79, 0.88, 1)
+transparent = false
 
 [node name="Stars" type="Node3D" parent="EditableSpaceScenery"]
 

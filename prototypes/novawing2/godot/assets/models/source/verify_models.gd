@@ -19,12 +19,40 @@ func _verify() -> void:
 		var meshes := model.find_children("*", "MeshInstance3D", true, false)
 		var bounds := AABB()
 		var first := true
+		var portrait_uvs := Rect2()
 		for mesh_node in meshes:
-			var mesh_bounds: AABB = mesh_node.global_transform * mesh_node.get_aabb()
-			bounds = mesh_bounds if first else bounds.merge(mesh_bounds)
-			first = false
+			# Transform actual vertices: rotating a mesh-local AABB can overestimate
+			# the real geometry, especially for material batches starting at a hose.
+			for surface in range(mesh_node.mesh.get_surface_count()):
+				var arrays: Array = mesh_node.mesh.surface_get_arrays(surface)
+				var material: Material = mesh_node.mesh.surface_get_material(surface)
+				if model_name == "player" and material.resource_name == "player_face":
+					var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+					if not uvs.is_empty():
+						portrait_uvs.position = uvs[0]
+						for uv in uvs:
+							portrait_uvs = portrait_uvs.expand(uv)
+						var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+						for i in range(0, indices.size(), 3):
+							var a := uvs[indices[i]]
+							var b := uvs[indices[i + 1]]
+							var c := uvs[indices[i + 2]]
+							if absf((b-a).cross(c-a)) < 1e-10:
+								push_error("Collapsed triangle in pilot head UV wrap")
+								failures += 1
+								break
+				var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				for vertex in vertices:
+					var world_vertex: Vector3 = mesh_node.global_transform * vertex
+					bounds = AABB(world_vertex, Vector3.ZERO) if first else bounds.expand(world_vertex)
+					first = false
+		if model_name == "player":
+			var animation: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
+			if animation == null or not animation.has_animation("PilotGlance") or portrait_uvs.size.x < 0.8 or portrait_uvs.size.y < 0.8:
+				push_error("Pilot glance or portrait texture coordinates missing")
+				failures += 1
 		var muzzle: Node3D = model.find_child("Muzzle_Center", true, false)
-		if muzzle == null or meshes.size() < 5 or meshes.size() > 7:
+		if muzzle == null or meshes.size() < 5 or meshes.size() > 10:
 			push_error("Model hierarchy/batching mismatch: " + model_name)
 			failures += 1
 		if muzzle != null:
@@ -32,12 +60,15 @@ func _verify() -> void:
 			if muzzle.global_position.x * expected_direction <= 0.0:
 				push_error("Wrong forward axis: " + model_name)
 				failures += 1
-		if bounds.size.y < 1.4 or bounds.size.z > 1.0:
+		if bounds.size.y < 1.15 or bounds.size.z > 1.23 or bounds.size.x > 3.06:
 			push_error("Wrong gameplay plane: " + model_name)
 			failures += 1
 		for source in manifest["models"]:
 			if source["asset"] != model_name:
 				continue
+			if meshes.size() != source.get("exported_meshes", source["exported_material_batches"]):
+				push_error("Imported material batch count differs from source: " + model_name)
+				failures += 1
 			for axis in range(3):
 				if abs(bounds.position[axis] - source["bounds_xyz"][axis][0]) > 0.001 or abs(bounds.end[axis] - source["bounds_xyz"][axis][1]) > 0.001:
 					push_error("Imported mesh differs from Blender source bounds: " + model_name)

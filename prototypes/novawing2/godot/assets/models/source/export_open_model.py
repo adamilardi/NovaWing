@@ -16,5 +16,5 @@ kind=fleet.ROOT['asset']
 fleet.GROUPS={obj.name:obj for obj in fleet.ROOT.children}
 fleet.MATS={mat.name.removeprefix(kind+'_'):mat for mat in bpy.data.materials
             if mat.name.startswith(kind+'_')}
-count=fleet.export_batched(kind)
-print(f'Exported {kind}.glb with {count} material batches; Blender source remains untouched.')
+meshes,surfaces=fleet.export_batched(kind)
+print(f'Exported {kind}.glb with {meshes} meshes and {surfaces} material batches; Blender source remains untouched.')

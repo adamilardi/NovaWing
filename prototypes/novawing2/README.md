@@ -7,7 +7,7 @@ Two independent, playable browser experiments live here:
 | Babylon.js | [`babylon/`](./babylon/) | `babylon/dist/` |
 | Godot 4 | [`godot/`](./godot/) | `godot/web/` |
 
-Both reinterpret the opening of NovaWing as a 2.5D space shooter: move a ship in a fixed playfield, fire at waves, collect pickups, and face a boss after roughly a minute. Babylon uses procedural 3D shapes. Godot now uses six original Blender-authored spacecraft, exported as GLB models and instanced through saved actor scenes. Its first level is a saved scene with editable scenery, spawn markers, and wave settings. These remain **prototypes**, not exact ports of the original Phaser simulation, timing, balance, or production builds. The existing game, arcade landing, deployment, and scores are untouched.
+Both reinterpret the opening of NovaWing as a 2.5D space shooter: move a ship in a fixed playfield, fire at waves, collect pickups, and face a boss after roughly a minute. Both engines use the same six textured Blender spacecraft. Godot instances the GLBs through saved actor scenes. Its first level is a saved scene with editable scenery, spawn markers, and wave settings. These remain **prototypes**, not exact ports of the original Phaser simulation, timing, balance, or production builds. The existing game, arcade landing, deployment, and scores are untouched.
 
 ## Build and play locally
 
