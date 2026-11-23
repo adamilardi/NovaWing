@@ -9,6 +9,8 @@ const BOTTOM := -4.8
 const WAVE_SECONDS := 60.0
 const PLAYER_SPEED := 6.8
 const BULLET_SPEED := 14.0
+const ION_BOLT := preload("res://assets/ion_bolt.svg")
+const HOSTILE_BOLT := preload("res://assets/hostile_bolt.svg")
 const ENEMY_SCENES := {
 	"scout": preload("res://scenes/enemy_scout.tscn"),
 	"swarm": preload("res://scenes/enemy_swarm.tscn"),
@@ -44,6 +46,7 @@ var shield := 0
 var bomb_stock := 0
 var auto_fire := false
 var paused := false
+var pilot_animation: AnimationPlayer
 var player: Node3D
 var player_spawn_position := Vector3(-5.4, 0.0, 1.0)
 var enemy_entry: Marker3D
@@ -79,6 +82,9 @@ var bomb_button: Button
 func _ready() -> void:
 	rng.seed = 901710
 	player = $PlayerShip
+	pilot_animation = player.find_child("AnimationPlayer", true, false)
+	pilot_animation.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	pilot_animation.get_animation("PilotGlance").loop_mode = Animation.LOOP_LINEAR
 	player_spawn_position = player.position
 	max_hp = int(player.get("max_health"))
 	enemy_entry = $GameplayMarkers/EnemyEntry
@@ -201,6 +207,9 @@ func _clear_entities() -> void:
 	boss = null
 
 func _reset_game() -> void:
+	pilot_animation.stop()
+	pilot_animation.play("PilotGlance")
+	pilot_animation.advance(0.0)
 	_clear_entities()
 	phase = "waves"
 	elapsed = 0.0
@@ -286,6 +295,7 @@ func _process(delta: float) -> void:
 		_publish_debug(dt)
 		return
 	elapsed += dt
+	pilot_animation.advance(dt)
 	iframe_clock = maxf(0.0, iframe_clock - dt)
 	shot_clock -= dt
 	_move_player(dt)
@@ -345,10 +355,13 @@ func _create_bullet(where: Vector2, velocity: Vector2, friendly: bool, damage: f
 	var node := Node3D.new()
 	add_child(node)
 	node.position = Vector3(where.x, where.y, 1.25)
-	if friendly:
-		_box(node, Vector3(0.39, 0.10, 0.12), Color(0.42, 0.96, 1.0), Vector3.ZERO, 0.0, true)
-	else:
-		_sphere(node, 0.15, Color(1.0, 0.29, 0.25), Vector3.ZERO, true)
+	node.rotation.z = velocity.angle()
+	var tracer := Sprite3D.new()
+	tracer.texture = ION_BOLT if friendly else HOSTILE_BOLT
+	tracer.pixel_size = 0.0075
+	tracer.offset.x = -tracer.texture.get_width() * 0.42
+	tracer.shaded = false
+	node.add_child(tracer)
 	bullets.append({"node": node, "velocity": velocity, "friendly": friendly, "damage": damage, "radius": 0.15})
 
 func _current_pattern() -> String:

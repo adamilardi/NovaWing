@@ -1,7 +1,12 @@
 import {
   ArcRotateCamera, Color3, Color4, DirectionalLight, Engine, GlowLayer, HemisphericLight,
-  MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, WebGPUEngine
+  Layer, LoadAssetContainerAsync, MeshBuilder, Scene, StandardMaterial, Texture, TransformNode, Vector3, WebGPUEngine
 } from '@babylonjs/core';
+import '@babylonjs/loaders/glTF/2.0';
+import '@babylonjs/loaders/glTF/glTFFileLoader';
+import scrapyardUrl from '../../godot/assets/scrapyard.webp';
+import ionBoltUrl from '../../godot/assets/ion_bolt.svg?no-inline';
+import hostileBoltUrl from '../../godot/assets/hostile_bolt.svg?no-inline';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
@@ -41,53 +46,74 @@ function cylinder(parent, name, h, top, bottom, pos, mat, rot = -Math.PI / 2, te
   const mesh = MeshBuilder.CreateCylinder(name, { height: h, diameterTop: top, diameterBottom: bottom, tessellation: tess }, scene);
   mesh.parent = parent; mesh.position = vec(...pos); mesh.rotation.z = rot; mesh.material = mat; return mesh;
 }
-function ship(name, palette, size = 1) {
-  const root = new TransformNode(name, scene);
-  const body = palette === 'player' ? mats.playerBody : mats.enemyBody;
-  const edge = palette === 'player' ? mats.playerEdge : mats.enemyEdge;
-  const glow = palette === 'player' ? mats.cyan : mats.red;
-  // All pieces have real depth and separate materials, so the mesh can later be replaced by a GLB.
-  cylinder(root, 'fuselage', 1.25, .28, .5, [0, 0, 0], body);
-  cylinder(root, 'nose', .65, 0, .29, [.82, 0, 0], edge);
-  box(root, 'portWing', [1.25, .16, .2], [-.18, .45, .04], edge, -.29);
-  box(root, 'starboardWing', [1.25, .16, .2], [-.18, -.45, .04], edge, .29);
-  box(root, 'portBlade', [.4, .15, .22], [-.61, .91, 0], body, -.35);
-  box(root, 'starboardBlade', [.4, .15, .22], [-.61, -.91, 0], body, .35);
-  sphere(root, 'cockpit', .48, [.24, 0, -.28], mats.glass);
-  box(root, 'portTrace', [.72, .045, .07], [.04, .4, -.15], glow, -.28);
-  box(root, 'starboardTrace', [.72, .045, .07], [.04, -.4, -.15], glow, .28);
-  cylinder(root, 'engineLeft', .25, .28, .32, [-.78, .22, .05], mats.engine);
-  cylinder(root, 'engineRight', .25, .28, .32, [-.78, -.22, .05], mats.engine);
-  const flameL = cylinder(root, 'flameLeft', .56, .04, .24, [-1.08, .22, .05], glow, Math.PI / 2);
-  const flameR = cylinder(root, 'flameRight', .56, .04, .24, [-1.08, -.22, .05], glow, Math.PI / 2);
-  root.scaling = vec(size, size, size);
-  root.metadata = { flames: [flameL, flameR] };
-  return root;
+const fleetUrls = import.meta.glob('../../godot/assets/models/*.glb', {
+  eager: true, query: '?url', import: 'default'
+});
+const fleet = new Map();
+
+async function loadFleet() {
+  await Promise.all(Object.entries(fleetUrls).map(async ([path, url]) => {
+    const name = path.split('/').pop().replace('.glb', '');
+    fleet.set(name, await LoadAssetContainerAsync(url, scene));
+  }));
 }
-function bossMesh() {
-  const root = new TransformNode('dreadnaught', scene);
-  cylinder(root, 'mainHull', 3.4, 1.2, 1.65, [-.3, 0, .25], mats.bossBody);
-  cylinder(root, 'armoredProw', 1.55, .08, 1.25, [1.8, 0, .1], mats.bossEdge);
-  for (const s of [-1, 1]) {
-    box(root, 'sweptWing', [3, .48, .38], [-.5, s * 1.22, .1], mats.bossEdge, s * .24);
-    box(root, 'wingTip', [1.2, .35, .4], [-1.55, s * 2.06, .06], mats.bossBody, s * .37);
-    box(root, 'redStripe', [2.2, .09, .08], [-.38, s * 1.25, -.17], mats.red, s * .24);
-    cylinder(root, 'sideGun', .9, .2, .34, [1.02, s * 1.57, -.15], mats.engine);
-    sphere(root, 'gunLight', .23, [1.5, s * 1.57, -.15], mats.orange);
+
+function ship(kind, size = 1) {
+  const root = new TransformNode(kind, scene);
+  // Ordinary enemies share their material batches across the formation.
+  // The hero needs its own animated morph targets.
+  const instance = fleet.get(kind).instantiateModelsToScene(undefined, false, {
+    doNotInstantiate: kind === 'player' || kind === 'boss'
+  });
+  // Turn the glTF import toward the flight camera at -Z.
+  const model = instance.rootNodes[0];
+  model.parent = root;
+  model.rotationQuaternion = null;
+  model.rotation.setAll(0);
+  root.scaling.setAll(size);
+  if (kind === 'player') {
+    const flames = model.getDescendants().filter(node => node.name.includes('Engine_Pod_'))
+      .map(nozzle => cylinder(nozzle, 'boostPlume', .24, .015, .12,
+        [-.10, 0, 0], mats.orange, Math.PI / 2));
+    const glance = instance.animationGroups.find(group => group.name.endsWith('PilotGlance'));
+    glance.start(true);
+    glance.pause();
+    root.metadata = { flames, glance };
   }
-  sphere(root, 'commandDome', 1.13, [.48, 0, -.53], mats.glassRed);
-  cylinder(root, 'reactorRim', .65, 1.03, 1.03, [-1.85, 0, .13], mats.engine, -Math.PI / 2, 16);
-  sphere(root, 'reactor', .75, [-2.24, 0, .08], mats.red);
-  root.scaling = vec(.82, .82, .82);
   return root;
 }
-function disposeObject(o) { if (o?.mesh) o.mesh.dispose(false, false); }
+// Bound idle storage while allowing every live shot, ship and fragment to spawn.
+function meshPool(maxIdle, create) {
+  const idle = [];
+  return {
+    acquire() {
+      const mesh = idle.pop();
+      if (!mesh) return create();
+      mesh.setEnabled(true);
+      return mesh;
+    },
+    release(mesh) {
+      if (idle.length >= maxIdle) {
+        mesh.dispose(false, false);
+        return;
+      }
+      mesh.setEnabled(false);
+      idle.push(mesh);
+    }
+  };
+}
+
+function releaseObject(object) {
+  if (object.pool) object.pool.release(object.mesh);
+  else object.mesh.dispose(false, false);
+}
 function reset() {
-  [...enemies, ...bullets, ...pickups, ...effects].forEach(disposeObject);
+  [...enemies, ...bullets, ...pickups, ...effects].forEach(releaseObject);
   if (boss) boss.mesh.dispose(false, false);
   enemies = []; bullets = []; pickups = []; effects = []; boss = null;
   game = { phase: 'waves', resume: 'waves', elapsed: 0, bossTime: 0, score: 0, hp: 3, invuln: 0, fireCd: 0, waveCd: 1.5, waveIndex: 0, autoFire: game.autoFire, weapon: 1, pickIndex: 0, bossHp: 100, bossSpawned: false, shotsFired: 0, noticeFor: 0 };
   player.position = vec(-6.4, 0, -.2); player.setEnabled(true);
+  player.metadata.glance.goToFrame(player.metadata.glance.from);
   $('banner').hidden = true; $('boss-hud').hidden = true;
   say('OPEN SPACE', 2.2); updateHud();
 }
@@ -107,13 +133,34 @@ function pause() {
   if (game.phase === 'waves' || game.phase === 'boss') { game.resume = game.phase; game.phase = 'paused'; showBanner('FLIGHT <span>PAUSED</span>', 'Take a breath. The void can wait.', 'RESUME FLIGHT'); }
   else if (game.phase === 'paused') { game.phase = game.resume; $('banner').hidden = true; }
 }
+function boltMaterial(name, url) {
+  const mat = new StandardMaterial(name, scene);
+  mat.diffuseTexture = new Texture(url, scene);
+  mat.diffuseTexture.hasAlpha = true;
+  mat.useAlphaFromDiffuseTexture = true;
+  mat.disableLighting = true;
+  mat.emissiveColor = Color3.White();
+  return mat;
+}
+function createBolt(friendly) {
+  const root = new TransformNode(friendly ? 'plasmaBolt' : 'hostileBolt', scene);
+  const width = friendly ? 1.32 : .90;
+  const tracer = MeshBuilder.CreatePlane('tracer', { width, height: .18 }, scene);
+  tracer.parent = root;
+  tracer.material = friendly ? mats.ionBolt : mats.hostileBolt;
+  tracer.position.x = -width * .42;
+  return root;
+}
+const ionBolts = meshPool(64, () => createBolt(true));
+const hostileBolts = meshPool(32, () => createBolt(false));
+
 function makeBullet(x, y, friendly, vx, vy = 0, damage = 1) {
   if (friendly) game.shotsFired++;
-  const root = new TransformNode(friendly ? 'plasmaBolt' : 'hostileBolt', scene);
-  sphere(root, 'halo', friendly ? .34 : .37, [0, 0, .1], friendly ? mats.cyanHalo : mats.redHalo);
-  cylinder(root, 'core', friendly ? .5 : .38, .065, .065, [0, 0, -.08], friendly ? mats.cyan : mats.orange);
-  root.position = vec(x, y, -.15);
-  bullets.push({ mesh: root, x, y, vx, vy, friendly, damage, r: friendly ? .16 : .19 });
+  const pool = friendly ? ionBolts : hostileBolts;
+  const root = pool.acquire();
+  root.rotation.z = Math.atan2(vy, vx);
+  root.position.set(x, y, -.75);
+  bullets.push({ mesh: root, pool, x, y, vx, vy, friendly, damage, r: friendly ? .16 : .19 });
 }
 function shoot() {
   if (game.fireCd > 0) return;
@@ -123,15 +170,24 @@ function shoot() {
   if (game.weapon >= 2) { makeBullet(x - .1, y + .26, true, 15, .38); makeBullet(x - .1, y - .26, true, 15, -.38); }
   if (game.weapon >= 3) { makeBullet(x - .2, y + .37, true, 15, 1.3); makeBullet(x - .2, y - .37, true, 15, -1.3); }
 }
-function spawnEnemy(x, y, type = 'scout', vx = -3.2, drift = 0) {
-  let mesh;
+const enemyPools = new Map(['scout', 'swarm', 'chaser', 'diver', 'asteroid', 'mine'].map(kind => {
+  const pool = meshPool(6, () => {
+    if (kind !== 'asteroid' && kind !== 'mine') return ship(kind);
+    const mesh = MeshBuilder.CreateIcoSphere(kind, { radius: kind === 'mine' ? .45 : .54, subdivisions: 1 }, scene);
+    mesh.material = kind === 'mine' ? mats.mine : mats.rock;
+    return mesh;
+  });
+  return [kind, pool];
+}));
+
+function spawnEnemy(x, y, type = 'scout', vx = -3.2, drift = 0, model = type === 'interceptor' ? 'swarm' : 'scout') {
   const asteroid = type === 'asteroid' || type === 'mine';
-  if (asteroid) {
-    mesh = MeshBuilder.CreateIcoSphere('asteroid', { radius: type === 'mine' ? .45 : .54, subdivisions: 1 }, scene);
-    mesh.material = type === 'mine' ? mats.mine : mats.rock;
-  } else mesh = ship(type, 'enemy', type === 'interceptor' ? .72 : .82);
-  mesh.position = vec(x, y, 0);
-  enemies.push({ mesh, x, y, baseY: y, vx, drift, t: 0, type, hp: asteroid ? (type === 'mine' ? 1 : 3) : (type === 'interceptor' ? 2 : 3), r: asteroid ? .47 : .46, shotCd: rand(1.4, 3.3), score: asteroid ? 70 : 100 });
+  const pool = enemyPools.get(asteroid ? type : model);
+  const mesh = pool.acquire();
+  mesh.position.set(x, y, 0);
+  mesh.rotation.z = 0;
+  mesh.scaling.setAll(asteroid ? 1 : type === 'interceptor' ? .72 : .82);
+  enemies.push({ mesh, pool, x, y, baseY: y, vx, drift, t: 0, type, hp: asteroid ? (type === 'mine' ? 1 : 3) : (type === 'interceptor' ? 2 : 3), r: asteroid ? .47 : .46, shotCd: rand(1.4, 3.3), score: asteroid ? 70 : 100 });
 }
 function wavePattern() {
   const t = game.elapsed;
@@ -144,8 +200,8 @@ function wavePattern() {
   else if (type === 'swarm') for (let i = 0; i < 6; i++) spawnEnemy(x + i * .44, clamp(y + Math.sin(i * 2.2) * .8, -4.2, 4.2), 'interceptor', -4.25, 1.5);
   else if (type === 'asteroid') for (let i = 0; i < 5; i++) spawnEnemy(x + i * .95, clamp(-3.5 + i * 1.75, -4.3, 4.3), 'asteroid', -2.5);
   else if (type === 'mine') for (let i = 0; i < 4; i++) spawnEnemy(x + i * .88, clamp(y + (i - 1.5) * .65, -4.3, 4.3), 'mine', -2.15);
-  else if (type === 'dive') for (let i = 0; i < 3; i++) spawnEnemy(x + i * .7, 4.5 - i * .3, 'interceptor', -3.4, -1.7);
-  else if (type === 'chaser') for (let i = 0; i < 3; i++) spawnEnemy(x + i * .85, clamp(player.position.y + (i - 1) * 1.2, -4, 4), 'scout', -4.1, .7);
+  else if (type === 'dive') for (let i = 0; i < 3; i++) spawnEnemy(x + i * .7, 4.5 - i * .3, 'interceptor', -3.4, -1.7, 'diver');
+  else if (type === 'chaser') for (let i = 0; i < 3; i++) spawnEnemy(x + i * .85, clamp(player.position.y + (i - 1) * 1.2, -4, 4), 'scout', -4.1, .7, 'chaser');
   else if (type === 'sandwich') for (let i = 0; i < 3; i++) { spawnEnemy(x + i * .75, -3.4 + i * .4, 'scout', -3.6, .5); spawnEnemy(x + i * .75, 3.4 - i * .4, 'scout', -3.6, -.5); }
   else { spawnEnemy(x, 3, 'interceptor', -5.2, -.7); spawnEnemy(x + .6, -3, 'interceptor', -5.2, .7); }
   const interval = t < 14 ? rand(2.2, 2.8) : t < 28 ? rand(1.9, 2.3) : t < 34 ? rand(3.2, 3.8) : t < 54 ? rand(1.55, 2.05) : rand(3.2, 3.8);
@@ -170,12 +226,25 @@ function collect(p) {
   else { game.score += 150; say('BOOST ENERGY', 1.2); }
   game.score += 50;
 }
+let debrisPools;
+function sphereSource(name, mat, segments) {
+  const source = MeshBuilder.CreateSphere(name, { diameter: 1, segments }, scene);
+  source.material = mat;
+  source.isVisible = false;
+  return source;
+}
+function debrisPool(color, maxIdle) {
+  const source = sphereSource(color + 'Debris', mats[color], 6);
+  return meshPool(maxIdle, () => source.createInstance('debris'));
+}
 function blast(x, y, color = 'orange', count = 8) {
+  const pool = debrisPools[color];
   for (let i = 0; i < count; i++) {
-    const mesh = MeshBuilder.CreateSphere('debris', { diameter: rand(.06, .16), segments: 6 }, scene);
-    mesh.material = color === 'cyan' ? mats.cyan : mats.orange;
-    mesh.position = vec(x, y, rand(-.3, .3));
-    effects.push({ mesh, x, y, vx: rand(-3.4, 3.4), vy: rand(-3.2, 3.2), life: rand(.3, .7) });
+    const mesh = pool.acquire();
+    const diameter = rand(.06, .16);
+    mesh.scaling.setAll(diameter);
+    mesh.position.set(x, y, rand(-.3, .3));
+    effects.push({ mesh, pool, diameter, x, y, vx: rand(-3.4, 3.4), vy: rand(-3.2, 3.2), life: rand(.3, .7) });
   }
 }
 function damagePlayer() {
@@ -184,9 +253,9 @@ function damagePlayer() {
   if (game.hp <= 0) { player.setEnabled(false); finish(false); }
 }
 function startBoss() {
-  enemies.forEach(disposeObject); enemies = [];
+  enemies.forEach(releaseObject); enemies = [];
   game.phase = 'boss'; game.bossTime = 0; game.bossHp = 100; game.bossSpawned = true;
-  const mesh = bossMesh(); mesh.position = vec(10.5, 0, 0);
+  const mesh = ship('boss', 1.35); mesh.position = vec(10.5, 0, 0);
   boss = { mesh, x: 10.5, y: 0, shotCd: 2.0, entered: false };
   $('boss-hud').hidden = false;
   say('DREADNAUGHT INBOUND', 2.6);
@@ -236,6 +305,9 @@ function update(dt) {
   player.position.x = clamp(player.position.x + dx * speed * s, -8, 2.4);
   player.position.y = clamp(player.position.y + dy * speed * s, -4.35, 4.35);
   player.rotation.z += (clamp(dy * .15, -.16, .16) - player.rotation.z) * Math.min(1, 12 * s);
+  const glance = player.metadata.glance;
+  const poseFrame = (game.elapsed + game.bossTime) * glance.targetedAnimations[0].animation.framePerSecond;
+  glance.goToFrame(glance.from + poseFrame % (glance.to - glance.from));
   player.metadata.flames.forEach((f, i) => { f.scaling.y = (boosting ? 1.8 : 1) + Math.sin(game.elapsed * 39 + i) * .17; });
   if (game.invuln > 0) { game.invuln -= s; player.setEnabled(Math.floor(game.invuln * 12) % 2 === 0); }
   else player.setEnabled(true);
@@ -246,8 +318,8 @@ function update(dt) {
     e.mesh.position.x = e.x; e.mesh.position.y = e.y;
     if (e.type === 'asteroid' || e.type === 'mine') e.mesh.rotation.z += s * 1.4;
     if (e.type === 'scout' || e.type === 'interceptor') { e.shotCd -= s; if (e.shotCd <= 0 && e.x < 8.3 && e.x > -4 && Math.random() < .53) { makeBullet(e.x - .6, e.y, false, -5.4, clamp((player.position.y - e.y) * .28, -1.4, 1.4)); e.shotCd = rand(2.4, 3.7); } }
-    if (distance2(e, player.position) < (e.r + .35) ** 2) { damagePlayer(); blast(e.x, e.y); disposeObject(e); enemies.splice(i, 1); continue; }
-    if (e.x < -10.6) { disposeObject(e); enemies.splice(i, 1); }
+    if (distance2(e, player.position) < (e.r + .35) ** 2) { damagePlayer(); blast(e.x, e.y); releaseObject(e); enemies.splice(i, 1); continue; }
+    if (e.x < -10.6) { releaseObject(e); enemies.splice(i, 1); }
   }
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i]; b.x += b.vx * s; b.y += b.vy * s; b.mesh.position.x = b.x; b.mesh.position.y = b.y;
@@ -258,19 +330,19 @@ function update(dt) {
         if (game.bossHp <= 0) { blast(boss.x, boss.y, 'orange', 35); boss.mesh.dispose(false, false); boss = null; game.score += 1500; finish(true); }
       }
       if (!hit) for (let j = enemies.length - 1; j >= 0; j--) {
-        const e = enemies[j]; if (distance2(b, e) < (b.r + e.r) ** 2) { e.hp -= b.damage; hit = true; if (e.hp <= 0) { game.score += e.score; blast(e.x, e.y); disposeObject(e); enemies.splice(j, 1); } break; }
+        const e = enemies[j]; if (distance2(b, e) < (b.r + e.r) ** 2) { e.hp -= b.damage; hit = true; if (e.hp <= 0) { game.score += e.score; blast(e.x, e.y); releaseObject(e); enemies.splice(j, 1); } break; }
       }
     } else if (distance2(b, player.position) < (b.r + .32) ** 2) { damagePlayer(); hit = true; }
-    if (hit || b.x > 11 || b.x < -11 || Math.abs(b.y) > 6) { disposeObject(b); bullets.splice(i, 1); }
+    if (hit || b.x > 11 || b.x < -11 || Math.abs(b.y) > 6) { releaseObject(b); bullets.splice(i, 1); }
   }
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i]; p.t += s; p.x -= 2.4 * s; p.mesh.position.x = p.x; p.mesh.rotation.z += s * .8; p.orb.scaling.setAll(1 + Math.sin(p.t * 5) * .08);
-    if (distance2(p, player.position) < .9 ** 2) { collect(p); disposeObject(p); pickups.splice(i, 1); }
-    else if (p.x < -10) { disposeObject(p); pickups.splice(i, 1); }
+    if (distance2(p, player.position) < .9 ** 2) { collect(p); releaseObject(p); pickups.splice(i, 1); }
+    else if (p.x < -10) { releaseObject(p); pickups.splice(i, 1); }
   }
   for (let i = effects.length - 1; i >= 0; i--) {
-    const e = effects[i]; e.life -= s; e.x += e.vx * s; e.y += e.vy * s; e.mesh.position.x = e.x; e.mesh.position.y = e.y; e.mesh.scaling.setAll(Math.max(.01, e.life));
-    if (e.life <= 0) { disposeObject(e); effects.splice(i, 1); }
+    const e = effects[i]; e.life -= s; e.x += e.vx * s; e.y += e.vy * s; e.mesh.position.x = e.x; e.mesh.position.y = e.y; e.mesh.scaling.setAll(e.diameter * Math.max(.01, e.life));
+    if (e.life <= 0) { releaseObject(e); effects.splice(i, 1); }
   }
   for (const st of stars) { st.mesh.position.x -= st.speed * s; if (st.mesh.position.x < -10.4) st.mesh.position.x = 10.4; }
   updateHud();
@@ -288,31 +360,45 @@ async function init() {
     scene = new Scene(engine); scene.clearColor = new Color4(.022, .043, .105, 1);
     camera = new ArcRotateCamera('flightCamera', -Math.PI / 2, Math.PI / 2, 30, vec(0, 0, 0), scene);
     camera.mode = 1; camera.inputs.clear(); camera.minZ = .1; camera.maxZ = 100;
-    const resize = () => { const ratio = canvas.clientWidth / Math.max(1, canvas.clientHeight); const viewH = Math.max(H, W / ratio); camera.orthoTop = viewH / 2; camera.orthoBottom = -viewH / 2; camera.orthoLeft = -viewH * ratio / 2; camera.orthoRight = viewH * ratio / 2; engine.resize(); };
+    const yard = new Layer('orbital-scrapyard', scrapyardUrl, scene, true);
+    const resize = () => {
+      const ratio = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+      const artRatio = 1672 / 941;
+      yard.texture.uScale = Math.min(1, ratio / artRatio);
+      yard.texture.vScale = Math.min(1, artRatio / ratio);
+      yard.texture.uOffset = (1 - yard.texture.uScale) / 2;
+      yard.texture.vOffset = (1 - yard.texture.vScale) / 2;
+      const viewH = Math.max(H, W / ratio);
+      camera.orthoTop = viewH / 2;
+      camera.orthoBottom = -viewH / 2;
+      camera.orthoLeft = -viewH * ratio / 2;
+      camera.orthoRight = viewH * ratio / 2;
+      engine.resize();
+    };
     window.addEventListener('resize', resize); resize();
     new HemisphericLight('ambient', vec(0, 0, -1), scene).intensity = .65;
     const keyLight = new DirectionalLight('key', vec(-.35, -.6, 1), scene); keyLight.intensity = 1.4;
     const glow = new GlowLayer('neonGlow', scene); glow.intensity = .38;
     mats = {
-      playerBody: material('ceramic-white', '#a6c8de'), playerEdge: material('cyan-alloy', '#376785', '#123b54'),
-      enemyBody: material('enemy-armor', '#85365b'), enemyEdge: material('enemy-edge', '#c75a75', '#54112a'),
-      bossBody: material('boss-armor', '#5d2542'), bossEdge: material('boss-plating', '#a83b61'),
-      glass: material('canopy', '#174968', '#2dc8e5'), glassRed: material('boss-bridge', '#481033', '#e23c70'),
-      cyan: material('ion-cyan', '#76eeff', '#72eeff'), cyanHalo: material('cyan-halo', '#38d5ff', '#38d5ff', .35),
-      red: material('hot-red', '#ff527a', '#fd3c70'), redHalo: material('red-halo', '#ff496c', '#ff496c', .38),
+      playerEdge: material('sulfur-yellow-paint', '#dfdf35', '#393104'),
+      cyan: material('ion-cyan', '#76eeff', '#72eeff'), ionBolt: boltMaterial('ion-tracer', ionBoltUrl),
+      red: material('hot-red', '#ff527a', '#fd3c70'), hostileBolt: boltMaterial('hostile-tracer', hostileBoltUrl),
       orange: material('hot-orange', '#ffb477', '#ff7040'), gold: material('pickup-gold', '#f9db81', '#e4ab27'),
-      green: material('repair-green', '#8df8bb', '#3af49c'), engine: material('engine-metal', '#24283b'),
+      green: material('repair-green', '#8df8bb', '#3af49c'),
       rock: material('asteroid-rock', '#4c6380'), mine: material('armed-mine', '#5c4568', '#ae3055')
     };
-    const starMats = [material('far-star', '#789abc', '#547eae'), material('near-star', '#b5edff', '#89dbff')];
+    debrisPools = { orange: debrisPool('orange', 96), cyan: debrisPool('cyan', 16) };
+    const farStars = sphereSource('farStars', material('far-star', '#789abc', '#547eae'), 4);
+    const nearStars = sphereSource('nearStars', material('near-star', '#b5edff', '#89dbff'), 4);
     for (let i = 0; i < 140; i++) {
-      const near = i > 90, m = MeshBuilder.CreateSphere('star', { diameter: near ? rand(.018, .05) : rand(.012, .03), segments: 4 }, scene);
-      m.material = starMats[near ? 1 : 0]; m.position = vec(rand(-10.3, 10.3), rand(-5.2, 5.2), near ? 4 : 8);
+      const near = i > 90;
+      const m = (near ? nearStars : farStars).createInstance('star');
+      m.scaling.setAll(near ? rand(.018, .05) : rand(.012, .03));
+      m.position.set(rand(-10.3, 10.3), rand(-5.2, 5.2), near ? 4 : 8);
       stars.push({ mesh: m, speed: near ? rand(.7, 1.5) : rand(.18, .5) });
     }
-    const nebulaMat = material('nebula', '#0b2150', '#103878', .11);
-    for (let i = 0; i < 8; i++) { const n = MeshBuilder.CreateSphere('nebula-cloud', { diameter: rand(2, 5), segments: 12 }, scene); n.material = nebulaMat; n.position = vec(rand(-9, 9), rand(-4, 4), 10); n.scaling.y = rand(.35, .8); }
-    player = ship('nova-wing', 'player', 1); player.position = vec(-6.4, 0, -.2);
+    await loadFleet();
+    player = ship('player'); player.position = vec(-6.4, 0, -.2);
     engine.runRenderLoop(() => { update(engine.getDeltaTime() / 1000); scene.render(); });
     window.novaWing2State.ready = true;
     setInterval(() => { Object.assign(window.novaWing2State, { ready: true, phase: game.phase, elapsed: game.elapsed, player: { x: player.position.x, y: player.position.y, hp: game.hp }, score: game.score, enemyCount: enemies.length, bulletCount: bullets.length, bossHp: game.bossSpawned ? game.bossHp : null, bossSpawned: game.bossSpawned, shotsFired: game.shotsFired, renderer: $('renderer').textContent }); }, 250);

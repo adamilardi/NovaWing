@@ -1,6 +1,6 @@
 # NovaWing 2 — Babylon flight lab
 
-A self-contained browser prototype of NovaWing's first level, **OPEN SPACE**. It uses Babylon.js meshes for the ships, asteroids, projectiles, pickups, and space backdrop. The ship meshes are assembled from 3D primitives and can be replaced with Blender GLB models without changing the flight or collision code. The flight plane and hit tests remain two-dimensional.
+A self-contained browser prototype of NovaWing's first level, **OPEN SPACE**. Ships use the six Blender GLBs shared with Godot. Babylon loads each model once and instances it for each encounter. Asteroids, projectiles, and pickups use procedural geometry. The flight plane and hit tests remain two-dimensional.
 
 ## Run
 
